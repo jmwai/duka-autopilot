@@ -235,6 +235,15 @@ def recon_exact():
     return stats
 
 
+@app.post("/recon/nightly")
+async def recon_nightly(fuzzy: bool = True):
+    """The full nightly pipeline (Cloud Scheduler's target in the cloud):
+    exact pass + batched fuzzy passes + persisted report. fuzzy=false keeps
+    it keyless (deterministic pass and report only)."""
+    from agents.nightly import run_nightly
+    return await run_nightly(fuzzy=fuzzy)
+
+
 @app.get("/recon/report")
 def recon_report():
     return get_store().payments_summary()
