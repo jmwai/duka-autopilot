@@ -9,6 +9,7 @@ Run: python -m agents.seed [--force]
 """
 from __future__ import annotations
 
+import os
 import sys
 from datetime import date, timedelta
 
@@ -102,4 +103,13 @@ def seed(force: bool = False) -> dict:
 
 
 if __name__ == "__main__":
-    print(seed(force="--force" in sys.argv))
+    # honor .env like the app does, then land in the same default DB
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        pass
+    os.environ.setdefault("DUKA_DB", "data/duka.db")
+    target = (os.environ.get("DUKA_DB") if
+              os.environ.get("DUKA_STORE", "sqlite") == "sqlite" else "firestore")
+    print(f"seeding {target}:", seed(force="--force" in sys.argv))
