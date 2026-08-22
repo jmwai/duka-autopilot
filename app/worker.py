@@ -29,11 +29,24 @@ async def handle_inbound(payload: dict) -> dict:
     audio = base64.b64decode(payload["audio_b64"]) if payload.get("audio_b64") else None
 
     from app import runner  # lazy: tests stub runner.run_turn
-    result = await runner.run_turn(
-        customer_id, text,
-        image_bytes=image, image_mime=payload.get("image_mime", "image/jpeg"),
-        audio_bytes=audio, audio_mime=payload.get("audio_mime", "audio/ogg"),
-    )
+    try:
+        result = await runner.run_turn(
+            customer_id, text,
+            image_bytes=image, image_mime=payload.get("image_mime", "image/jpeg"),
+            audio_bytes=audio, audio_mime=payload.get("audio_mime", "audio/ogg"),
+        )
+    except Exception as exc:  # noqa: BLE001 - the consumer boundary, NOT a tool body:
+        # a failed turn must never strand the customer in silence, and a
+        # Pub/Sub push must not become a poison pill redelivering forever.
+        # (The no-broad-except rule protects NodeInterruptedError inside the
+        # graph; by the time an exception reaches here the turn is over.)
+        print(f"[worker] turn failed for {customer_id}: {exc!r}")
+        store.add_message(customer_id, "out",
+                          "Samahani! Something went wrong on our side - please "
+                          "try again in a moment. The shop has been notified.",
+                          channel=channel, meta={"error": str(exc)[:300]})
+        return {"reply": None, "error": str(exc)[:300], "suspended": False,
+                "node_path": []}
     store.add_message(customer_id, "out", result.reply, channel=channel, meta={
         "node_path": result.node_path,
         "suspended": result.suspended,

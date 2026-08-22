@@ -3,9 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>My Duka Agent — Duka la Amani</title>
+<title>Duka Autopilot — Duka la Amani</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏪</text></svg>">
 <style>
-  :root { --wa-bg:#e5ddd5; --wa-green:#dcf8c6; --wa-dark:#075e54; --navy:#20344b; }
+  :root { --wa-bg:#e5ddd5; --wa-green:#dcf8c6; --wa-dark:#075e54; --navy:#20344b; --amber:#8a6d1a; }
   * { box-sizing:border-box; margin:0; font-family:-apple-system,'Segoe UI',Roboto,sans-serif; }
   body { display:grid; grid-template-columns: 380px 1fr; height:100vh; background:#f4f6f8;
          transition: grid-template-columns .25s ease; }
@@ -20,31 +21,44 @@
   body.chat-collapsed .phone header { flex-direction:column; padding:12px 4px; }
   body.chat-collapsed .htext, body.chat-collapsed #messages, body.chat-collapsed .composer { display:none; }
   #messages { flex:1; overflow-y:auto; padding:12px; display:flex; flex-direction:column; gap:6px; }
-  .msg { max-width:75%; padding:8px 10px; border-radius:8px; font-size:14px; white-space:pre-wrap; }
+  .msg { max-width:78%; padding:8px 10px; border-radius:8px; font-size:14px; white-space:pre-wrap; }
   .me   { align-self:flex-end; background:var(--wa-green); }
   .bot  { align-self:flex-start; background:#fff; }
+  .sys  { align-self:center; background:#fdf3d0; color:#6b5f2e; font-size:12px; max-width:92%; }
   .meta { font-size:10px; color:#667; margin-top:4px; }
-  .composer { display:flex; gap:6px; padding:10px; background:#f0f0f0; }
+  .composer { display:flex; gap:6px; padding:10px; background:#f0f0f0; align-items:center; }
   .composer select,.composer input[type=text] { padding:9px; border:1px solid #ccc; border-radius:18px; }
-  .composer input[type=text] { flex:1; }
-  .composer button { background:var(--wa-dark); color:#fff; border:0; border-radius:50%; width:40px; height:40px; cursor:pointer; }
+  .composer select { max-width:110px; }
+  .composer input[type=text] { flex:1; min-width:0; }
+  .composer button { background:var(--wa-dark); color:#fff; border:0; border-radius:50%; width:38px; height:38px; cursor:pointer; flex:none; }
+  .composer button.rec { background:#c0392b; animation:pulse 1.2s infinite; }
+  @keyframes pulse { 50% { opacity:.55 } }
 
   /* owner dashboard */
   .dash { padding:20px; overflow-y:auto; }
-  .dash h1 { color:var(--navy); font-size:20px; margin-bottom:4px; }
+  .dash h1 { color:var(--navy); font-size:20px; margin-bottom:2px; }
+  .dash .tagline { color:#68788c; font-size:13px; margin-bottom:6px; }
   .dash h2 { color:var(--navy); font-size:15px; margin:18px 0 8px; }
   .cards { display:flex; gap:10px; flex-wrap:wrap; }
   .card { background:#fff; border-radius:10px; padding:12px 16px; box-shadow:0 1px 3px rgba(0,0,0,.08); min-width:130px; }
   .card b { font-size:22px; color:var(--navy); display:block; }
+  .digest { background:#fff; border-left:4px solid var(--wa-dark); border-radius:10px; padding:14px 16px;
+            box-shadow:0 1px 3px rgba(0,0,0,.08); white-space:pre-wrap; font-size:13.5px; max-width:640px; display:none; }
   table { width:100%; border-collapse:collapse; background:#fff; border-radius:10px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,.08); font-size:13px; }
-  th,td { text-align:left; padding:8px 10px; border-bottom:1px solid #f0f0f0; }
+  th,td { text-align:left; padding:8px 10px; border-bottom:1px solid #f0f0f0; vertical-align:top; }
   th { background:#fafbfc; color:#556; }
-  .pill { padding:2px 8px; border-radius:10px; font-size:11px; }
+  .pill { padding:2px 8px; border-radius:10px; font-size:11px; white-space:nowrap; }
   .paid { background:#d7f5dd; } .needs_review { background:#ffe1e1; }
-  .pending_confirmation { background:#fff3cd; } .confirmed { background:#dbe9ff; }
+  .pending_confirmation { background:#fff3cd; } .confirmed { background:#dbe9ff; } .rejected { background:#eee; }
+  .k-refund { background:#ffe1e1; } .k-fuzzy_match { background:#dbe9ff; } .k-low_confidence_order { background:#fff3cd; }
+  .k-ledger_row { background:#e8dff5; } .k-security_flag { background:#ffd6d6; color:#7a1010; font-weight:600; }
+  .k-restock_proposal { background:#d7f5dd; }
+  details summary { cursor:pointer; color:#68788c; font-size:11px; }
   .approve,.reject { border:0; border-radius:6px; padding:5px 10px; cursor:pointer; font-size:12px; }
   .approve { background:#34a853; color:#fff; } .reject { background:#ea4335; color:#fff; }
-  .toolbar button { background:var(--navy); color:#fff; border:0; border-radius:6px; padding:8px 14px; cursor:pointer; margin-right:8px; }
+  .toolbar { margin:10px 0; display:flex; flex-wrap:wrap; gap:8px; }
+  .toolbar button { background:var(--navy); color:#fff; border:0; border-radius:6px; padding:8px 14px; cursor:pointer; }
+  .toolbar button.alt { background:#eef1f5; color:var(--navy); }
 
   /* dashboard tabs */
   .tabs { display:flex; gap:4px; margin:12px 0 4px; border-bottom:2px solid #e3e7ec; }
@@ -73,33 +87,39 @@
 <section class="phone">
   <header>
     <button id="collapse" onclick="toggleChat()" title="Collapse/expand chat">⟨</button>
-    <div class="htext"><b>Duka la Amani</b><br><small>usually replies instantly</small></div>
+    <div class="htext"><b>Duka la Amani</b><br><small>autopilot is on — replies keep coming even while the duka sleeps</small></div>
   </header>
   <div id="messages"></div>
   <div class="composer">
-    <select id="who"></select><!-- filled from /customers on load -->
+    <select id="who" onchange="loadThread()"></select>
     <input id="text" type="text" placeholder="Type a message…" onkeydown="if(event.key==='Enter')send()">
-    <input id="photo" type="file" accept="image/*" hidden onchange="photoPicked()">
-    <button onclick="$('#photo').click()" title="Attach an order-note photo" id="attach">📎</button>
+    <input id="file" type="file" accept="image/*,audio/*" hidden onchange="filePicked()">
+    <button onclick="$('#file').click()" title="Attach an order note photo, ledger page, or a voice file" id="attach">📎</button>
+    <button onclick="toggleMic()" title="Record a voice note" id="mic">🎤</button>
     <button onclick="newDay()" title="New day: fresh session, only memory carries over">☀️</button>
     <button onclick="send()" title="Send">➤</button>
   </div>
 </section>
 
 <section class="dash">
-  <h1>Owner dashboard</h1>
+  <h1>Duka Autopilot <span style="font-weight:400;color:#68788c">· owner dashboard</span></h1>
+  <div class="tagline">Agents run in the background. Every shilling stops here for your approval.</div>
   <div class="tabs">
     <button id="tab-overview" class="active" onclick="showTab('overview')">Overview</button>
     <button id="tab-sale" onclick="showTab('sale')">Create sale</button>
   </div>
 
   <div id="panel-overview" class="tab-panel active">
-    <div class="toolbar" style="margin:10px 0">
-      <button onclick="runRecon()">Run reconciliation</button>
-      <button onclick="refresh()">Refresh</button>
+    <div class="toolbar">
+      <button onclick="runNightly(false)" title="Deterministic pass only — no LLM, no key">Run night shift (exact)</button>
+      <button onclick="runNightly(true)" title="Exact pass + LLM fuzzy batches">Night shift + fuzzy</button>
+      <button onclick="showDigest()" class="alt">Morning digest</button>
+      <button onclick="restockCheck()" class="alt">Check shelves</button>
+      <button onclick="refresh()" class="alt">Refresh</button>
     </div>
-    <div class="cards" id="cards"></div>
-    <h2>Approval queue</h2>
+    <div class="digest" id="digest"></div>
+    <div class="cards" id="cards" style="margin-top:10px"></div>
+    <h2>Approval queue — humans gate money</h2>
     <table id="approvals"><thead><tr><th>#</th><th>Kind</th><th>Details</th><th></th></tr></thead><tbody></tbody></table>
     <h2>Orders</h2>
     <table id="orders"><thead><tr><th>#</th><th>Customer</th><th>Items</th><th>Total</th><th>Status</th></tr></thead><tbody></tbody></table>
@@ -130,6 +150,11 @@
 const $ = (s) => document.querySelector(s);
 const msgs = $('#messages');
 
+// ---------- conversation rendering (async: server owns the thread) ----------
+
+let lastMsgId = 0;          // newest message id we've rendered for this thread
+let waiting = null;         // typing indicator element while a reply is due
+
 function bubble(text, cls, meta) {
   const d = document.createElement('div');
   d.className = 'msg ' + cls;
@@ -139,65 +164,153 @@ function bubble(text, cls, meta) {
   return d;
 }
 
-let pendingPhoto = null;  // {b64, mime, name}
+function metaLine(m) {
+  const x = m.meta || {};
+  if (!x.node_path) return null;
+  return `${(x.node_path||[]).join(' › ')}${x.suspended ? ' · ⏸ awaiting owner' : ''}` +
+         (x.cost_usd != null ? ` · $${x.cost_usd}` : '') +
+         (x.wall_ms != null ? ` · ${x.wall_ms}ms` : '');
+}
 
-function photoPicked() {
-  const f = $('#photo').files[0]; if (!f) return;
+function renderMessage(m) {
+  const cls = m.channel === 'system' ? 'sys' : (m.direction === 'in' ? 'me' : 'bot');
+  bubble(m.text, cls, m.direction === 'out' ? metaLine(m) : null);
+  lastMsgId = Math.max(lastMsgId, m.id);
+}
+
+async function loadThread() {
+  msgs.innerHTML = ''; lastMsgId = 0;
+  const ms = await fetch('/messages/' + $('#who').value).then(r => r.json());
+  ms.filter(m => m.channel !== 'system').forEach(renderMessage);
+}
+
+async function pollThread() {
+  if (!$('#who').value) return;
+  const ms = await fetch('/messages/' + $('#who').value).then(r => r.json());
+  const fresh = ms.filter(m => m.id > lastMsgId && m.channel !== 'system');
+  if (fresh.length && waiting) { waiting.remove(); waiting = null; }
+  fresh.forEach(renderMessage);
+  if (fresh.some(m => m.direction === 'out')) refresh();
+}
+setInterval(pollThread, 2000);   // async replies arrive whenever they arrive
+
+// ---------- sending (text / photo / voice) ----------
+
+let pendingFile = null;  // {b64, mime, name, kind: image|audio}
+
+function filePicked() {
+  const f = $('#file').files[0]; if (!f) return;
   const rd = new FileReader();
   rd.onload = () => {
-    pendingPhoto = { b64: rd.result.split(',')[1], mime: f.type || 'image/jpeg', name: f.name };
-    $('#attach').textContent = '🖼️';
+    const kind = (f.type || '').startsWith('audio') ? 'audio' : 'image';
+    pendingFile = { b64: rd.result.split(',')[1], mime: f.type || 'image/jpeg', name: f.name, kind };
+    $('#attach').textContent = kind === 'audio' ? '🎵' : '🖼️';
     $('#attach').title = f.name + ' attached — click send';
   };
   rd.readAsDataURL(f);
 }
 
+let recorder = null, chunks = [];
+
+async function toggleMic() {
+  if (recorder && recorder.state === 'recording') { recorder.stop(); return; }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    recorder = new MediaRecorder(stream);
+    chunks = [];
+    recorder.ondataavailable = (e) => chunks.push(e.data);
+    recorder.onstop = () => {
+      stream.getTracks().forEach(t => t.stop());
+      $('#mic').classList.remove('rec'); $('#mic').textContent = '🎤';
+      const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
+      const rd = new FileReader();
+      rd.onload = () => {
+        pendingFile = { b64: rd.result.split(',')[1], mime: blob.type, name: 'voice note', kind: 'audio' };
+        send();                                  // voice notes send on release
+      };
+      rd.readAsDataURL(blob);
+    };
+    recorder.start();
+    $('#mic').classList.add('rec'); $('#mic').textContent = '■';
+  } catch (e) { bubble('mic unavailable: ' + e.message, 'sys'); }
+}
+
 async function send() {
   const text = $('#text').value.trim();
-  if (!text && !pendingPhoto) return;
+  if (!text && !pendingFile) return;
   $('#text').value = '';
-  const photo = pendingPhoto; pendingPhoto = null;
-  $('#attach').textContent = '📎'; $('#photo').value = '';
-  bubble(text || '📷 ' + photo.name, 'me');
-  const typing = bubble('…', 'bot');
+  const file = pendingFile; pendingFile = null;
+  $('#attach').textContent = '📎'; $('#file').value = '';
+
+  bubble(text || (file.kind === 'audio' ? '🎤 ' : '📷 ') + file.name, 'me');
+  waiting = bubble('…', 'bot');
+  const body = { customer_id: $('#who').value, text };
+  if (file && file.kind === 'image') { body.image_b64 = file.b64; body.image_mime = file.mime; }
+  if (file && file.kind === 'audio') { body.audio_b64 = file.b64; body.audio_mime = file.mime; }
   try {
-    const r = await fetch('/chat', { method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ customer_id: $('#who').value, text,
-                             image_b64: photo ? photo.b64 : null,
-                             image_mime: photo ? photo.mime : 'image/jpeg' }) });
-    const j = await r.json();
-    typing.remove();
-    bubble(j.reply || '(no reply)', 'bot',
-      `${j.node_path.join(' › ')}${j.suspended ? ' · ⏸ SUSPENDED awaiting owner' : ''} · ${j.tokens.input}+${j.tokens.output} tok · $${j.cost_usd} · ${j.wall_ms}ms`);
-  } catch (e) { typing.textContent = 'error: ' + e; }
-  refresh();
+    // fire the event and walk away - the reply lands via /messages polling
+    const ms = await fetch('/messages/' + $('#who').value).then(r => r.json());
+    lastMsgId = Math.max(lastMsgId, ...ms.map(m => m.id), 0);
+    const r = await fetch('/inbound', { method:'POST',
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    if (r.status !== 202) throw new Error('queue refused: ' + r.status);
+  } catch (e) { if (waiting) { waiting.textContent = 'error: ' + e.message; waiting = null; } }
 }
 
 async function newDay() {
   await fetch('/sessions/new', { method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({ customer_id: $('#who').value }) });
-  msgs.innerHTML = '';
-  bubble('— new day: fresh session, the agent only "remembers" via Memory —', 'bot');
+  bubble('— new day: fresh session, the agent only "remembers" via Memory —', 'sys');
 }
 
-async function runRecon() {
-  bubble('(owner) Run reconciliation', 'me');
-  const typing = bubble('…', 'bot');
-  const r = await fetch('/recon/run', { method:'POST' });
-  const j = await r.json();
-  typing.remove();
-  bubble(j.report || JSON.stringify(j), 'bot', (j.node_path||[]).join(' › '));
+// ---------- owner actions ----------
+
+async function runNightly(fuzzy) {
+  const el = bubble(fuzzy ? '(owner) night shift + fuzzy…' : '(owner) night shift (exact)…', 'sys');
+  const j = await fetch('/recon/nightly?fuzzy=' + fuzzy, { method:'POST' }).then(r => r.json());
+  el.textContent = `night shift: ${j.exact_matched.toLocaleString()} settled ` +
+    `(${Math.round(j.settle_rate*1000)/10}% deterministic, ${j.exact_wall_ms}ms), ` +
+    `${j.fuzzy_proposals} fuzzy proposal(s), ${j.residue_end} unmatched · LLM $${j.cost_usd}`;
+  refresh();
+}
+
+async function showDigest() {
+  const j = await fetch('/digest/morning').then(r => r.json());
+  const d = $('#digest');
+  d.style.display = 'block';
+  d.textContent = j.text;
+}
+
+async function restockCheck() {
+  const j = await fetch('/restock/check', { method:'POST' }).then(r => r.json());
+  bubble(j.proposed ? `shelf scan: ${j.low.length} low product(s) — supplier order drafted for approval`
+        : j.skipped_pending ? 'shelf scan: proposal already waiting for you'
+        : 'shelf scan: shelves look healthy', 'sys');
   refresh();
 }
 
 async function decide(id, decision) {
-  const r = await fetch('/approvals/' + id, { method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ decision }) });
-  const j = await r.json();
-  // HITL: approving a refund resumes the suspended workflow; show the
-  // customer-facing confirmation in the chat pane (demo shows both panes)
+  const j = await fetch('/approvals/' + id, { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ decision }) }).then(r => r.json());
   if (j.resumed_reply) bubble(j.resumed_reply, 'bot', '▶ workflow resumed (' + j.decision + ')');
   refresh();
+}
+
+// ---------- dashboard rendering ----------
+
+function approvalSummary(a) {
+  const p = a.payload || {};
+  switch (a.kind) {
+    case 'refund': return `Refund for order #${p.order_id} — "${p.reason}" (${p.customer_id})`;
+    case 'fuzzy_match': return `Payment ${p.payment_id} → order #${p.order_id} · conf ${p.confidence} — ${p.rationale}`;
+    case 'low_confidence_order': return `Order #${p.order_id} needs review · conf ${p.confidence}${p.notes ? ' — ' + p.notes : ''}`;
+    case 'ledger_row': { const r = p.row || {};
+      return `Ledger: ${r.customer_name || '?'} — ${r.description || '?'} — KSh ${r.amount || '?'} (${p.reason})`; }
+    case 'security_flag': return `⚠ ${p.customer_id}: ${(p.reasons||[]).join('; ')} — "${p.message_excerpt}"`;
+    case 'restock_proposal': return `${(p.lines||[]).length} low: ` +
+      (p.lines||[]).map(l => `${l.name} (${l.stock} left → order ${l.order_qty})`).join(', ');
+    default: return JSON.stringify(p);
+  }
 }
 
 async function refresh() {
@@ -207,25 +320,28 @@ async function refresh() {
     fetch('/recon/report').then(r=>r.json()),
   ]);
   $('#cards').innerHTML =
-    `<div class=card><b>${orders.length}</b>orders</div>` +
+    `<div class=card><b>${orders.length}</b>recent orders</div>` +
     `<div class=card><b>${approvals.length}</b>awaiting approval</div>` +
-    `<div class=card><b>${recon.matched_exact}</b>matched (exact)</div>` +
-    `<div class=card><b>${recon.fuzzy_pending}</b>fuzzy pending</div>` +
-    `<div class=card><b>${recon.unmatched}</b>unmatched</div>`;
+    `<div class=card><b>${recon.matched_exact.toLocaleString()}</b>matched (exact)</div>` +
+    `<div class=card><b>${recon.fuzzy_proposed.toLocaleString()}</b>fuzzy proposed</div>` +
+    `<div class=card><b>${recon.unmatched.toLocaleString()}</b>unmatched</div>`;
   $('#approvals tbody').innerHTML = approvals.map(a =>
-    `<tr><td>${a.id}</td><td>${a.kind}</td><td><code>${JSON.stringify(a.payload)}</code></td>
-     <td><button class=approve onclick="decide(${a.id},'approved')">Approve</button>
-         <button class=reject onclick="decide(${a.id},'rejected')">Reject</button></td></tr>`).join('');
-  $('#orders tbody').innerHTML = orders.map(o =>
+    `<tr><td>${a.id}</td><td><span class="pill k-${a.kind}">${a.kind.replace(/_/g,' ')}</span></td>
+     <td>${approvalSummary(a)}<details><summary>payload</summary><code>${JSON.stringify(a.payload)}</code></details></td>
+     <td><button class=approve onclick="decide('${a.id}','approved')">Approve</button>
+         <button class=reject onclick="decide('${a.id}','rejected')">Reject</button></td></tr>`).join('')
+    || '<tr><td colspan=4 style="color:#8a9">Queue is clear — the autopilot has nothing that needs you.</td></tr>';
+  $('#orders tbody').innerHTML = orders.slice(0, 30).map(o =>
     `<tr><td>${o.id}</td><td>${o.customer_name||o.customer_id}</td>
      <td>${(o.items||[]).map(i=>i.qty+'x '+i.name).join(', ')}</td>
-     <td>KSh ${o.total}</td><td><span class="pill ${o.status}">${o.status}</span></td></tr>`).join('');
+     <td>KSh ${o.total.toLocaleString()}</td><td><span class="pill ${o.status}">${o.status}</span></td></tr>`).join('');
 }
 refresh();
 
 // every seeded customer is selectable in the chat (small shop, small list)
 fetch('/customers').then(r => r.json()).then(cs => {
   $('#who').innerHTML = cs.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+  loadThread();
 });
 
 // ---------- chat collapse + tabs ----------

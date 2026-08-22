@@ -97,6 +97,24 @@ def test_pubsub_push_envelope(stub_turn):
         assert [m["direction"] for m in msgs] == ["in", "out"]
 
 
+@pytest.mark.asyncio
+async def test_failed_turn_never_strands_the_customer(monkeypatch):
+    """Model outage / missing key: the thread gets an apology with the error
+    in meta, and the handler returns instead of raising (no Pub/Sub poison
+    pill)."""
+    async def broken_run_turn(customer_id, text, **kw):
+        raise RuntimeError("503 model unavailable")
+    from app import runner
+    monkeypatch.setattr(runner, "run_turn", broken_run_turn)
+    from app.worker import handle_inbound
+    out = await handle_inbound({"customer_id": "254711000004", "text": "habari"})
+    assert out["reply"] is None and "503" in out["error"]
+    msgs = get_store().messages_for("254711000004")
+    assert [m["direction"] for m in msgs] == ["in", "out"]
+    assert "Samahani" in msgs[1]["text"]
+    assert "503" in msgs[1]["meta"]["error"]
+
+
 def test_inbound_endpoint_queues_and_returns_202(stub_turn):
     from fastapi.testclient import TestClient
 
