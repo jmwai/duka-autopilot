@@ -19,6 +19,7 @@ from google.adk.workflow import Edge, RetryConfig, Workflow, START
 
 from agents.coordinator import classifier, router
 from agents.intake import intake_agent
+from agents.ledger_agent import ledger_agent
 from agents.recon_nodes import exact_recon, fuzzy_recon, recon_summary
 from agents.refund_gate import refund_gate
 from agents.screening import blocked, screen
@@ -36,6 +37,7 @@ autopilot_workflow = Workflow(
         Edge(from_node=router, to_node=intake_agent, route="order"),
         Edge(from_node=router, to_node=support_agent, route="support"),
         Edge(from_node=router, to_node=exact_recon, route="recon"),
+        Edge(from_node=router, to_node=ledger_agent, route="ledger"),
         Edge(from_node=exact_recon, to_node=fuzzy_recon, route="fuzzy"),
         Edge(from_node=exact_recon, to_node=recon_summary, route="done"),
         (support_agent, refund_gate),

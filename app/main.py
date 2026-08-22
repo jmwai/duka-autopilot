@@ -182,6 +182,22 @@ async def decide(approval_id: int, body: Decision):
             store.set_order_status(payload["order_id"], "paid")
         elif a["kind"] == "low_confidence_order":
             store.set_order_status(payload["order_id"], "pending_confirmation", needs_review=False)
+        elif a["kind"] == "ledger_row":
+            row = payload.get("row") or {}
+            if int(row.get("amount") or 0) > 0:
+                cid = row.get("customer_id") or "walk-in"
+                if not store.get_customer(cid):
+                    store.upsert_customers([{"id": cid,
+                                             "name": row.get("customer_name") or cid,
+                                             "notes": "from ledger page"}])
+                store.create_order(
+                    cid,
+                    [{"sku": None, "name": row.get("description") or "ledger sale",
+                      "qty": 1, "unit_price": int(row["amount"])}],
+                    status="paid" if row.get("paid") else "confirmed",
+                    notes="ledger row approved by owner",
+                )
+            # amount 0/unreadable: resolved, owner enters it by hand
     elif a["kind"] == "low_confidence_order":
         store.set_order_status(payload["order_id"], "rejected")
 
@@ -261,6 +277,17 @@ class SynthIn(BaseModel):
 def synth_generate(body: SynthIn):
     from agents.synth.generate import generate_month
     return generate_month(rows=body.rows, days=body.days, seed=body.seed)
+
+
+# ---------- morning digest ----------
+
+@app.get("/digest/morning")
+def digest_morning(persist: bool = False):
+    """Deterministic digest (no LLM between the books and the owner's
+    numbers). Cloud Scheduler hits this after the nightly run with
+    persist=true so it lands in the owner's message thread."""
+    from agents.digest import morning_digest
+    return morning_digest(persist=persist)
 
 
 # ---------- metrics ----------

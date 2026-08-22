@@ -22,16 +22,38 @@ PRICE_OUT = float(os.environ.get("PRICE_OUTPUT_PER_M", "7.50"))
 
 def _build_runner():
     from google.adk.apps import App, ResumabilityConfig
-    from google.adk.runners import InMemoryRunner
+    from google.adk.runners import InMemoryRunner, Runner
 
     from agents.graph import autopilot_workflow
     # Resumability is what lets the refund_gate SUSPEND an invocation and
     # /approvals resume it later (graph-native HITL).
-    return InMemoryRunner(app=App(
+    adk_app = App(
         name=APP_NAME,
         root_agent=autopilot_workflow,
         resumability_config=ResumabilityConfig(is_resumable=True),
-    ))
+    )
+    # Memory seam: locally the default keyword-matching memory; with
+    # MEMORY_BANK_ENGINE_ID set, the SAME add_session_to_memory /
+    # preload_memory calls read and write Agent Engine Memory Bank
+    # (LLM-powered extraction + semantic recall). Config swap, no code change
+    # anywhere else - the memory service is a seam like the Store and the bus.
+    bank_id = os.environ.get("MEMORY_BANK_ENGINE_ID") or (
+        os.environ.get("AGENT_ENGINE_ID")
+        if os.environ.get("USE_MEMORY_BANK", "").lower() in ("1", "true") else None)
+    if bank_id:
+        from google.adk.memory import VertexAiMemoryBankService
+        from google.adk.sessions import InMemorySessionService
+
+        return Runner(
+            app=adk_app,
+            session_service=InMemorySessionService(),
+            memory_service=VertexAiMemoryBankService(
+                project=os.environ.get("GOOGLE_CLOUD_PROJECT"),
+                location=os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1"),
+                agent_engine_id=bank_id.split("/")[-1],
+            ),
+        )
+    return InMemoryRunner(app=adk_app)
 
 
 runner = _build_runner()
