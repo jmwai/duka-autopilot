@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>My Duka Agent — Duka la Amani</title>
+<style>
+  :root { --wa-bg:#e5ddd5; --wa-green:#dcf8c6; --wa-dark:#075e54; --navy:#20344b; }
+  * { box-sizing:border-box; margin:0; font-family:-apple-system,'Segoe UI',Roboto,sans-serif; }
+  body { display:grid; grid-template-columns: 380px 1fr; height:100vh; background:#f4f6f8;
+         transition: grid-template-columns .25s ease; }
+  body.chat-collapsed { grid-template-columns: 44px 1fr; }
+
+  /* customer chat (WhatsApp look) */
+  .phone { display:flex; flex-direction:column; border-right:1px solid #ddd; background:var(--wa-bg); overflow:hidden; }
+  .phone header { background:var(--wa-dark); color:#fff; padding:12px 16px; display:flex; align-items:center; gap:10px; }
+  .phone header .htext { flex:1; min-width:0; white-space:nowrap; }
+  .phone header small { opacity:.8 }
+  #collapse { background:transparent; border:0; color:#fff; font-size:16px; cursor:pointer; padding:2px 4px; }
+  body.chat-collapsed .phone header { flex-direction:column; padding:12px 4px; }
+  body.chat-collapsed .htext, body.chat-collapsed #messages, body.chat-collapsed .composer { display:none; }
+  #messages { flex:1; overflow-y:auto; padding:12px; display:flex; flex-direction:column; gap:6px; }
+  .msg { max-width:75%; padding:8px 10px; border-radius:8px; font-size:14px; white-space:pre-wrap; }
+  .me   { align-self:flex-end; background:var(--wa-green); }
+  .bot  { align-self:flex-start; background:#fff; }
+  .meta { font-size:10px; color:#667; margin-top:4px; }
+  .composer { display:flex; gap:6px; padding:10px; background:#f0f0f0; }
+  .composer select,.composer input[type=text] { padding:9px; border:1px solid #ccc; border-radius:18px; }
+  .composer input[type=text] { flex:1; }
+  .composer button { background:var(--wa-dark); color:#fff; border:0; border-radius:50%; width:40px; height:40px; cursor:pointer; }
+
+  /* owner dashboard */
+  .dash { padding:20px; overflow-y:auto; }
+  .dash h1 { color:var(--navy); font-size:20px; margin-bottom:4px; }
+  .dash h2 { color:var(--navy); font-size:15px; margin:18px 0 8px; }
+  .cards { display:flex; gap:10px; flex-wrap:wrap; }
+  .card { background:#fff; border-radius:10px; padding:12px 16px; box-shadow:0 1px 3px rgba(0,0,0,.08); min-width:130px; }
+  .card b { font-size:22px; color:var(--navy); display:block; }
+  table { width:100%; border-collapse:collapse; background:#fff; border-radius:10px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,.08); font-size:13px; }
+  th,td { text-align:left; padding:8px 10px; border-bottom:1px solid #f0f0f0; }
+  th { background:#fafbfc; color:#556; }
+  .pill { padding:2px 8px; border-radius:10px; font-size:11px; }
+  .paid { background:#d7f5dd; } .needs_review { background:#ffe1e1; }
+  .pending_confirmation { background:#fff3cd; } .confirmed { background:#dbe9ff; }
+  .approve,.reject { border:0; border-radius:6px; padding:5px 10px; cursor:pointer; font-size:12px; }
+  .approve { background:#34a853; color:#fff; } .reject { background:#ea4335; color:#fff; }
+  .toolbar button { background:var(--navy); color:#fff; border:0; border-radius:6px; padding:8px 14px; cursor:pointer; margin-right:8px; }
+
+  /* dashboard tabs */
+  .tabs { display:flex; gap:4px; margin:12px 0 4px; border-bottom:2px solid #e3e7ec; }
+  .tabs button { background:transparent; border:0; padding:9px 16px; font-size:14px; color:#556;
+                 cursor:pointer; border-bottom:2px solid transparent; margin-bottom:-2px; }
+  .tabs button.active { color:var(--navy); font-weight:600; border-bottom-color:var(--navy); }
+  .tab-panel { display:none; } .tab-panel.active { display:block; }
+
+  /* create sale form */
+  .sale { background:#fff; border-radius:10px; padding:16px; box-shadow:0 1px 3px rgba(0,0,0,.08); max-width:640px; }
+  .sale select,.sale input[type=number] { padding:8px; border:1px solid #ccc; border-radius:6px; font-size:14px; }
+  .sale .row { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+  .sale .row select { flex:1; }
+  .sale .row input { width:80px; }
+  .sale .row .line-total { width:110px; text-align:right; color:#556; font-size:13px; }
+  .sale .row .rm { background:#eee; border:0; border-radius:6px; width:28px; height:28px; cursor:pointer; }
+  .sale .grand { font-size:18px; color:var(--navy); margin:12px 0; }
+  .sale .actions { display:flex; gap:10px; align-items:center; }
+  .sale .actions button.primary { background:#34a853; color:#fff; border:0; border-radius:6px; padding:10px 18px; cursor:pointer; font-size:14px; }
+  .sale .actions button.ghost { background:#eef1f5; border:0; border-radius:6px; padding:10px 14px; cursor:pointer; }
+  #sale-msg { margin-top:10px; font-size:13px; }
+</style>
+</head>
+<body>
+
+<section class="phone">
+  <header>
+    <button id="collapse" onclick="toggleChat()" title="Collapse/expand chat">⟨</button>
+    <div class="htext"><b>Duka la Amani</b><br><small>usually replies instantly</small></div>
+  </header>
+  <div id="messages"></div>
+  <div class="composer">
+    <select id="who"></select><!-- filled from /customers on load -->
+    <input id="text" type="text" placeholder="Type a message…" onkeydown="if(event.key==='Enter')send()">
+    <input id="photo" type="file" accept="image/*" hidden onchange="photoPicked()">
+    <button onclick="$('#photo').click()" title="Attach an order-note photo" id="attach">📎</button>
+    <button onclick="newDay()" title="New day: fresh session, only memory carries over">☀️</button>
+    <button onclick="send()" title="Send">➤</button>
+  </div>
+</section>
+
+<section class="dash">
+  <h1>Owner dashboard</h1>
+  <div class="tabs">
+    <button id="tab-overview" class="active" onclick="showTab('overview')">Overview</button>
+    <button id="tab-sale" onclick="showTab('sale')">Create sale</button>
+  </div>
+
+  <div id="panel-overview" class="tab-panel active">
+    <div class="toolbar" style="margin:10px 0">
+      <button onclick="runRecon()">Run reconciliation</button>
+      <button onclick="refresh()">Refresh</button>
+    </div>
+    <div class="cards" id="cards"></div>
+    <h2>Approval queue</h2>
+    <table id="approvals"><thead><tr><th>#</th><th>Kind</th><th>Details</th><th></th></tr></thead><tbody></tbody></table>
+    <h2>Orders</h2>
+    <table id="orders"><thead><tr><th>#</th><th>Customer</th><th>Items</th><th>Total</th><th>Status</th></tr></thead><tbody></tbody></table>
+  </div>
+
+  <div id="panel-sale" class="tab-panel">
+    <h2>Create sale</h2>
+    <div class="sale">
+      <div class="row">
+        <label for="sale-customer" style="width:80px">Customer</label>
+        <select id="sale-customer"></select>
+      </div>
+      <div id="sale-items"></div>
+      <div class="actions" style="margin-bottom:6px">
+        <button class="ghost" onclick="addSaleRow()">+ Add product</button>
+      </div>
+      <div class="grand">Total: <b id="sale-total">KSh 0</b></div>
+      <div class="actions">
+        <button class="primary" onclick="createSale()">Create order</button>
+        <label><input type="checkbox" id="sale-paid"> paid (cash sale)</label>
+      </div>
+      <div id="sale-msg"></div>
+    </div>
+  </div>
+</section>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const msgs = $('#messages');
+
+function bubble(text, cls, meta) {
+  const d = document.createElement('div');
+  d.className = 'msg ' + cls;
+  d.textContent = text;
+  if (meta) { const m = document.createElement('div'); m.className='meta'; m.textContent = meta; d.appendChild(m); }
+  msgs.appendChild(d); msgs.scrollTop = msgs.scrollHeight;
+  return d;
+}
+
+let pendingPhoto = null;  // {b64, mime, name}
+
+function photoPicked() {
+  const f = $('#photo').files[0]; if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => {
+    pendingPhoto = { b64: rd.result.split(',')[1], mime: f.type || 'image/jpeg', name: f.name };
+    $('#attach').textContent = '🖼️';
+    $('#attach').title = f.name + ' attached — click send';
+  };
+  rd.readAsDataURL(f);
+}
+
+async function send() {
+  const text = $('#text').value.trim();
+  if (!text && !pendingPhoto) return;
+  $('#text').value = '';
+  const photo = pendingPhoto; pendingPhoto = null;
+  $('#attach').textContent = '📎'; $('#photo').value = '';
+  bubble(text || '📷 ' + photo.name, 'me');
+  const typing = bubble('…', 'bot');
+  try {
+    const r = await fetch('/chat', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ customer_id: $('#who').value, text,
+                             image_b64: photo ? photo.b64 : null,
+                             image_mime: photo ? photo.mime : 'image/jpeg' }) });
+    const j = await r.json();
+    typing.remove();
+    bubble(j.reply || '(no reply)', 'bot',
+      `${j.node_path.join(' › ')}${j.suspended ? ' · ⏸ SUSPENDED awaiting owner' : ''} · ${j.tokens.input}+${j.tokens.output} tok · $${j.cost_usd} · ${j.wall_ms}ms`);
+  } catch (e) { typing.textContent = 'error: ' + e; }
+  refresh();
+}
+
+async function newDay() {
+  await fetch('/sessions/new', { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ customer_id: $('#who').value }) });
+  msgs.innerHTML = '';
+  bubble('— new day: fresh session, the agent only "remembers" via Memory —', 'bot');
+}
+
+async function runRecon() {
+  bubble('(owner) Run reconciliation', 'me');
+  const typing = bubble('…', 'bot');
+  const r = await fetch('/recon/run', { method:'POST' });
+  const j = await r.json();
+  typing.remove();
+  bubble(j.report || JSON.stringify(j), 'bot', (j.node_path||[]).join(' › '));
+  refresh();
+}
+
+async function decide(id, decision) {
+  const r = await fetch('/approvals/' + id, { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ decision }) });
+  const j = await r.json();
+  // HITL: approving a refund resumes the suspended workflow; show the
+  // customer-facing confirmation in the chat pane (demo shows both panes)
+  if (j.resumed_reply) bubble(j.resumed_reply, 'bot', '▶ workflow resumed (' + j.decision + ')');
+  refresh();
+}
+
+async function refresh() {
+  const [orders, approvals, recon] = await Promise.all([
+    fetch('/orders').then(r=>r.json()),
+    fetch('/approvals').then(r=>r.json()),
+    fetch('/recon/report').then(r=>r.json()),
+  ]);
+  $('#cards').innerHTML =
+    `<div class=card><b>${orders.length}</b>orders</div>` +
+    `<div class=card><b>${approvals.length}</b>awaiting approval</div>` +
+    `<div class=card><b>${recon.matched_exact}</b>matched (exact)</div>` +
+    `<div class=card><b>${recon.fuzzy_pending}</b>fuzzy pending</div>` +
+    `<div class=card><b>${recon.unmatched}</b>unmatched</div>`;
+  $('#approvals tbody').innerHTML = approvals.map(a =>
+    `<tr><td>${a.id}</td><td>${a.kind}</td><td><code>${JSON.stringify(a.payload)}</code></td>
+     <td><button class=approve onclick="decide(${a.id},'approved')">Approve</button>
+         <button class=reject onclick="decide(${a.id},'rejected')">Reject</button></td></tr>`).join('');
+  $('#orders tbody').innerHTML = orders.map(o =>
+    `<tr><td>${o.id}</td><td>${o.customer_name||o.customer_id}</td>
+     <td>${(o.items||[]).map(i=>i.qty+'x '+i.name).join(', ')}</td>
+     <td>KSh ${o.total}</td><td><span class="pill ${o.status}">${o.status}</span></td></tr>`).join('');
+}
+refresh();
+
+// every seeded customer is selectable in the chat (small shop, small list)
+fetch('/customers').then(r => r.json()).then(cs => {
+  $('#who').innerHTML = cs.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+});
+
+// ---------- chat collapse + tabs ----------
+
+function toggleChat() {
+  const collapsed = document.body.classList.toggle('chat-collapsed');
+  $('#collapse').textContent = collapsed ? '⟩' : '⟨';
+}
+
+function showTab(name) {
+  for (const t of ['overview', 'sale']) {
+    $('#tab-' + t).classList.toggle('active', t === name);
+    $('#panel-' + t).classList.toggle('active', t === name);
+  }
+  if (name === 'sale') initSale();
+}
+
+// ---------- create sale ----------
+
+let saleProducts = null;
+
+async function initSale() {
+  if (saleProducts) return;                    // load reference data once
+  const [customers, products] = await Promise.all([
+    fetch('/customers').then(r => r.json()),
+    fetch('/products').then(r => r.json()),
+  ]);
+  saleProducts = products;
+  $('#sale-customer').innerHTML = customers.map(c =>
+    `<option value="${c.id}">${c.name} (${c.id})</option>`).join('');
+  if (!$('#sale-items').children.length) addSaleRow();
+}
+
+function addSaleRow() {
+  const row = document.createElement('div');
+  row.className = 'row';
+  row.innerHTML =
+    `<select onchange="saleTotal()">` +
+      saleProducts.map(p =>
+        `<option value="${p.sku}" data-price="${p.unit_price}">${p.name} — KSh ${p.unit_price}/${p.unit}</option>`).join('') +
+    `</select>
+     <input type="number" min="1" value="1" onchange="saleTotal()" oninput="saleTotal()">
+     <span class="line-total"></span>
+     <button class="rm" onclick="this.parentElement.remove(); saleTotal()" title="Remove">✕</button>`;
+  $('#sale-items').appendChild(row);
+  saleTotal();
+}
+
+function saleRows() {
+  return [...$('#sale-items').querySelectorAll('.row')].map(r => ({
+    sku: r.querySelector('select').value,
+    qty: parseInt(r.querySelector('input').value || '0', 10),
+    price: parseInt(r.querySelector('select').selectedOptions[0].dataset.price, 10),
+    el: r,
+  }));
+}
+
+function saleTotal() {
+  let total = 0;
+  for (const r of saleRows()) {
+    const line = r.qty > 0 ? r.qty * r.price : 0;
+    r.el.querySelector('.line-total').textContent = line ? 'KSh ' + line : '';
+    total += line;
+  }
+  $('#sale-total').textContent = 'KSh ' + total;
+  return total;
+}
+
+async function createSale() {
+  const items = saleRows().filter(r => r.qty > 0).map(r => ({ sku: r.sku, qty: r.qty }));
+  const msg = $('#sale-msg');
+  if (!items.length) { msg.textContent = 'Add at least one product.'; msg.style.color = '#c00'; return; }
+  const r = await fetch('/orders', { method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ customer_id: $('#sale-customer').value, items,
+                           paid: $('#sale-paid').checked }) });
+  const j = await r.json();
+  if (!r.ok) { msg.textContent = 'Error: ' + (j.error || r.status); msg.style.color = '#c00'; return; }
+  msg.textContent = '';
+  $('#sale-items').innerHTML = ''; addSaleRow(); $('#sale-paid').checked = false;
+  await refresh();
+  showTab('overview');                       // land on the orders list
+  const row = $('#orders tbody tr');         // newest order is first - flash it
+  if (row) {
+    row.style.transition = 'background 1.5s';
+    row.style.background = '#d7f5dd';
+    setTimeout(() => { row.style.background = ''; }, 1600);
+  }
+}
+</script>
+</body>
+</html>
