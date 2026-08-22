@@ -13,16 +13,20 @@ from google.adk.workflow import FunctionNode
 
 MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")
 
-ROUTES = ("order", "support", "recon")
+ROUTES = ("order", "support", "recon", "ledger")
 
 classifier = LlmAgent(
     name="classifier",
     model=MODEL,
     description="Classifies an inbound customer message.",
     instruction=(
-        "Classify the customer's message into exactly one word:\n"
-        "- 'order'   : they want to buy something (text or a photo of an order note)\n"
+        "Classify the customer's message into exactly one word.\n"
+        "The message may be text, a VOICE NOTE (audio, often Swahili or\n"
+        "Swahili-English mix - listen to it), or a PHOTO (an order note, or a\n"
+        "page of the shop's handwritten ledger).\n"
+        "- 'order'   : they want to buy something (text, voice note, or a photo of an order note)\n"
         "- 'support' : question about an order, product, price, hours, or a complaint/refund\n"
+        "- 'ledger'  : the OWNER sent a photo of a handwritten ledger/sales page to digitize\n"
         "- 'recon'   : the OWNER asking to reconcile payments / run the statement\n"
         "Reply with only the single word. Nothing else."
     ),

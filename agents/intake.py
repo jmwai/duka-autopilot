@@ -23,6 +23,10 @@ intake_agent = LlmAgent(
     include_contents="default",
     instruction=(
         "You take orders for Duka la Amani (Mombasa). Prices in KSh.\n"
+        "Orders arrive as text, PHOTOS of handwritten order notes, or VOICE "
+        "NOTES - usually Swahili or Swahili-English mix (e.g. 'nataka unga "
+        "mbili na mafuta moja'). Listen carefully; reply in the customer's "
+        "language.\n"
         "The customer's phone number is {customer_id?} - if that is blank, "
         "ask for their phone number BEFORE saving the order.\n\n"
         "Process:\n"
