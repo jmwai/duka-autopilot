@@ -68,6 +68,15 @@ CREATE TABLE IF NOT EXISTS approvals (
     created_at TEXT DEFAULT (datetime('now')),
     resolved_at TEXT
 );
+CREATE TABLE IF NOT EXISTS messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    customer_id TEXT,
+    direction TEXT NOT NULL,              -- in | out
+    channel TEXT DEFAULT 'chat',          -- chat | voice | photo | system
+    text TEXT DEFAULT '',
+    meta TEXT DEFAULT '{}',               -- JSON: node_path, cost, flags
+    created_at TEXT DEFAULT (datetime('now'))
+);
 CREATE TABLE IF NOT EXISTS cost_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     interaction TEXT NOT NULL,            -- order | support | recon | chat
@@ -87,8 +96,8 @@ CREATE INDEX IF NOT EXISTS idx_orders_open
     ON orders (customer_id, total) WHERE status IN ('confirmed','pending_confirmation');
 """
 
-_TABLES = ("cost_log", "approvals", "payments", "order_items", "orders",
-           "customers", "products")
+_TABLES = ("messages", "cost_log", "approvals", "payments", "order_items",
+           "orders", "customers", "products")
 
 
 def _db_path() -> Path:
@@ -276,6 +285,21 @@ class SqliteStore:
     def resolve_approval(self, approval_id: int, decision: str) -> None:
         self._exec("UPDATE approvals SET status=?, resolved_at=datetime('now') WHERE id=?",
                    (decision, approval_id))
+
+    # ---- messages (async channel log) ---------------------------------------
+    def add_message(self, customer_id: str, direction: str, text: str,
+                    channel: str = "chat", meta: dict | None = None) -> int:
+        return self._exec(
+            "INSERT INTO messages (customer_id,direction,channel,text,meta) VALUES (?,?,?,?,?)",
+            (customer_id, direction, channel, text, json.dumps(meta or {})))
+
+    def messages_for(self, customer_id: str, limit: int = 50) -> list[dict]:
+        out = self._rows(
+            "SELECT * FROM messages WHERE customer_id=? ORDER BY id DESC LIMIT ?",
+            (customer_id, limit))
+        for m in out:
+            m["meta"] = json.loads(m["meta"] or "{}")
+        return list(reversed(out))
 
     # ---- cost metering -------------------------------------------------------
     def log_cost(self, row: dict) -> None:

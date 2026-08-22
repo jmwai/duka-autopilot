@@ -129,14 +129,21 @@ async def _ingest_order_summary(customer_id: str) -> None:
 
 
 async def run_turn(customer_id: str, text: str, image_bytes: bytes | None = None,
-                   image_mime: str = "image/jpeg") -> TurnResult:
-    """Run one customer message through the workflow; log cost."""
+                   image_mime: str = "image/jpeg", audio_bytes: bytes | None = None,
+                   audio_mime: str = "audio/ogg") -> TurnResult:
+    """Run one customer message through the workflow; log cost.
+
+    Modalities change, guardrails don't: text, order-note/ledger photos and
+    Swahili voice notes all enter as parts of ONE user message and flow
+    through the same screened, gated graph."""
     session_id = _session_id(customer_id)
     await _ensure_session(customer_id, session_id, state={"customer_id": customer_id})
 
     parts: list[types.Part] = [types.Part.from_text(text=text)] if text.strip() else []
     if image_bytes:
         parts.append(types.Part.from_bytes(data=image_bytes, mime_type=image_mime))
+    if audio_bytes:
+        parts.append(types.Part.from_bytes(data=audio_bytes, mime_type=audio_mime))
     message = types.Content(role="user", parts=parts)
 
     result = TurnResult()

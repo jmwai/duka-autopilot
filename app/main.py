@@ -31,6 +31,8 @@ STATIC = Path(__file__).parent / "static"
 def _startup() -> None:
     get_store().init()
     seed()  # no-op if already seeded
+    from app.worker import register
+    register()  # subscribe the inbound handler to the bus
 
 
 # ---------- customer chat ----------
@@ -55,6 +57,51 @@ async def chat(body: ChatIn):
         "cost_usd": round(result.cost_usd, 6),
         "wall_ms": result.wall_ms,
     }
+
+
+# ---------- async intake (event-driven workflow, autonomous routing) ----------
+
+class InboundIn(BaseModel):
+    """A webhook-shaped inbound event (what a WhatsApp/SMS bridge would POST)."""
+    customer_id: str
+    text: str = ""
+    image_b64: str | None = None
+    image_mime: str = "image/jpeg"
+    audio_b64: str | None = None
+    audio_mime: str = "audio/ogg"
+    channel: str | None = None
+
+
+@app.post("/inbound", status_code=202)
+async def inbound(body: InboundIn):
+    """Accept the event, publish it, return immediately. The worker replies
+    asynchronously; the conversation lives in /messages/{customer_id}."""
+    from app.bus import get_bus
+    from app.worker import INBOUND_TOPIC
+    await get_bus().publish(INBOUND_TOPIC, body.model_dump(exclude_none=True))
+    return {"queued": True}
+
+
+@app.post("/pubsub/push")
+async def pubsub_push(envelope: dict):
+    """Pub/Sub push delivery endpoint (cloud mode). The subscription POSTs
+    {"message": {"data": base64(json), ...}, "subscription": ...}; a 2xx acks.
+    Same handler as the local bus - the bus is the only thing that changes."""
+    import base64 as b64
+    import json as jsonlib
+
+    from app.worker import handle_inbound
+    msg = (envelope or {}).get("message") or {}
+    if not msg.get("data"):
+        return JSONResponse({"error": "empty push envelope"}, status_code=400)
+    payload = jsonlib.loads(b64.b64decode(msg["data"]))
+    result = await handle_inbound(payload)
+    return {"ok": True, **result}
+
+
+@app.get("/messages/{customer_id}")
+def messages(customer_id: str, limit: int = 50):
+    return get_store().messages_for(customer_id, limit=limit)
 
 
 # ---------- owner dashboard ----------
