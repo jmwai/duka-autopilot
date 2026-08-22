@@ -1,0 +1,21 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "duka-orders",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "customer_id", "order": "ASCENDING"},
+        {"fieldPath": "created_at", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "duka-messages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "customer_id", "order": "ASCENDING"},
+        {"fieldPath": "created_at", "order": "DESCENDING"}
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}
