@@ -1,0 +1,197 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 760" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#5b6b7d"/>
+    </marker>
+    <marker id="arg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1a7f4b"/>
+    </marker>
+  </defs>
+  <style>
+    .box   { fill:#ffffff; stroke:#c6d0da; rx:10; }
+    .gcp   { fill:#f2f7ff; stroke:#7ba4e0; }
+    .agent { fill:#f4fbf6; stroke:#7cc99a; }
+    .gate  { fill:#fff7e0; stroke:#d8b74a; }
+    .sec   { fill:#fdf0f0; stroke:#d98a8a; }
+    .title { font-size:15px; font-weight:600; fill:#20344b; }
+    .sub   { font-size:11.5px; fill:#5b6b7d; }
+    .tiny  { font-size:10.5px; fill:#7b8a99; }
+    .node  { font-size:12px; fill:#20344b; }
+    .flow  { stroke:#5b6b7d; stroke-width:1.6; fill:none; marker-end:url(#ar); }
+    .gflow { stroke:#1a7f4b; stroke-width:1.6; fill:none; marker-end:url(#arg); stroke-dasharray:5 4; }
+    .lbl   { font-size:10.5px; fill:#5b6b7d; }
+    .doct  { font-size:12.5px; font-weight:600; fill:#1a7f4b; }
+  </style>
+
+  <text x="40" y="42" font-size="21" font-weight="700" fill="#20344b">Duka Autopilot — architecture</text>
+  <text x="40" y="62" class="sub">event-driven workflow with autonomous routing · Taskmaster track · everything that touches money stops at a human</text>
+
+  <!-- ==================== people ==================== -->
+  <rect x="40" y="100" width="190" height="120" class="box" rx="10"/>
+  <text x="60" y="127" class="title">Customers</text>
+  <text x="60" y="150" class="sub">💬 text (Swahili/English)</text>
+  <text x="60" y="169" class="sub">🎤 voice notes</text>
+  <text x="60" y="188" class="sub">📷 order-note photos</text>
+
+  <rect x="40" y="470" width="190" height="130" class="box" rx="10"/>
+  <text x="60" y="497" class="title">Owner (phone)</text>
+  <text x="60" y="520" class="sub">☑ approval queue</text>
+  <text x="60" y="539" class="sub">☀️ morning digest</text>
+  <text x="60" y="558" class="sub">📒 ledger-page photos</text>
+  <text x="60" y="577" class="sub">🧾 dashboard sales</text>
+
+  <!-- ==================== channel + bus + worker ==================== -->
+  <rect x="290" y="100" width="215" height="88" class="box gcp" rx="10"/>
+  <text x="308" y="127" class="title">Channel API</text>
+  <text x="308" y="146" class="sub">FastAPI · Cloud Run</text>
+  <text x="308" y="165" class="tiny">POST /inbound → 202, walk away</text>
+
+  <rect x="290" y="228" width="215" height="72" class="box gcp" rx="10"/>
+  <text x="308" y="254" class="title">Pub/Sub</text>
+  <text x="308" y="273" class="sub">bus seam: LocalBus ⇄ PubSubBus</text>
+
+  <rect x="290" y="340" width="215" height="88" class="box gcp" rx="10"/>
+  <text x="308" y="367" class="title">Worker</text>
+  <text x="308" y="386" class="sub">Cloud Run · /pubsub/push</text>
+  <text x="308" y="405" class="tiny">same handler local &amp; cloud</text>
+
+  <rect x="290" y="470" width="215" height="130" class="box gcp" rx="10"/>
+  <text x="308" y="497" class="title">Cloud Scheduler</text>
+  <text x="308" y="520" class="sub">02:00 nightly reconciliation</text>
+  <text x="308" y="539" class="sub">06:30 morning digest</text>
+  <text x="308" y="562" class="tiny">the agent works while</text>
+  <text x="308" y="577" class="tiny">the duka sleeps</text>
+
+  <!-- ==================== workflow graph ==================== -->
+  <rect x="560" y="88" width="430" height="520" class="box" rx="12"/>
+  <text x="580" y="116" class="title">ADK workflow graph — drawn, not vibed</text>
+  <text x="580" y="134" class="tiny">google-adk 2.x · green = LLM node · rose = plain code · amber = human gate</text>
+
+  <!-- screen -->
+  <rect x="580" y="152" width="120" height="46" class="box sec" rx="8"/>
+  <text x="596" y="171" class="node">screen 🛡</text>
+  <text x="596" y="187" class="tiny">code, not LLM</text>
+
+  <rect x="748" y="152" width="105" height="46" class="box agent" rx="8"/>
+  <text x="762" y="171" class="node">classifier</text>
+  <text x="762" y="187" class="tiny">LLM suggests</text>
+
+  <rect x="885" y="152" width="86" height="46" class="box sec" rx="8"/>
+  <text x="899" y="171" class="node">router</text>
+  <text x="899" y="187" class="tiny">code decides</text>
+
+  <path class="flow" d="M700,175 L748,175"/>
+  <path class="flow" d="M853,175 L885,175"/>
+  <path class="flow" d="M640,198 L640,238"/>
+  <text x="648" y="222" class="lbl">blocked → polite stop + 🚩 to owner</text>
+  <rect x="580" y="238" width="120" height="34" class="box sec" rx="8"/>
+  <text x="596" y="260" class="node">blocked ✋</text>
+
+  <!-- fan-out -->
+  <path class="flow" d="M928,198 C928,240 800,236 738,282"/>
+  <path class="flow" d="M928,198 C928,250 880,260 862,282"/>
+  <path class="flow" d="M928,198 C940,250 952,260 950,282"/>
+  <path class="flow" d="M928,198 C930,300 760,320 700,395"/>
+
+  <!-- intake -->
+  <rect x="660" y="282" width="120" height="60" class="box agent" rx="8"/>
+  <text x="674" y="303" class="node">order intake</text>
+  <text x="674" y="319" class="tiny">multimodal, confidence-</text>
+  <text x="674" y="332" class="tiny">gated save_order</text>
+
+  <!-- support -->
+  <rect x="800" y="282" width="106" height="60" class="box agent" rx="8"/>
+  <text x="814" y="303" class="node">support</text>
+  <text x="814" y="319" class="tiny">never touches</text>
+  <text x="814" y="332" class="tiny">money</text>
+
+  <!-- ledger -->
+  <rect x="922" y="282" width="56" height="60" class="box agent" rx="8"/>
+  <text x="930" y="303" class="node">ledger</text>
+  <text x="930" y="319" class="tiny">📒 per-</text>
+  <text x="930" y="332" class="tiny">row gate</text>
+
+  <!-- refund gate -->
+  <path class="flow" d="M853,342 L853,376"/>
+  <rect x="800" y="376" width="106" height="52" class="box gate" rx="8"/>
+  <text x="812" y="397" class="node">refund_gate ⏸</text>
+  <text x="812" y="414" class="tiny">SUSPENDS invocation</text>
+
+  <!-- recon chain -->
+  <rect x="580" y="395" width="132" height="60" class="box sec" rx="8"/>
+  <text x="594" y="416" class="node">exact_recon ⚙</text>
+  <text x="594" y="432" class="tiny">indexed, bulk, no LLM</text>
+  <text x="594" y="445" class="tiny">~97% settled in ~1s</text>
+
+  <path class="flow" d="M646,455 L646,492"/>
+  <text x="654" y="478" class="lbl">residue only (~3%)</text>
+  <rect x="580" y="492" width="132" height="52" class="box agent" rx="8"/>
+  <text x="594" y="513" class="node">fuzzy_recon</text>
+  <text x="594" y="530" class="tiny">proposes, cannot pay</text>
+
+  <!-- restock note -->
+  <rect x="748" y="470" width="224" height="74" class="box sec" rx="8"/>
+  <text x="762" y="492" class="node">night shift extras (code)</text>
+  <text x="762" y="510" class="tiny">🧮 batched fuzzy until residue stops shrinking</text>
+  <text x="762" y="525" class="tiny">📦 restock scan → drafted supplier order</text>
+  <text x="762" y="540" class="tiny">☀️ digest assembled, zero LLM</text>
+
+  <text x="580" y="588" class="tiny">every doubtful thing — refunds, low-confidence orders, fuzzy matches, smudged ledger rows,</text>
+  <text x="580" y="602" class="tiny">security flags, restock drafts — lands in the owner's approval queue. No code path moves money.</text>
+
+  <!-- ==================== right column ==================== -->
+  <rect x="1030" y="100" width="210" height="80" class="box gcp" rx="10"/>
+  <text x="1048" y="127" class="title">Vertex AI</text>
+  <text x="1048" y="146" class="sub">gemini-3.6-flash</text>
+  <text x="1048" y="165" class="tiny">text · vision · audio (one model)</text>
+
+  <rect x="1030" y="228" width="210" height="96" class="box gcp" rx="10"/>
+  <text x="1048" y="255" class="title">Store seam</text>
+  <text x="1048" y="274" class="sub">SQLite (local dev/tests)</text>
+  <text x="1048" y="293" class="sub">Firestore (cloud)</text>
+  <text x="1048" y="312" class="tiny">payments keyed by M-Pesa ref = dedup</text>
+
+  <rect x="1030" y="360" width="210" height="80" class="box gcp" rx="10"/>
+  <text x="1048" y="387" class="title">Memory seam</text>
+  <text x="1048" y="406" class="sub">Agent Engine Memory Bank</text>
+  <text x="1048" y="425" class="tiny">"Mama Achieng's usual order"</text>
+
+  <rect x="1030" y="470" width="210" height="80" class="box gcp" rx="10"/>
+  <text x="1048" y="497" class="title">Observability</text>
+  <text x="1048" y="516" class="sub">Agent Engine traces</text>
+  <text x="1048" y="535" class="tiny">+ per-turn cost log (/metrics/costs)</text>
+
+  <!-- ==================== arrows ==================== -->
+  <path class="flow" d="M230,158 L290,150"/>
+  <path class="flow" d="M397,188 L397,228"/>
+  <path class="flow" d="M397,300 L397,340"/>
+  <text x="404" y="325" class="lbl">push</text>
+  <path class="flow" d="M505,382 L560,382"/>
+  <path class="flow" d="M505,500 C540,470 540,430 507,412"/>
+  <text x="470" y="452" class="lbl">fires</text>
+  <path class="gflow" d="M990,175 L1030,150"/>
+  <text x="960" y="140" class="lbl">LLM calls</text>
+  <path class="gflow" d="M990,300 L1030,285"/>
+  <text x="957" y="268" class="lbl">Store</text>
+  <path class="gflow" d="M990,400 L1030,400"/>
+  <path class="gflow" d="M230,520 C280,455 240,330 288,290"/>
+  <text x="204" y="430" class="lbl" transform="rotate(-68 236 430)"></text>
+  <path class="flow" d="M230,540 L290,540"/>
+  <text x="238" y="533" class="lbl">wakes</text>
+  <!-- owner <-> approvals -->
+  <path class="gflow" d="M135,470 C160,380 420,60 560,95"/>
+  <text x="62" y="446" class="lbl">approve / reject →</text>
+  <text x="62" y="459" class="lbl">suspended workflow resumes</text>
+
+  <!-- ==================== doctrine ==================== -->
+  <rect x="40" y="640" width="1200" height="84" rx="12" fill="#f0f7f2" stroke="#bfdcc9"/>
+  <text x="70" y="672" class="doct">LLM suggests, code decides</text>
+  <text x="70" y="691" class="tiny">routing, matching and screening verdicts</text>
+  <text x="70" y="705" class="tiny">are emitted by code, never by prompt alone</text>
+  <text x="480" y="672" class="doct">Deterministic first</text>
+  <text x="480" y="691" class="tiny">50k-row month: 97.3% settled by plain code</text>
+  <text x="480" y="705" class="tiny">in ~1.1s — the LLM bills only for the residue</text>
+  <text x="900" y="672" class="doct">Modalities change, guardrails don't</text>
+  <text x="900" y="691" class="tiny">voice, photo and text all enter the same</text>
+  <text x="900" y="705" class="tiny">screened, human-gated pipeline</text>
+</svg>

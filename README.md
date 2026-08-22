@@ -66,6 +66,12 @@ python scripts/measure_nightly.py --rows 50000
 
 ## Architecture
 
+![Duka Autopilot architecture](docs/architecture.svg)
+
+Full notes: [docs/architecture.md](docs/architecture.md) — the three
+swap-by-config seams (Store, Bus, Memory), the graph, and the single place
+money can move.
+
 ```
 customer (text / voice note / photo)              owner (phone)
         │                                             ▲
@@ -102,9 +108,14 @@ customer (text / voice note / photo)              owner (phone)
       Swahili voice-note intake + reproducible TTS test set
 - [x] Day 5: ledger-photo digitization with per-row gating, deterministic
       morning digest (/digest/morning), Memory Bank memory-service seam
+- [x] Day 7: owner console UI (async multimodal chat, digest card, shelf
+      scan, readable approvals), proactive restock, LLM evalsets ported
+- [x] Day 8: architecture diagram + docs, Devpost submission text
+      (docs/submission.md), blog post draft (docs/blog-post.md),
+      clean-machine repro pass
 - [ ] Deploy: Cloud Run + Pub/Sub + Firestore + Cloud Scheduler + Agent
       Engine, Agent Observability traces, measured cloud economics
-- [ ] Polish: UI rebrand + voice/photo upload buttons, video, submission
+- [ ] Submit: demo video, Devpost form, publish blog post
 
 ## Disclosure of pre-existing code
 
