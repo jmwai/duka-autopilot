@@ -214,6 +214,11 @@ async def decide(approval_id: int, body: Decision):
             interrupt_id=payload["interrupt_id"],
             decision=body.decision,
         )
+        if resumed_reply:
+            # async world: the confirmation must land in the customer's
+            # message thread, not just this HTTP response
+            store.add_message(payload["customer_id"], "out", resumed_reply,
+                              meta={"resumed": True, "decision": body.decision})
     return {"ok": True, "kind": a["kind"], "decision": body.decision,
             "customer_id": payload.get("customer_id"), "resumed_reply": resumed_reply}
 
@@ -277,6 +282,16 @@ class SynthIn(BaseModel):
 def synth_generate(body: SynthIn):
     from agents.synth.generate import generate_month
     return generate_month(rows=body.rows, days=body.days, seed=body.seed)
+
+
+# ---------- restock ----------
+
+@app.post("/restock/check")
+def restock_check():
+    """Deterministic shelf scan; drafts one supplier order to the approval
+    queue when stock is low. The nightly run calls this automatically."""
+    from agents.restock import check_restock
+    return check_restock()
 
 
 # ---------- morning digest ----------

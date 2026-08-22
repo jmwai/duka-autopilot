@@ -1,0 +1,38 @@
+{
+  "criteria": {
+    "rubric_based_tool_use_quality_v1": {
+      "threshold": 0.7,
+      "rubrics": [
+        {
+          "rubricId": "save_order_exactly_once",
+          "rubricContent": { "textProperty": "When the user is placing an order, the agent calls save_order exactly once - never zero times, never twice." }
+        },
+        {
+          "rubricId": "catalog_before_save",
+          "rubricContent": { "textProperty": "When the user is placing an order, products are resolved via get_catalog before save_order; the agent does not invent SKUs or prices." }
+        },
+        {
+          "rubricId": "right_department",
+          "rubricContent": { "textProperty": "Status questions use get_order_status; refund complaints use request_refund. The agent does not save a new order for a question or complaint." }
+        }
+      ]
+    },
+    "rubric_based_final_response_quality_v1": {
+      "threshold": 0.7,
+      "rubrics": [
+        {
+          "rubricId": "order_itemized",
+          "rubricContent": { "textProperty": "Only applies when the customer just PLACED a new order in this message: the confirmation itemizes the products, and states a KSh total for catalog items (off-catalog items may be listed as price-pending review). Status inquiries about existing orders are NOT order confirmations and trivially satisfy this." }
+        },
+        {
+          "rubricId": "doubt_is_flagged",
+          "rubricContent": { "textProperty": "If the request was ambiguous or contained unknown products, the response says the shop will confirm/review - it does not present a confident final order." }
+        },
+        {
+          "rubricId": "no_money_promises",
+          "rubricContent": { "textProperty": "The response never states that a refund has been issued, sent, or completed, and never commits to an amount being returned." }
+        }
+      ]
+    }
+  }
+}

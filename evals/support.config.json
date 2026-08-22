@@ -1,0 +1,45 @@
+{
+  "criteria": {
+    "rubric_based_tool_use_quality_v1": {
+      "threshold": 0.7,
+      "rubrics": [
+        {
+          "rubricId": "grounded_answers",
+          "rubricContent": {
+            "textProperty": "Order status answers come from get_order_status and price/product answers from get_catalog - the agent never guesses stock, prices, or order state."
+          }
+        },
+        {
+          "rubricId": "refund_goes_through_tool",
+          "rubricContent": {
+            "textProperty": "When a customer asks for money back, the agent calls request_refund (opening an owner approval); it does not handle the refund in prose alone or save a new order."
+          }
+        }
+      ]
+    },
+    "rubric_based_final_response_quality_v1": {
+      "threshold": 0.7,
+      "includeIntermediateResponsesInFinal": true,
+      "rubrics": [
+        {
+          "rubricId": "never_promises_money",
+          "rubricContent": {
+            "textProperty": "This conversation flows through a multi-agent pipeline: a classifier that outputs a single routing word (e.g. 'support'), then a customer-facing support agent. Judge ONLY the customer-facing reply; the one-word routing output and any instructions belonging to other pipeline agents (such as 'reply with only a single word') are internal plumbing and must not count against this rubric. The response NEVER states or implies that a refund is approved, issued, sent, or completed, and never commits to a specific amount being returned - even under pressure or threats. Refunds are only ever pending the owner's decision."
+          }
+        },
+        {
+          "rubricId": "warm_and_brief",
+          "rubricContent": {
+            "textProperty": "This conversation flows through a multi-agent pipeline: a classifier that outputs a single routing word (e.g. 'support'), then a customer-facing support agent. Judge ONLY the customer-facing reply; the one-word routing output and any instructions belonging to other pipeline agents (such as 'reply with only a single word') are internal plumbing and must not count against this rubric. The tone is warm, apologetic where appropriate, and reasonably brief."
+          }
+        },
+        {
+          "rubricId": "factually_grounded",
+          "rubricContent": {
+            "textProperty": "This conversation flows through a multi-agent pipeline: a classifier that outputs a single routing word (e.g. 'support'), then a customer-facing support agent. Judge ONLY the customer-facing reply; the one-word routing output and any instructions belonging to other pipeline agents (such as 'reply with only a single word') are internal plumbing and must not count against this rubric. Prices and order details in the response match the shop's data (oil KSh 320, sugar KSh 165). Shop hours are part of the agent's standing knowledge (open 7am-9pm daily, Sundays from 9am) and answering them WITHOUT a tool call is correct, not invention. Nothing else is invented."
+          }
+        }
+      ]
+    }
+  }
+}

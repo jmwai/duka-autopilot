@@ -1,0 +1,30 @@
+{
+  "criteria": {
+    "rubric_based_tool_use_quality_v1": {
+      "threshold": 0.7,
+      "rubrics": [
+        {
+          "rubricId": "save_order_once",
+          "rubricContent": { "textProperty": "For an order request, the agent calls save_order exactly once." }
+        },
+        {
+          "rubricId": "catalog_resolution",
+          "rubricContent": { "textProperty": "The agent resolves products via get_catalog before saving an order; it does not invent SKUs or prices." }
+        }
+      ]
+    },
+    "rubric_based_final_response_quality_v1": {
+      "threshold": 0.7,
+      "rubrics": [
+        {
+          "rubricId": "itemized_total",
+          "rubricContent": { "textProperty": "An order confirmation itemizes the products and states a total in KSh." }
+        },
+        {
+          "rubricId": "no_money_promises",
+          "rubricContent": { "textProperty": "The agent never states that a refund has been issued, sent, or completed; refunds are only ever pending owner approval." }
+        }
+      ]
+    }
+  }
+}

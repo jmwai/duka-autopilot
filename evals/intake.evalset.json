@@ -1,0 +1,117 @@
+{
+  "eval_set_id": "intake",
+  "eval_cases": [
+    {
+      "eval_id": "clean_english",
+      "conversation": [
+        {
+          "user_content": { "parts": [{ "text": "I want 2 bales of unga and 1 bottle of cooking oil" }] },
+          "final_response": {
+            "role": "model",
+            "parts": [{ "text": "Order received: 2x Unga wa Dola 2kg (KSh 390) and 1x Cooking oil 1L (KSh 320). Total KSh 710." }]
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              { "name": "get_catalog", "args": {} },
+              { "name": "save_order", "args": {} }
+            ]
+          }
+        }
+      ],
+      "session_input": { "app_name": "agents", "user_id": "254711000003", "state": { "customer_id": "254711000003" } }
+    },
+    {
+      "eval_id": "swahili_mix",
+      "conversation": [
+        {
+          "user_content": { "parts": [{ "text": "Nataka sukari 3 packets na maziwa 4" }] },
+          "final_response": {
+            "role": "model",
+            "parts": [{ "text": "Agizo limepokelewa: 3x Sugar 1kg (KSh 495) na 4x Milk 500ml (KSh 240). Jumla KSh 735." }]
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              { "name": "get_catalog", "args": {} },
+              { "name": "save_order", "args": {} }
+            ]
+          }
+        }
+      ],
+      "session_input": { "app_name": "agents", "user_id": "254711000005", "state": { "customer_id": "254711000005" } }
+    },
+    {
+      "eval_id": "ambiguous_qty",
+      "conversation": [
+        {
+          "user_content": { "parts": [{ "text": "Send me the usual unga and some rice" }] },
+          "final_response": {
+            "role": "model",
+            "parts": [{ "text": "Your order has been received and needs confirmation - the exact quantities were unclear, so the shop will confirm with you shortly." }]
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              { "name": "get_catalog", "args": {} },
+              { "name": "save_order", "args": {} }
+            ]
+          }
+        }
+      ],
+      "session_input": { "app_name": "agents", "user_id": "254711000007", "state": { "customer_id": "254711000007" } }
+    },
+    {
+      "eval_id": "unknown_product",
+      "conversation": [
+        {
+          "user_content": { "parts": [{ "text": "2 crates of mango juice please" }] },
+          "final_response": {
+            "role": "model",
+            "parts": [{ "text": "Mango juice is not in our catalog, so your request was recorded for the shop to review and confirm with you." }]
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              { "name": "get_catalog", "args": {} },
+              { "name": "save_order", "args": {} }
+            ]
+          }
+        }
+      ],
+      "session_input": { "app_name": "agents", "user_id": "254711000008", "state": { "customer_id": "254711000008" } }
+    },
+    {
+      "eval_id": "status_not_order",
+      "conversation": [
+        {
+          "user_content": { "parts": [{ "text": "Where is my order from yesterday?" }] },
+          "final_response": {
+            "role": "model",
+            "parts": [{ "text": "Your recent order is paid and being prepared. We will update you as soon as it is on its way." }]
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              { "name": "get_order_status", "args": { "customer_id": "254711000001" } }
+            ]
+          }
+        }
+      ],
+      "session_input": { "app_name": "agents", "user_id": "254711000001", "state": { "customer_id": "254711000001" } }
+    },
+    {
+      "eval_id": "refund_never_promised",
+      "conversation": [
+        {
+          "user_content": { "parts": [{ "text": "The eggs arrived broken, refund me now" }] },
+          "final_response": {
+            "role": "model",
+            "parts": [{ "text": "So sorry about the broken eggs! I have submitted a refund request and the shop owner will review and confirm it with you shortly." }]
+          },
+          "intermediate_data": {
+            "tool_uses": [
+              { "name": "request_refund", "args": {} }
+            ]
+          }
+        }
+      ],
+      "session_input": { "app_name": "agents", "user_id": "254711000006", "state": { "customer_id": "254711000006" } }
+    }
+  ]
+}

@@ -24,9 +24,9 @@ PRODUCTS = [
     ("MAZIWA-500", "Milk 500ml", "packet", 60, 80),
     ("CHAI-250G", "Tea leaves 250g", "packet", 145, 35),
     ("SABUNI-BAR", "Laundry soap bar", "bar", 85, 50),
-    ("SABUNI-1L", "Dish soap 1L", "bottle", 180, 20),
-    ("MKATE", "Bread 400g", "loaf", 65, 30),
-    ("MAYAI-TRAY", "Eggs tray (30)", "tray", 420, 15),
+    ("SABUNI-1L", "Dish soap 1L", "bottle", 180, 9),   # low on purpose:
+    ("MKATE", "Bread 400g", "loaf", 65, 30),           # the restock scan
+    ("MAYAI-TRAY", "Eggs tray (30)", "tray", 420, 7),  # has work to do
     ("NGANO-2KG", "Ngano flour 2kg", "bale", 210, 20),
     ("SODA-500", "Soda 500ml", "bottle", 70, 100),
 ]

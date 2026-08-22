@@ -66,16 +66,25 @@ async def run_nightly(fuzzy: bool = True) -> dict:
 
     report["residue_end"] = len(store.unmatched_payments())
     report["cost_usd"] = round(_recon_cost_usd(store) - cost_before, 6)
+
+    # proactive restock: the same night shift checks the shelves (plain code)
+    from agents.restock import check_restock
+    restock = check_restock()
+    report["restock_low_count"] = len(restock["low"])
+    report["restock_proposed"] = restock["proposed"]
+
     report["wall_ms"] = int((time.monotonic() - t0) * 1000)
 
     summary = store.payments_summary()
     report["statement"] = summary
     # persist for the morning digest ("owner" is the digest's mailbox)
+    restock_line = (f" Restock proposal drafted for {report['restock_low_count']} "
+                    f"low product(s)." if report["restock_proposed"] else "")
     store.add_message("owner", "out",
                       f"Nightly reconciliation: {report['exact_matched']} settled "
                       f"deterministically ({report['settle_rate']:.1%}), "
                       f"{report['fuzzy_proposals']} fuzzy proposal(s) awaiting your "
                       f"approval, {report['residue_end']} unmatched. "
-                      f"LLM cost: ${report['cost_usd']:.4f}.",
+                      f"LLM cost: ${report['cost_usd']:.4f}.{restock_line}",
                       channel="system", meta=report)
     return report
