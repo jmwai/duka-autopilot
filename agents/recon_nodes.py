@@ -12,7 +12,7 @@ from agents.recon_engine import run_exact_pass
 from agents.store import get_store
 from agents.tools.recon import record_fuzzy_match, unpaid_orders_summary
 
-MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")
+MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.7-flash")
 
 # Bound what can land in the fuzzy prompt; the nightly job iterates batches.
 RESIDUE_BATCH = 25

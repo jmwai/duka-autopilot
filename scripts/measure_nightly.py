@@ -41,7 +41,7 @@ async def main(rows: int, fuzzy: bool) -> None:
     doc.write_text(f"""# Measured economics - nightly reconciliation
 
 One synthetic month, generated with engineered noise (`agents/synth`),
-reconciled by `agents/nightly.run_nightly` on `{os.environ.get('GEMINI_MODEL', 'gemini-3.6-flash')}`.
+reconciled by `agents/nightly.run_nightly` on `{os.environ.get('GEMINI_MODEL', 'gemini-3.7-flash')}`.
 
 | metric | value |
 |---|---|

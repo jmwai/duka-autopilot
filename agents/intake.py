@@ -11,7 +11,7 @@ from google.adk.tools import preload_memory
 from agents.tools.catalog import get_catalog
 from agents.tools.orders import save_order
 
-MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")
+MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.7-flash")
 
 intake_agent = LlmAgent(
     name="order_intake",

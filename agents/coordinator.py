@@ -11,7 +11,7 @@ import os
 from google.adk.agents import Context, LlmAgent
 from google.adk.workflow import FunctionNode
 
-MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")
+MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.7-flash")
 
 ROUTES = ("order", "support", "recon", "ledger")
 

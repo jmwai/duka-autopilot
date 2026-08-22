@@ -13,7 +13,7 @@ from google.adk.agents import LlmAgent
 from agents.tools.catalog import get_catalog
 from agents.tools.ledger import record_ledger_rows
 
-MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")
+MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.7-flash")
 
 ledger_agent = LlmAgent(
     name="ledger_reader",

@@ -39,7 +39,7 @@ can move.
 
 ## How we built it
 
-Gemini (gemini-3.6-flash on Vertex AI — one model for text, vision and
+Gemini (gemini-3.7-flash on Vertex AI — one model for text, vision and
 audio) inside an ADK 2.x workflow graph where every hop is an explicit
 Edge. Three swap-by-config seams make local and cloud the same codebase:
 Store (SQLite ⇄ Firestore), Bus (in-process ⇄ Pub/Sub push), Memory
@@ -87,7 +87,7 @@ buying, and M-Pesa statement ingestion via the Daraja API.
 
 ## Built with
 
-`gemini-3.6-flash` · Vertex AI · Google ADK 2.x (workflow graphs,
+`gemini-3.7-flash` · Vertex AI · Google ADK 2.x (workflow graphs,
 FunctionNodes, graph-native HITL) · Agent Engine (Memory Bank,
 Observability) · Cloud Run · Pub/Sub · Firestore · Cloud Scheduler ·
 Model Armor (optional layer) · FastAPI · Python · SQLite (local twin)

@@ -142,7 +142,7 @@
   <!-- ==================== right column ==================== -->
   <rect x="1030" y="100" width="210" height="80" class="box gcp" rx="10"/>
   <text x="1048" y="127" class="title">Vertex AI</text>
-  <text x="1048" y="146" class="sub">gemini-3.6-flash</text>
+  <text x="1048" y="146" class="sub">gemini-3.7-flash</text>
   <text x="1048" y="165" class="tiny">text · vision · audio (one model)</text>
 
   <rect x="1030" y="228" width="210" height="96" class="box gcp" rx="10"/>

@@ -10,7 +10,7 @@ from google.adk.tools import preload_memory
 from agents.tools.catalog import get_catalog
 from agents.tools.orders import get_order_status, request_refund
 
-MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")
+MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.7-flash")
 
 support_agent = LlmAgent(
     name="support",

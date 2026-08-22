@@ -15,9 +15,10 @@ from agents.store import get_store
 
 APP_NAME = "duka-autopilot"
 
-# USD per 1M tokens - Vertex list prices, override in .env
-PRICE_IN = float(os.environ.get("PRICE_INPUT_PER_M", "1.50"))
-PRICE_OUT = float(os.environ.get("PRICE_OUTPUT_PER_M", "7.50"))
+# USD per 1M tokens - gemini-3.7-flash intro rates (through 2026-12-31),
+# override in .env (standard rates from 2027: 1.50 / 7.50)
+PRICE_IN = float(os.environ.get("PRICE_INPUT_PER_M", "0.75"))
+PRICE_OUT = float(os.environ.get("PRICE_OUTPUT_PER_M", "3.75"))
 
 
 def _build_runner():
@@ -217,7 +218,7 @@ def _log_cost(result: TurnResult) -> None:
                    "recon" if "exact_recon" in path else "chat")
     get_store().log_cost({
         "interaction": interaction, "agent_impl": "graph",
-        "model": os.environ.get("GEMINI_MODEL", "gemini-3.6-flash"),
+        "model": os.environ.get("GEMINI_MODEL", "gemini-3.7-flash"),
         "input_tokens": result.input_tokens, "output_tokens": result.output_tokens,
         "cost_usd": result.cost_usd, "wall_ms": result.wall_ms,
         "node_path": " > ".join(result.node_path),
