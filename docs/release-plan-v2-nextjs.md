@@ -80,6 +80,10 @@ Non-negotiables:
   Terraform, and both image builds pass in GitHub. The last audit-only parity
   fix accepts GitHub checkout's exact HTTPS spelling of this private repository
   as well as the local SSH spelling, while rejecting every other host or path.
+- Standalone CI run `32981612134` is green for code revision `7c5abb0`; the
+  development workflow run `32981612114` repeated the same verification and is
+  green. Its deploy job was skipped because the reviewed cloud-deploy variable
+  remains disabled, so this is CI evidence—not a GCP deployment claim.
 - Development deployment was cancelled because its reusable CI dependency was
   red; the actual deploy job also remains disabled until WIF and development
   infrastructure exist. This is expected gating, not deployment evidence.
@@ -771,13 +775,11 @@ The goal is not complete until all are true:
 
 ## 16. Immediate next actions
 
-1. Push the exact-remote audit parity fix and require its replacement CI run to
-   pass before frontend implementation begins.
-2. Keep the development deployment gate disabled until WIF and infrastructure
+1. Keep the development deployment gate disabled until WIF and infrastructure
    exist; a skipped deploy is not cloud evidence.
-3. Obtain explicit cloud bootstrap/API enablement approval in parallel with the
+2. Obtain explicit cloud bootstrap/API enablement approval in parallel with the
    Next design implementation.
-4. Scaffold `frontend/` and establish tokens/BFF/container before building
+3. Scaffold `frontend/` and establish tokens/BFF/container before building
    screens.
-5. Deliver screens in Loom order: Brief → Inbox → Ledger → Night shift →
+4. Deliver screens in Loom order: Brief → Inbox → Ledger → Night shift →
    Decisions → Evidence.
