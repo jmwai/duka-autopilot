@@ -1,29 +1,39 @@
-FROM ghcr.io/astral-sh/uv:0.11.13 AS uv
-FROM python:3.12.12-slim-bookworm
+ARG NODE_IMAGE=node:24.12.0-bookworm-slim@sha256:7326fb2dbdce998edd72140946851be64ef4a643e8715e138ca467e8e9d92c99
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    UV_COMPILE_BYTECODE=1 \
-    UV_LINK_MODE=copy \
-    PATH="/app/.venv/bin:$PATH" \
+FROM ${NODE_IMAGE} AS base
+ENV PNPM_HOME=/pnpm \
+    PATH=/pnpm:$PATH
+RUN corepack enable \
+    && corepack prepare pnpm@11.9.0 --activate
+WORKDIR /app
+
+FROM base AS dependencies
+COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml ./
+RUN pnpm install --frozen-lockfile
+
+FROM base AS builder
+ENV NEXT_TELEMETRY_DISABLED=1
+COPY --from=dependencies /app/node_modules ./node_modules
+COPY frontend/ ./
+RUN pnpm build
+
+FROM ${NODE_IMAGE} AS runner
+ENV NODE_ENV=production \
+    NEXT_TELEMETRY_DISABLED=1 \
+    HOSTNAME=0.0.0.0 \
     PORT=8080
-
-COPY --from=uv /uv /usr/local/bin/uv
 
 RUN groupadd --system --gid 10001 duka \
     && useradd --system --uid 10001 --gid duka --home-dir /app duka
 
 WORKDIR /app
-COPY pyproject.toml uv.lock ./
-RUN uv sync --locked --no-dev --no-editable
-
-COPY --chown=duka:duka agents ./agents
-COPY --chown=duka:duka app ./app
-COPY --chown=duka:duka deployment/compatibility.json ./deployment/compatibility.json
+COPY --from=builder --chown=duka:duka /app/public ./public
+COPY --from=builder --chown=duka:duka /app/.next/standalone ./
+COPY --from=builder --chown=duka:duka /app/.next/static ./.next/static
 
 USER 10001:10001
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
-  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=2)"
+  CMD node -e "fetch('http://127.0.0.1:8080/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
 
-CMD ["uvicorn", "app.web:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "1"]
+CMD ["node", "server.js"]

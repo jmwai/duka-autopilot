@@ -63,7 +63,7 @@ Non-negotiables:
 - [x] Synthetic ledger image, hash, and two-record/one-gate truth are frozen.
 - [x] Loom transcript and operator guide exist as deliberately unresolved drafts.
 
-### Current external state after first push
+### Current external state and local frontend candidate
 
 - GitHub container builds passed after the first push.
 - GitHub CI exposed two clean-runner parity defects: the Firestore emulator
@@ -84,9 +84,13 @@ Non-negotiables:
   development workflow run `32981612114` repeated the same verification and is
   green. Its deploy job was skipped because the reviewed cloud-deploy variable
   remains disabled, so this is CI evidence—not a GCP deployment claim.
-- Development deployment was cancelled because its reusable CI dependency was
-  red; the actual deploy job also remains disabled until WIF and development
-  infrastructure exist. This is expected gating, not deployment evidence.
+- The current private remote head `e8418d0` also has green standalone CI and a
+  green development verification workflow; its actual deploy job was skipped
+  because the cloud gate remains disabled.
+- Phase F1 now exists locally as an unpushed release candidate: Next.js 16.3.3,
+  React 19.2.8, Node 24.12.0, pnpm 11.9.0, Tailwind 4.3.3, shadcn-compatible
+  owned components, strict Zod boundaries, and a pinned standalone container.
+  Its evidence is recorded in `docs/evidence/frontend-foundation-2026-08-26.md`.
 - No GCP APIs or resources have yet been mutated by this plan.
 - `aiplatform.googleapis.com` remains disabled until explicit bootstrap approval.
 
@@ -583,9 +587,9 @@ manual contracts demonstrably unsafe within the timebox.
 
 Goal: finish the first-push feedback and authorize the cloud foundation.
 
-- [ ] Confirm GitHub CI at `4526871` passes; fix only real failures through a new
-      commit.
-- [ ] Document the expected deploy cancellation while
+- [x] Confirm GitHub CI on the current private baseline passes and fix only real
+      clean-runner failures through new commits.
+- [x] Document and verify the skipped deploy job while
       `GCP_DEV_DEPLOY_ENABLED=false`.
 - [ ] Obtain explicit approval for API enablement and Terraform bootstrap.
 - [ ] Read project number and billing/credit status without exposing tokens.
@@ -601,25 +605,31 @@ exists.
 
 Goal: a tested standalone shell running locally in a production container.
 
-- [ ] Scaffold `frontend/` with the locked stack and committed pnpm lock.
-- [ ] Initialize shadcn/ui and semantic OKLCH tokens.
-- [ ] Implement typography, responsive shell, sidebar/mobile nav, dark-token
+- [x] Scaffold `frontend/` with the locked stack and committed pnpm lock.
+- [x] Initialize shadcn/ui and semantic OKLCH tokens.
+- [x] Implement typography, responsive shell, sidebar/mobile nav, dark-token
       support, loading/error boundaries, and `/login`.
-- [ ] Implement server-only private API client, Google ID-token provider, Zod
+- [x] Implement server-only private API client, Google ID-token provider, Zod
       contracts, and allowlisted catch-all Route Handler.
-- [ ] Add health/readiness/version surfaces and OpenTelemetry instrumentation.
-- [ ] Replace `deployment/docker/frontend.Dockerfile` with pinned standalone
+- [x] Add health/readiness/version surfaces and OpenTelemetry instrumentation.
+- [x] Replace `deployment/docker/frontend.Dockerfile` with pinned standalone
       Node image and non-root runtime.
-- [ ] Add frontend CI: install, lint, typecheck, unit, build, container smoke.
+- [x] Add frontend CI: install, lint, typecheck, unit, build, container smoke.
 
 Exit: local Next container proxies `/api/version`, denies an unknown path, and
 passes auth/cookie, health, and non-root smoke tests.
+
+Exit evidence: passed locally on August 26. The container runs as
+`10001:10001`, the paired release smoke validates both revisions and topology,
+the forbidden worker route returns 404, and login/logout preserve and clear the
+backend-signed HttpOnly cookie. GitHub proof for this unpushed candidate remains
+the next commit gate.
 
 ### Phase F2 — demo-critical product experience
 
 Goal: every action in the four-minute Loom is polished and truthful.
 
-- [ ] Morning brief with outcome cards, digest, decisions preview, and trust
+- [x] Morning brief with outcome cards, digest, decisions preview, and trust
       timeline.
 - [ ] Decisions page with kind-specific evidence, exact-effect confirmation,
       idempotent/conflict states, and responsive layout.
@@ -775,11 +785,11 @@ The goal is not complete until all are true:
 
 ## 16. Immediate next actions
 
-1. Keep the development deployment gate disabled until WIF and infrastructure
+1. Implement Inbox next: async `202` receipt, bounded polling, attachments,
+   execution receipt, and new-day Memory explanation.
+2. Implement Ledger immediately after Inbox, using the frozen two-record/
+   one-gate fixture contract.
+3. Keep the development deployment gate disabled until WIF and infrastructure
    exist; a skipped deploy is not cloud evidence.
-2. Obtain explicit cloud bootstrap/API enablement approval in parallel with the
-   Next design implementation.
-3. Scaffold `frontend/` and establish tokens/BFF/container before building
-   screens.
-4. Deliver screens in Loom order: Brief → Inbox → Ledger → Night shift →
-   Decisions → Evidence.
+4. Obtain explicit cloud bootstrap/API enablement approval before any GCP
+   mutation while local F2 work continues.

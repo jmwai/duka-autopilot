@@ -11,6 +11,10 @@ __pycache__/
 .pytest_cache/
 .adk/
 .DS_Store
+frontend/node_modules/
+frontend/.next/
+frontend/coverage/
+frontend/.pnpm-store/
 data/
 tests/
 docs/

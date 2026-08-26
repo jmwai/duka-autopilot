@@ -45,7 +45,8 @@ Required local tools:
 - Terraform 1.14.5;
 - Docker;
 - GitHub CLI authenticated to the private repository;
-- Python 3.12.12 and uv 0.11.13.
+- Python 3.12.12 and uv 0.11.13;
+- Node.js 24.12.0, Corepack, and pnpm 11.9.0.
 
 Run before requesting any cloud or push approval:
 
@@ -59,6 +60,8 @@ terraform -chdir=deployment/terraform/bootstrap validate
 terraform -chdir=deployment/terraform/app init -backend=false -lockfile=readonly
 terraform -chdir=deployment/terraform/app validate
 actionlint .github/workflows/*.yml
+pnpm --dir frontend install --frozen-lockfile
+pnpm --dir frontend check
 docker build -f deployment/docker/backend.Dockerfile -t duka-backend:preflight .
 docker build -f deployment/docker/frontend.Dockerfile -t duka-frontend:preflight .
 uv run --frozen python scripts/prepush_audit.py \

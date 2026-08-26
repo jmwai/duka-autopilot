@@ -120,6 +120,33 @@ jobs:
           terraform init -backend=false -lockfile=readonly
           terraform validate
 
+  frontend:
+    name: Next.js quality gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Check out the exact revision
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Install Node.js 24
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24.12.0"
+
+      - name: Activate the locked pnpm release
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.9.0 --activate
+
+      - name: Install from the frozen lock
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint, typecheck, test, and build
+        run: pnpm check
+
   containers:
     name: Reproducible container builds
     runs-on: ubuntu-24.04
@@ -141,3 +168,28 @@ jobs:
             --file deployment/docker/frontend.Dockerfile \
             --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
             --tag duka-frontend:ci .
+
+      - name: Smoke the paired non-root release containers
+        run: |
+          docker network create duka-ci
+          docker run --detach --name duka-ci-api --network duka-ci \
+            --env DUKA_ENV=local \
+            --env DUKA_DB=/tmp/duka.db \
+            --env RELEASE_SHA="${GITHUB_SHA}" \
+            duka-backend:ci
+          docker run --detach --name duka-ci-web --network duka-ci \
+            --publish 18080:8080 \
+            --env DUKA_ENV=local \
+            --env DUKA_API_URL=http://duka-ci-api:8080 \
+            --env RELEASE_SHA="${GITHUB_SHA}" \
+            duka-frontend:ci
+          python3 scripts/smoke_release.py \
+            --url http://127.0.0.1:18080 \
+            --release-sha "${GITHUB_SHA}"
+          test "$(docker inspect --format '{{.Config.User}}' duka-ci-web)" = "10001:10001"
+
+      - name: Clean up release smoke containers
+        if: always()
+        run: |
+          docker rm --force duka-ci-web duka-ci-api 2>/dev/null || true
+          docker network rm duka-ci 2>/dev/null || true

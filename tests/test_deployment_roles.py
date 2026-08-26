@@ -164,3 +164,22 @@ def test_terraform_provider_locks_cover_local_and_ci_platforms():
         # for Darwin ARM64 and one for Linux AMD64. The shared zh checksums alone
         # did not satisfy `terraform validate` on GitHub's clean Linux runner.
         assert lock.count('"h1:') == 4
+
+
+def test_ci_runs_the_frozen_nextjs_quality_gate_before_release_images():
+    root = Path(__file__).resolve().parent.parent
+    workflow = (root / ".github/workflows/ci.yml").read_text()
+    dockerfile = (root / "deployment/docker/frontend.Dockerfile").read_text()
+
+    assert "name: Next.js quality gate" in workflow
+    assert "node-version: \"24.12.0\"" in workflow
+    assert "pnpm install --frozen-lockfile" in workflow
+    assert "run: pnpm check" in workflow
+    assert "Smoke the paired non-root release containers" in workflow
+    assert "python3 scripts/smoke_release.py" in workflow
+    assert "--env DUKA_API_URL=http://duka-ci-api:8080" in workflow
+    assert "Clean up release smoke containers" in workflow
+    assert "node:24.12.0-bookworm-slim@sha256:" in dockerfile
+    assert "COPY frontend/ ./" in dockerfile
+    assert "USER 10001:10001" in dockerfile
+    assert 'CMD ["node", "server.js"]' in dockerfile
