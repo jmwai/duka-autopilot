@@ -1,0 +1,135 @@
+name: CI
+
+on:
+  workflow_call:
+  pull_request:
+  push:
+    branches: [dev, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12.12"
+  UV_VERSION: "0.11.13"
+  TERRAFORM_VERSION: "1.14.5"
+
+jobs:
+  tests:
+    name: Unit and Firestore parity
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Check out the exact revision
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Install uv and Python
+        run: |
+          python3 -m pip install --disable-pip-version-check "uv==${UV_VERSION}"
+          uv python install "${PYTHON_VERSION}"
+          uv sync --locked --extra dev --python "${PYTHON_VERSION}"
+
+      - name: Install the Firestore emulator
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
+        with:
+          install_components: cloud-firestore-emulator
+
+      - name: Start the Firestore emulator
+        run: |
+          gcloud beta emulators firestore start \
+            --host-port=127.0.0.1:8085 \
+            --project=demo-duka \
+            --quiet >"${RUNNER_TEMP}/firestore-emulator.log" 2>&1 &
+          for attempt in $(seq 1 30); do
+            if python3 -c "import socket; socket.create_connection(('127.0.0.1', 8085), 1).close()"; then
+              exit 0
+            fi
+            sleep 2
+          done
+          sed -n '1,240p' "${RUNNER_TEMP}/firestore-emulator.log"
+          exit 1
+
+      - name: Run every test with emulator parity enabled
+        env:
+          FIRESTORE_EMULATOR_HOST: 127.0.0.1:8085
+          FIRESTORE_DATABASE: "(default)"
+          GOOGLE_CLOUD_PROJECT: demo-duka
+        run: |
+          uv run --frozen pytest -q -rs --junitxml=pytest.xml
+          uv run --frozen python scripts/assert_junit.py pytest.xml --max-skipped 0
+
+      - name: Check lock, imports, and durable topology contract
+        run: |
+          uv lock --check
+          uv run --frozen python -m compileall -q agents app scripts tests
+          uv run --frozen python scripts/check_compatibility.py
+
+      - name: Audit candidate and reachable history for credentials and removed trailers
+        run: uv run --frozen python scripts/prepush_audit.py
+
+      - name: Upload deterministic test evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pytest-${{ github.sha }}
+          path: |
+            pytest.xml
+            ${{ runner.temp }}/firestore-emulator.log
+          if-no-files-found: warn
+          retention-days: 30
+
+  terraform:
+    name: Terraform format and schema
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out the exact revision
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Install Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - name: Enforce canonical formatting
+        run: terraform fmt -check -recursive deployment/terraform
+
+      - name: Validate bootstrap module
+        working-directory: deployment/terraform/bootstrap
+        run: |
+          terraform init -backend=false -lockfile=readonly
+          terraform validate
+
+      - name: Validate application module
+        working-directory: deployment/terraform/app
+        run: |
+          terraform init -backend=false -lockfile=readonly
+          terraform validate
+
+  containers:
+    name: Reproducible container builds
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Check out the exact revision
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Build backend image without publishing
+        run: |
+          docker build \
+            --file deployment/docker/backend.Dockerfile \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            --tag duka-backend:ci .
+
+      - name: Build frontend image without publishing
+        run: |
+          docker build \
+            --file deployment/docker/frontend.Dockerfile \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            --tag duka-frontend:ci .

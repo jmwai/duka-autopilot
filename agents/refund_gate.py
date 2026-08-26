@@ -57,8 +57,9 @@ def gate_refund(ctx: Context):
     # Resumed: clear the flag, tell the customer the outcome.
     ctx.state["refund_request"] = None
     if (decision or {}).get("decision") == "approved":
-        return _say(f"Good news! The owner approved your refund for order "
-                    f"#{req['order_id']}. It will be sent to your M-Pesa shortly.")
+        return _say(f"The owner approved the refund proposal for order "
+                    f"#{req['order_id']}. The shop will complete it manually "
+                    f"and confirm when that is done.")
     return _say(f"The owner reviewed your refund request for order "
                 f"#{req['order_id']} and could not approve it. Please contact "
                 f"the shop to talk it through.")

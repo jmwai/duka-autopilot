@@ -1,0 +1,260 @@
+name: Promote production
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: Full tested 40-character Git SHA
+        required: true
+        type: string
+      backend_digest:
+        description: Tested backend sha256 digest (sha256:...)
+        required: true
+        type: string
+      frontend_digest:
+        description: Tested frontend sha256 digest (sha256:...)
+        required: true
+        type: string
+      development_run_id:
+        description: Successful deploy-dev GitHub run ID containing the smoke-tested manifest
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    name: Promote tested digests with rollback
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: production
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    env:
+      PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      REGION: ${{ vars.GCP_REGION }}
+      RELEASE_SHA: ${{ inputs.release_sha }}
+      BACKEND_DIGEST: ${{ inputs.backend_digest }}
+      FRONTEND_DIGEST: ${{ inputs.frontend_digest }}
+      IMAGE_REPOSITORY: duka-images
+    steps:
+      - name: Check out the promoted revision
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ inputs.release_sha }}
+
+      - name: Validate promotion inputs and variables
+        run: |
+          [[ "${RELEASE_SHA}" =~ ^[0-9a-f]{40}$ ]]
+          [[ "${BACKEND_DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]]
+          [[ "${FRONTEND_DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]]
+          test "$(git rev-parse HEAD)" = "${RELEASE_SHA}"
+          test -n "${PROJECT_ID}"
+          test -n "${REGION}"
+          test -n "${{ vars.GCP_WIF_PROVIDER }}"
+          test -n "${{ vars.GCP_PROD_DEPLOYER_SA }}"
+          echo "BACKEND_REF=${REGION}-docker.pkg.dev/${PROJECT_ID}/${IMAGE_REPOSITORY}/duka-backend@${BACKEND_DIGEST}" >>"${GITHUB_ENV}"
+          echo "FRONTEND_REF=${REGION}-docker.pkg.dev/${PROJECT_ID}/${IMAGE_REPOSITORY}/duka-frontend@${FRONTEND_DIGEST}" >>"${GITHUB_ENV}"
+
+      - name: Require successful CI and ADK evaluation for this SHA
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          CI_RUNS=$(gh run list --workflow ci.yml --commit "${RELEASE_SHA}" \
+            --status success --json databaseId --jq 'length')
+          EVAL_RUNS=$(gh run list --workflow model-eval.yml --commit "${RELEASE_SHA}" \
+            --status success --json databaseId --jq 'length')
+          test "${CI_RUNS}" -gt 0
+          test "${EVAL_RUNS}" -gt 0
+
+      - name: Verify the smoke-tested development release manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [[ "${{ inputs.development_run_id }}" =~ ^[0-9]+$ ]]
+          gh run download "${{ inputs.development_run_id }}" \
+            --name "development-release-${RELEASE_SHA}" \
+            --dir promoted-development
+          test "$(jq -r '.release_sha' promoted-development/release-manifest-dev.json)" = "${RELEASE_SHA}"
+          test "$(jq -r '.images.backend' promoted-development/release-manifest-dev.json)" = \
+            "${REGION}-docker.pkg.dev/${PROJECT_ID}/${IMAGE_REPOSITORY}/duka-backend@${BACKEND_DIGEST}"
+          test "$(jq -r '.images.frontend' promoted-development/release-manifest-dev.json)" = \
+            "${REGION}-docker.pkg.dev/${PROJECT_ID}/${IMAGE_REPOSITORY}/duka-frontend@${FRONTEND_DIGEST}"
+          jq -e '.version.durable_topology.compatible == true' \
+            promoted-development/development-smoke.json >/dev/null
+
+      - name: Authenticate to Google Cloud through WIF
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_PROD_DEPLOYER_SA }}
+
+      - name: Install gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
+
+      - name: Verify tested image digests exist
+        run: |
+          gcloud artifacts docker images describe "${BACKEND_REF}" >/dev/null
+          gcloud artifacts docker images describe "${FRONTEND_REF}" >/dev/null
+
+      - name: Capture the rollback release
+        id: previous
+        run: |
+          API_IMAGE=$(gcloud run services describe duka-prod-api \
+            --project "${PROJECT_ID}" --region "${REGION}" --format=json \
+            | jq -er '.spec.template.spec.containers[0].image // .template.containers[0].image')
+          WORKER_IMAGE=$(gcloud run services describe duka-prod-worker \
+            --project "${PROJECT_ID}" --region "${REGION}" --format=json \
+            | jq -er '.spec.template.spec.containers[0].image // .template.containers[0].image')
+          WEB_IMAGE=$(gcloud run services describe duka-prod-web \
+            --project "${PROJECT_ID}" --region "${REGION}" --format=json \
+            | jq -er '.spec.template.spec.containers[0].image // .template.containers[0].image')
+          NIGHTLY_IMAGE=$(gcloud run jobs describe duka-prod-nightly \
+            --project "${PROJECT_ID}" --region "${REGION}" --format=json \
+            | jq -er '.spec.template.spec.template.spec.containers[0].image // .template.template.containers[0].image')
+          DIGEST_IMAGE=$(gcloud run jobs describe duka-prod-digest \
+            --project "${PROJECT_ID}" --region "${REGION}" --format=json \
+            | jq -er '.spec.template.spec.template.spec.containers[0].image // .template.template.containers[0].image')
+          SEED_IMAGE=$(gcloud run jobs describe duka-prod-seed \
+            --project "${PROJECT_ID}" --region "${REGION}" --format=json \
+            | jq -er '.spec.template.spec.template.spec.containers[0].image // .template.template.containers[0].image')
+          PREVIOUS_RELEASE_SHA=$(gcloud run services describe duka-prod-api \
+            --project "${PROJECT_ID}" --region "${REGION}" --format=json \
+            | jq -er '.metadata.labels.release_sha')
+          echo "api_image=${API_IMAGE}" >>"${GITHUB_OUTPUT}"
+          echo "worker_image=${WORKER_IMAGE}" >>"${GITHUB_OUTPUT}"
+          echo "web_image=${WEB_IMAGE}" >>"${GITHUB_OUTPUT}"
+          echo "nightly_image=${NIGHTLY_IMAGE}" >>"${GITHUB_OUTPUT}"
+          echo "digest_image=${DIGEST_IMAGE}" >>"${GITHUB_OUTPUT}"
+          echo "seed_image=${SEED_IMAGE}" >>"${GITHUB_OUTPUT}"
+          echo "release_sha=${PREVIOUS_RELEASE_SHA}" >>"${GITHUB_OUTPUT}"
+
+      - name: Promote the exact tested digests
+        run: |
+          gcloud run services update duka-prod-api \
+            --project "${PROJECT_ID}" --region "${REGION}" \
+            --image "${BACKEND_REF}" \
+            --update-env-vars "RELEASE_SHA=${RELEASE_SHA}" \
+            --update-labels "release_sha=${RELEASE_SHA}" \
+            --quiet
+          gcloud run services update duka-prod-worker \
+            --project "${PROJECT_ID}" --region "${REGION}" \
+            --image "${BACKEND_REF}" \
+            --update-env-vars "RELEASE_SHA=${RELEASE_SHA}" \
+            --update-labels "release_sha=${RELEASE_SHA}" \
+            --quiet
+          gcloud run services update duka-prod-web \
+            --project "${PROJECT_ID}" --region "${REGION}" \
+            --image "${FRONTEND_REF}" \
+            --update-env-vars "RELEASE_SHA=${RELEASE_SHA}" \
+            --update-labels "release_sha=${RELEASE_SHA}" \
+            --quiet
+          gcloud run jobs update duka-prod-nightly \
+            --project "${PROJECT_ID}" --region "${REGION}" \
+            --image "${BACKEND_REF}" \
+            --update-env-vars "RELEASE_SHA=${RELEASE_SHA}" \
+            --update-labels "release_sha=${RELEASE_SHA}" \
+            --quiet
+          gcloud run jobs update duka-prod-digest \
+            --project "${PROJECT_ID}" --region "${REGION}" \
+            --image "${BACKEND_REF}" \
+            --update-env-vars "RELEASE_SHA=${RELEASE_SHA}" \
+            --update-labels "release_sha=${RELEASE_SHA}" \
+            --quiet
+          gcloud run jobs update duka-prod-seed \
+            --project "${PROJECT_ID}" --region "${REGION}" \
+            --image "${BACKEND_REF}" \
+            --update-env-vars "RELEASE_SHA=${RELEASE_SHA}" \
+            --update-labels "release_sha=${RELEASE_SHA}" \
+            --quiet
+
+      - name: Smoke production through the public BFF
+        run: |
+          WEB_URL=$(gcloud run services describe duka-prod-web \
+            --project "${PROJECT_ID}" --region "${REGION}" \
+            --format='value(status.url)')
+          test -n "${WEB_URL}"
+          echo "WEB_URL=${WEB_URL}" >>"${GITHUB_ENV}"
+          python3 scripts/smoke_release.py \
+            --url "${WEB_URL}" --release-sha "${RELEASE_SHA}" \
+            > production-smoke.json
+
+      - name: Roll back every runtime after a failed promotion
+        if: failure() && steps.previous.outcome == 'success'
+        run: |
+          gcloud run services update duka-prod-api \
+            --project "${PROJECT_ID}" --region "${REGION}" \
+            --image "${{ steps.previous.outputs.api_image }}" \
+            --update-env-vars "RELEASE_SHA=${{ steps.previous.outputs.release_sha }}" \
+            --update-labels "release_sha=${{ steps.previous.outputs.release_sha }}" --quiet
+          gcloud run services update duka-prod-worker \
+            --project "${PROJECT_ID}" --region "${REGION}" \
+            --image "${{ steps.previous.outputs.worker_image }}" \
+            --update-env-vars "RELEASE_SHA=${{ steps.previous.outputs.release_sha }}" \
+            --update-labels "release_sha=${{ steps.previous.outputs.release_sha }}" --quiet
+          gcloud run services update duka-prod-web \
+            --project "${PROJECT_ID}" --region "${REGION}" \
+            --image "${{ steps.previous.outputs.web_image }}" \
+            --update-env-vars "RELEASE_SHA=${{ steps.previous.outputs.release_sha }}" \
+            --update-labels "release_sha=${{ steps.previous.outputs.release_sha }}" --quiet
+          gcloud run jobs update duka-prod-nightly \
+            --project "${PROJECT_ID}" --region "${REGION}" \
+            --image "${{ steps.previous.outputs.nightly_image }}" \
+            --update-env-vars "RELEASE_SHA=${{ steps.previous.outputs.release_sha }}" \
+            --update-labels "release_sha=${{ steps.previous.outputs.release_sha }}" --quiet
+          gcloud run jobs update duka-prod-digest \
+            --project "${PROJECT_ID}" --region "${REGION}" \
+            --image "${{ steps.previous.outputs.digest_image }}" \
+            --update-env-vars "RELEASE_SHA=${{ steps.previous.outputs.release_sha }}" \
+            --update-labels "release_sha=${{ steps.previous.outputs.release_sha }}" --quiet
+          gcloud run jobs update duka-prod-seed \
+            --project "${PROJECT_ID}" --region "${REGION}" \
+            --image "${{ steps.previous.outputs.seed_image }}" \
+            --update-env-vars "RELEASE_SHA=${{ steps.previous.outputs.release_sha }}" \
+            --update-labels "release_sha=${{ steps.previous.outputs.release_sha }}" --quiet
+
+      - name: Write production release manifest
+        if: success()
+        run: |
+          API_REVISION=$(gcloud run services describe duka-prod-api \
+            --project "${PROJECT_ID}" --region "${REGION}" \
+            --format='value(status.latestReadyRevisionName)')
+          WEB_REVISION=$(gcloud run services describe duka-prod-web \
+            --project "${PROJECT_ID}" --region "${REGION}" \
+            --format='value(status.latestReadyRevisionName)')
+          WORKER_REVISION=$(gcloud run services describe duka-prod-worker \
+            --project "${PROJECT_ID}" --region "${REGION}" \
+            --format='value(status.latestReadyRevisionName)')
+          jq -n \
+            --arg environment prod \
+            --arg project "${PROJECT_ID}" \
+            --arg region "${REGION}" \
+            --arg release_sha "${RELEASE_SHA}" \
+            --arg backend "${BACKEND_REF}" \
+            --arg frontend "${FRONTEND_REF}" \
+            --arg web_url "${WEB_URL}" \
+            --arg api_revision "${API_REVISION}" \
+            --arg web_revision "${WEB_REVISION}" \
+            --arg worker_revision "${WORKER_REVISION}" \
+            '{environment:$environment,project:$project,region:$region,release_sha:$release_sha,images:{backend:$backend,frontend:$frontend},web_url:$web_url,revisions:{api:$api_revision,web:$web_revision,worker:$worker_revision},jobs:{nightly:{name:"duka-prod-nightly",image:$backend},digest:{name:"duka-prod-digest",image:$backend},seed:{name:"duka-prod-seed",image:$backend}}}' \
+            > release-manifest-prod.json
+
+      - name: Upload production release evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: production-release-${{ inputs.release_sha }}
+          path: |
+            release-manifest-prod.json
+            production-smoke.json
+          if-no-files-found: warn
+          retention-days: 90

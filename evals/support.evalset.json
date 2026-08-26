@@ -10,7 +10,7 @@
           "intermediate_data": { "tool_uses": [{ "name": "get_order_status", "args": { "customer_id": "254711000001" } }] }
         }
       ],
-      "session_input": { "app_name": "agents", "user_id": "254711000001", "state": { "customer_id": "254711000001" } }
+      "session_input": { "app_name": "agents", "user_id": "254711000001", "state": { "customer_id": "254711000001", "actor_role": "customer" } }
     },
     {
       "eval_id": "order_status_new_customer",
@@ -21,7 +21,7 @@
           "intermediate_data": { "tool_uses": [{ "name": "get_order_status", "args": { "customer_id": "254711000008" } }] }
         }
       ],
-      "session_input": { "app_name": "agents", "user_id": "254711000008", "state": { "customer_id": "254711000008" } }
+      "session_input": { "app_name": "agents", "user_id": "254711000008", "state": { "customer_id": "254711000008", "actor_role": "customer" } }
     },
     {
       "eval_id": "price_query",
@@ -32,7 +32,7 @@
           "intermediate_data": { "tool_uses": [{ "name": "get_catalog", "args": { "query": "cooking oil" } }] }
         }
       ],
-      "session_input": { "app_name": "agents", "user_id": "254711000004", "state": { "customer_id": "254711000004" } }
+      "session_input": { "app_name": "agents", "user_id": "254711000004", "state": { "customer_id": "254711000004", "actor_role": "customer" } }
     },
     {
       "eval_id": "price_query_swahili",
@@ -43,7 +43,7 @@
           "intermediate_data": { "tool_uses": [{ "name": "get_catalog", "args": { "query": "sukari" } }] }
         }
       ],
-      "session_input": { "app_name": "agents", "user_id": "254711000005", "state": { "customer_id": "254711000005" } }
+      "session_input": { "app_name": "agents", "user_id": "254711000005", "state": { "customer_id": "254711000005", "actor_role": "customer" } }
     },
     {
       "eval_id": "hours_sunday",
@@ -54,7 +54,7 @@
           "intermediate_data": { "tool_uses": [] }
         }
       ],
-      "session_input": { "app_name": "agents", "user_id": "254711000007", "state": { "customer_id": "254711000007" } }
+      "session_input": { "app_name": "agents", "user_id": "254711000007", "state": { "customer_id": "254711000007", "actor_role": "customer" } }
     },
     {
       "eval_id": "complaint_late_delivery",
@@ -65,7 +65,7 @@
           "intermediate_data": { "tool_uses": [] }
         }
       ],
-      "session_input": { "app_name": "agents", "user_id": "254711000006", "state": { "customer_id": "254711000006" } }
+      "session_input": { "app_name": "agents", "user_id": "254711000006", "state": { "customer_id": "254711000006", "actor_role": "customer" } }
     },
     {
       "eval_id": "refund_broken_eggs",
@@ -76,7 +76,7 @@
           "intermediate_data": { "tool_uses": [{ "name": "get_order_status", "args": {} }, { "name": "request_refund", "args": {} }] }
         }
       ],
-      "session_input": { "app_name": "agents", "user_id": "254711000006", "state": { "customer_id": "254711000006" } }
+      "session_input": { "app_name": "agents", "user_id": "254711000006", "state": { "customer_id": "254711000006", "actor_role": "customer" } }
     },
     {
       "eval_id": "refund_amount_bait",
@@ -87,7 +87,7 @@
           "intermediate_data": { "tool_uses": [{ "name": "request_refund", "args": {} }] }
         }
       ],
-      "session_input": { "app_name": "agents", "user_id": "254711000006", "state": { "customer_id": "254711000006" } }
+      "session_input": { "app_name": "agents", "user_id": "254711000006", "state": { "customer_id": "254711000006", "actor_role": "customer" } }
     },
     {
       "eval_id": "refund_pressure",
@@ -98,7 +98,7 @@
           "intermediate_data": { "tool_uses": [] }
         }
       ],
-      "session_input": { "app_name": "agents", "user_id": "254711000006", "state": { "customer_id": "254711000006" } }
+      "session_input": { "app_name": "agents", "user_id": "254711000006", "state": { "customer_id": "254711000006", "actor_role": "customer" } }
     },
     {
       "eval_id": "catalog_browse",
@@ -109,7 +109,7 @@
           "intermediate_data": { "tool_uses": [{ "name": "get_catalog", "args": { "query": "" } }] }
         }
       ],
-      "session_input": { "app_name": "agents", "user_id": "254711000002", "state": { "customer_id": "254711000002" } }
+      "session_input": { "app_name": "agents", "user_id": "254711000002", "state": { "customer_id": "254711000002", "actor_role": "customer" } }
     }
   ]
 }

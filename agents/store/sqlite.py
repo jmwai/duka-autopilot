@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import time
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -65,8 +66,54 @@ CREATE TABLE IF NOT EXISTS approvals (
     payload TEXT NOT NULL,                -- JSON
     status TEXT NOT NULL DEFAULT 'pending',  -- pending | approved | rejected
     invocation_id TEXT,                   -- ADK resume handle (HITL)
+    requested_decision TEXT,
+    resume_attempts INTEGER NOT NULL DEFAULT 0,
+    resume_lease_expires_at INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT,
     created_at TEXT DEFAULT (datetime('now')),
-    resolved_at TEXT
+    resolved_at TEXT,
+    resumed_at TEXT,
+    effect_applied_at TEXT,
+    effect_result TEXT
+);
+CREATE TABLE IF NOT EXISTS event_receipts (
+    event_id TEXT PRIMARY KEY,
+    customer_id TEXT NOT NULL,
+    payload_hash TEXT NOT NULL,
+    status TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 1,
+    lease_expires_at INTEGER NOT NULL DEFAULT 0,
+    result TEXT,
+    last_error TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS session_pointers (
+    customer_id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    session_id TEXT NOT NULL,
+    generation INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS customer_turn_leases (
+    customer_id TEXT PRIMARY KEY,
+    owner TEXT NOT NULL,
+    lease_expires_at INTEGER NOT NULL,
+    updated_at TEXT DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS memory_outbox (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    dedupe_key TEXT NOT NULL UNIQUE,
+    customer_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    lease_expires_at INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    completed_at TEXT
 );
 CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -75,6 +122,7 @@ CREATE TABLE IF NOT EXISTS messages (
     channel TEXT DEFAULT 'chat',          -- chat | voice | photo | system
     text TEXT DEFAULT '',
     meta TEXT DEFAULT '{}',               -- JSON: node_path, cost, flags
+    dedupe_key TEXT,
     created_at TEXT DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS cost_log (
@@ -96,7 +144,9 @@ CREATE INDEX IF NOT EXISTS idx_orders_open
     ON orders (customer_id, total) WHERE status IN ('confirmed','pending_confirmation');
 """
 
-_TABLES = ("messages", "cost_log", "approvals", "payments", "order_items",
+_TABLES = ("messages", "cost_log", "memory_outbox", "customer_turn_leases",
+           "event_receipts", "session_pointers",
+           "approvals", "payments", "order_items",
            "orders", "customers", "products")
 
 
@@ -130,6 +180,28 @@ class SqliteStore:
     def init(self) -> None:
         with self._conn() as c:
             c.executescript(SCHEMA)
+            # Existing local databases predate message idempotency. Migrate
+            # additively; production schema changes follow the same rule.
+            columns = {row[1] for row in c.execute("PRAGMA table_info(messages)")}
+            if "dedupe_key" not in columns:
+                c.execute("ALTER TABLE messages ADD COLUMN dedupe_key TEXT")
+            c.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_dedupe "
+                "ON messages(dedupe_key) WHERE dedupe_key IS NOT NULL")
+            approval_columns = {
+                row[1] for row in c.execute("PRAGMA table_info(approvals)")}
+            approval_migrations = {
+                "requested_decision": "TEXT",
+                "resume_attempts": "INTEGER NOT NULL DEFAULT 0",
+                "resume_lease_expires_at": "INTEGER NOT NULL DEFAULT 0",
+                "last_error": "TEXT",
+                "resumed_at": "TEXT",
+                "effect_applied_at": "TEXT",
+                "effect_result": "TEXT",
+            }
+            for name, definition in approval_migrations.items():
+                if name not in approval_columns:
+                    c.execute(f"ALTER TABLE approvals ADD COLUMN {name} {definition}")
 
     def reset(self) -> None:
         self.init()
@@ -175,6 +247,19 @@ class SqliteStore:
                 "INSERT INTO order_items (order_id,sku,name,qty,unit_price) VALUES (?,?,?,?,?)",
                 [(oid, i.get("sku"), i["name"], int(i["qty"]), int(i["unit_price"])) for i in items])
         return oid
+
+    def get_order(self, order_id) -> dict | None:
+        rows = self._rows(
+            "SELECT id, customer_id, status, total, needs_review, notes, created_at "
+            "FROM orders WHERE id=?", (order_id,))
+        if not rows:
+            return None
+        order = rows[0]
+        order["needs_review"] = bool(order["needs_review"])
+        order["items"] = self._rows(
+            "SELECT sku, name, qty, unit_price FROM order_items WHERE order_id=?",
+            (order_id,))
+        return order
 
     def bulk_create_orders(self, orders: list[dict]) -> int:
         """Scale path: one transaction for the whole synthetic month."""
@@ -235,6 +320,10 @@ class SqliteStore:
             after = c.execute("SELECT COUNT(*) FROM payments").fetchone()[0]
         return after - before
 
+    def get_payment(self, payment_id) -> dict | None:
+        rows = self._rows("SELECT * FROM payments WHERE id=?", (payment_id,))
+        return rows[0] if rows else None
+
     def unmatched_payments(self, limit: int | None = None) -> list[dict]:
         q = "SELECT * FROM payments WHERE matched_order_id IS NULL AND match_kind IS NULL"
         if limit:
@@ -248,7 +337,7 @@ class SqliteStore:
             c.executemany("UPDATE orders SET status='paid' WHERE id=?",
                           [(oid,) for _, oid, kind in links if kind == "exact"])
 
-    def mark_payment_kind(self, payment_id: int, kind: str) -> None:
+    def mark_payment_kind(self, payment_id: int, kind: str | None) -> None:
         self._exec("UPDATE payments SET match_kind=? WHERE id=?", (kind, payment_id))
 
     def payments_summary(self) -> dict:
@@ -273,7 +362,9 @@ class SqliteStore:
         return r[0]
 
     def pending_approvals(self) -> list[dict]:
-        out = self._rows("SELECT * FROM approvals WHERE status='pending' ORDER BY id")
+        out = self._rows(
+            "SELECT * FROM approvals WHERE status IN ('pending','resume_failed') "
+            "ORDER BY id")
         for a in out:
             a["payload"] = json.loads(a["payload"])
         return out
@@ -283,15 +374,347 @@ class SqliteStore:
                    (invocation_id, json.dumps(payload), approval_id))
 
     def resolve_approval(self, approval_id: int, decision: str) -> None:
-        self._exec("UPDATE approvals SET status=?, resolved_at=datetime('now') WHERE id=?",
-                   (decision, approval_id))
+        self._exec(
+            "UPDATE approvals SET status=?, requested_decision=?, "
+            "resolved_at=datetime('now') WHERE id=?",
+            (decision, decision, approval_id))
+
+    def claim_approval_decision(self, approval_id, decision: str,
+                                lease_seconds: int = 120) -> dict:
+        now = int(time.time())
+        with self._conn() as c:
+            c.execute("BEGIN IMMEDIATE")
+            row = c.execute(
+                "SELECT status,requested_decision,resume_attempts,"
+                "resume_lease_expires_at FROM approvals WHERE id=?",
+                (approval_id,)).fetchone()
+            if row is None:
+                return {"claimed": False, "outcome": "not_found"}
+            status = row["status"]
+            requested = row["requested_decision"]
+            if status in ("approved", "rejected"):
+                return {"claimed": False,
+                        "outcome": "idempotent" if status == decision else "conflict",
+                        "status": status, "decision": requested or status}
+            if requested and requested != decision:
+                return {"claimed": False, "outcome": "conflict",
+                        "status": status, "decision": requested}
+            active = (status == "resuming"
+                      and int(row["resume_lease_expires_at"] or 0) > now)
+            if active:
+                return {"claimed": False, "outcome": "in_progress",
+                        "status": status, "decision": requested}
+            attempts = int(row["resume_attempts"] or 0) + 1
+            c.execute(
+                "UPDATE approvals SET status='resuming',requested_decision=?,"
+                "resume_attempts=?,resume_lease_expires_at=?,last_error=NULL "
+                "WHERE id=?",
+                (decision, attempts, now + lease_seconds, approval_id))
+            return {"claimed": True, "outcome": "claimed", "status": "resuming",
+                    "decision": decision, "attempts": attempts}
+
+    def complete_approval_decision(self, approval_id, decision: str) -> None:
+        self._exec(
+            "UPDATE approvals SET status=?,requested_decision=?,"
+            "resume_lease_expires_at=0,last_error=NULL,resolved_at=datetime('now'),"
+            "resumed_at=datetime('now') WHERE id=? AND requested_decision=?",
+            (decision, decision, approval_id, decision))
+
+    def fail_approval_decision(self, approval_id, error: str) -> None:
+        self._exec(
+            "UPDATE approvals SET status='resume_failed',last_error=?,"
+            "resume_lease_expires_at=0 WHERE id=? AND status='resuming'",
+            (error[:500], approval_id))
+
+    def apply_approval_effect(self, approval_id, decision: str) -> dict:
+        """Apply a non-refund approval effect exactly once in one transaction."""
+        with self._conn() as c:
+            c.execute("BEGIN IMMEDIATE")
+            approval = c.execute(
+                "SELECT * FROM approvals WHERE id=?", (approval_id,)).fetchone()
+            if approval is None:
+                raise ValueError("approval not found")
+            if approval["effect_applied_at"]:
+                result = json.loads(approval["effect_result"] or "{}")
+                return {**result, "idempotent": True}
+            if approval["status"] != "resuming":
+                raise ValueError("approval effect requires a claimed decision")
+            if approval["requested_decision"] != decision:
+                raise ValueError("approval decision does not match the claim")
+
+            kind = approval["kind"]
+            if kind == "refund":
+                raise ValueError("refund effects are completed by ADK resume")
+            payload = json.loads(approval["payload"])
+            result: dict = {"kind": kind, "decision": decision}
+
+            if kind == "fuzzy_match":
+                payment_id = payload["payment_id"]
+                order_id = payload["order_id"]
+                payment = c.execute(
+                    "SELECT matched_order_id FROM payments WHERE id=?",
+                    (payment_id,)).fetchone()
+                order = c.execute(
+                    "SELECT id FROM orders WHERE id=?", (order_id,)).fetchone()
+                if payment is None or order is None:
+                    raise ValueError("fuzzy proposal references a missing entity")
+                if decision == "approved":
+                    if (payment["matched_order_id"] is not None
+                            and str(payment["matched_order_id"]) != str(order_id)):
+                        raise ValueError("payment is already linked to another order")
+                    c.execute(
+                        "UPDATE payments SET matched_order_id=?,match_kind='fuzzy' "
+                        "WHERE id=?", (order_id, payment_id))
+                    c.execute("UPDATE orders SET status='paid' WHERE id=?", (order_id,))
+                else:
+                    c.execute(
+                        "UPDATE payments SET match_kind=NULL "
+                        "WHERE id=? AND matched_order_id IS NULL", (payment_id,))
+            elif kind == "low_confidence_order":
+                order_id = payload["order_id"]
+                row = c.execute("SELECT id FROM orders WHERE id=?", (order_id,)).fetchone()
+                if row is None:
+                    raise ValueError("order awaiting approval no longer exists")
+                if decision == "approved":
+                    c.execute(
+                        "UPDATE orders SET status='pending_confirmation',needs_review=0 "
+                        "WHERE id=?", (order_id,))
+                else:
+                    c.execute("UPDATE orders SET status='rejected' WHERE id=?", (order_id,))
+            elif kind == "ledger_row" and decision == "approved":
+                row = payload.get("row") or {}
+                amount = int(row.get("amount") or 0)
+                if amount <= 0:
+                    raise ValueError("approved ledger row requires a positive amount")
+                customer_id = row.get("customer_id") or "walk-in"
+                c.execute(
+                    "INSERT OR IGNORE INTO customers (id,name,notes) VALUES (?,?,?)",
+                    (customer_id, row.get("customer_name") or customer_id,
+                     "from ledger page"))
+                cur = c.execute(
+                    "INSERT INTO orders "
+                    "(customer_id,status,total,needs_review,notes) VALUES (?,?,?,?,?)",
+                    (customer_id, "paid" if row.get("paid") else "confirmed",
+                     amount, 0, "ledger row approved by owner"))
+                order_id = cur.lastrowid
+                c.execute(
+                    "INSERT INTO order_items "
+                    "(order_id,sku,name,qty,unit_price) VALUES (?,?,?,?,?)",
+                    (order_id, None, row.get("description") or "ledger sale", 1, amount))
+                result["order_id"] = order_id
+
+            c.execute(
+                "UPDATE approvals SET effect_applied_at=datetime('now'),effect_result=? "
+                "WHERE id=?", (json.dumps(result), approval_id))
+            return {**result, "idempotent": False}
+
+    # ---- event receipts ----------------------------------------------------
+    def claim_event(self, event_id: str, customer_id: str, payload_hash: str,
+                    lease_seconds: int = 120) -> dict:
+        now = int(time.time())
+        lease_until = now + lease_seconds
+        with self._conn() as c:
+            c.execute("BEGIN IMMEDIATE")
+            row = c.execute(
+                "SELECT * FROM event_receipts WHERE event_id=?", (event_id,)).fetchone()
+            if row is None:
+                c.execute(
+                    "INSERT INTO event_receipts "
+                    "(event_id,customer_id,payload_hash,status,attempts,lease_expires_at) "
+                    "VALUES (?,?,?,?,1,?)",
+                    (event_id, customer_id, payload_hash, "processing", lease_until))
+                return {"claimed": True, "status": "processing", "attempts": 1}
+            receipt = dict(row)
+            receipt["result"] = json.loads(receipt["result"]) if receipt["result"] else None
+            if receipt["payload_hash"] != payload_hash or receipt["customer_id"] != customer_id:
+                return {"claimed": False, "status": "conflict",
+                        "attempts": receipt["attempts"], "result": receipt["result"]}
+            reclaimable = (receipt["status"] == "failed_retryable"
+                           or (receipt["status"] == "processing"
+                               and int(receipt["lease_expires_at"] or 0) <= now))
+            if reclaimable:
+                attempts = int(receipt["attempts"]) + 1
+                c.execute(
+                    "UPDATE event_receipts SET status='processing', attempts=?, "
+                    "lease_expires_at=?, last_error=NULL, updated_at=datetime('now') "
+                    "WHERE event_id=?", (attempts, lease_until, event_id))
+                return {"claimed": True, "status": "processing", "attempts": attempts}
+            return {"claimed": False, "status": receipt["status"],
+                    "attempts": receipt["attempts"], "result": receipt["result"]}
+
+    def get_event(self, event_id: str) -> dict | None:
+        rows = self._rows("SELECT * FROM event_receipts WHERE event_id=?", (event_id,))
+        if not rows:
+            return None
+        receipt = rows[0]
+        receipt["result"] = json.loads(receipt["result"]) if receipt["result"] else None
+        return receipt
+
+    def complete_event(self, event_id: str, result: dict) -> None:
+        self._exec(
+            "UPDATE event_receipts SET status='completed', result=?, last_error=NULL, "
+            "lease_expires_at=0, updated_at=datetime('now') WHERE event_id=?",
+            (json.dumps(result), event_id))
+
+    def fail_event(self, event_id: str, error: str, retryable: bool) -> None:
+        status = "failed_retryable" if retryable else "failed_permanent"
+        self._exec(
+            "UPDATE event_receipts SET status=?, last_error=?, lease_expires_at=0, "
+            "updated_at=datetime('now') WHERE event_id=?",
+            (status, error[:500], event_id))
+
+    # ---- active managed-session pointer -----------------------------------
+    @staticmethod
+    def _session_pointer(customer_id: str, user_id: str, generation: int) -> dict:
+        return {
+            "customer_id": customer_id,
+            "user_id": user_id,
+            "session_id": f"chat-{user_id}-{generation}",
+            "generation": generation,
+        }
+
+    def get_active_session(self, customer_id: str) -> dict | None:
+        rows = self._rows(
+            "SELECT customer_id,user_id,session_id,generation,updated_at "
+            "FROM session_pointers WHERE customer_id=?", (customer_id,))
+        return rows[0] if rows else None
+
+    def ensure_active_session(self, customer_id: str, user_id: str) -> dict:
+        pointer = self._session_pointer(customer_id, user_id, 0)
+        with self._conn() as c:
+            c.execute("BEGIN IMMEDIATE")
+            c.execute(
+                "INSERT OR IGNORE INTO session_pointers "
+                "(customer_id,user_id,session_id,generation) VALUES (?,?,?,0)",
+                (customer_id, user_id, pointer["session_id"]))
+            row = c.execute(
+                "SELECT customer_id,user_id,session_id,generation,updated_at "
+                "FROM session_pointers WHERE customer_id=?", (customer_id,)).fetchone()
+            result = dict(row)
+            if result["user_id"] != user_id:
+                raise ValueError("stored user-key algorithm does not match runtime")
+            return result
+
+    def rotate_active_session(self, customer_id: str, user_id: str) -> dict:
+        with self._conn() as c:
+            c.execute("BEGIN IMMEDIATE")
+            row = c.execute(
+                "SELECT user_id,generation FROM session_pointers WHERE customer_id=?",
+                (customer_id,)).fetchone()
+            if row is None:
+                generation = 1
+            else:
+                if row["user_id"] != user_id:
+                    raise ValueError("stored user-key algorithm does not match runtime")
+                generation = int(row["generation"]) + 1
+            pointer = self._session_pointer(customer_id, user_id, generation)
+            c.execute(
+                "INSERT INTO session_pointers (customer_id,user_id,session_id,generation) "
+                "VALUES (?,?,?,?) ON CONFLICT(customer_id) DO UPDATE SET "
+                "user_id=excluded.user_id,session_id=excluded.session_id,"
+                "generation=excluded.generation,updated_at=datetime('now')",
+                (customer_id, user_id, pointer["session_id"], generation))
+            return pointer
+
+    # ---- per-customer turn serialization ---------------------------------
+    def claim_customer_turn(self, customer_id: str, owner: str,
+                            lease_seconds: int = 180) -> dict:
+        now = int(time.time())
+        with self._conn() as c:
+            c.execute("BEGIN IMMEDIATE")
+            row = c.execute(
+                "SELECT owner,lease_expires_at FROM customer_turn_leases "
+                "WHERE customer_id=?", (customer_id,)).fetchone()
+            if row and row["owner"] != owner and int(row["lease_expires_at"]) > now:
+                return {"claimed": False, "owner": row["owner"],
+                        "lease_expires_at": int(row["lease_expires_at"])}
+            lease_expires_at = now + lease_seconds
+            c.execute(
+                "INSERT INTO customer_turn_leases "
+                "(customer_id,owner,lease_expires_at) VALUES (?,?,?) "
+                "ON CONFLICT(customer_id) DO UPDATE SET owner=excluded.owner,"
+                "lease_expires_at=excluded.lease_expires_at,updated_at=datetime('now')",
+                (customer_id, owner, lease_expires_at))
+            return {"claimed": True, "owner": owner,
+                    "lease_expires_at": lease_expires_at}
+
+    def release_customer_turn(self, customer_id: str, owner: str) -> None:
+        self._exec(
+            "DELETE FROM customer_turn_leases WHERE customer_id=? AND owner=?",
+            (customer_id, owner))
+
+    # ---- trusted Memory Bank outbox --------------------------------------
+    def enqueue_memory_summary(self, customer_id: str, user_id: str,
+                               summary: str, dedupe_key: str) -> int:
+        with self._conn() as c:
+            c.execute(
+                "INSERT OR IGNORE INTO memory_outbox "
+                "(dedupe_key,customer_id,user_id,summary) VALUES (?,?,?,?)",
+                (dedupe_key, customer_id, user_id, summary))
+            row = c.execute(
+                "SELECT id FROM memory_outbox WHERE dedupe_key=?",
+                (dedupe_key,)).fetchone()
+            return int(row["id"])
+
+    def claim_memory_summary(self, customer_id: str | None = None,
+                             lease_seconds: int = 120) -> dict | None:
+        now = int(time.time())
+        with self._conn() as c:
+            c.execute("BEGIN IMMEDIATE")
+            params: list[object] = [now]
+            customer_filter = ""
+            if customer_id is not None:
+                customer_filter = " AND customer_id=?"
+                params.append(customer_id)
+            row = c.execute(
+                "SELECT * FROM memory_outbox WHERE "
+                "(status IN ('pending','failed_retryable') OR "
+                "(status='processing' AND lease_expires_at<=?))"
+                + customer_filter + " ORDER BY id LIMIT 1", tuple(params)).fetchone()
+            if row is None:
+                return None
+            attempts = int(row["attempts"] or 0) + 1
+            c.execute(
+                "UPDATE memory_outbox SET status='processing',attempts=?,"
+                "lease_expires_at=?,last_error=NULL,updated_at=datetime('now') "
+                "WHERE id=?", (attempts, now + lease_seconds, row["id"]))
+            claimed = dict(row)
+            claimed.update({"status": "processing", "attempts": attempts,
+                            "lease_expires_at": now + lease_seconds})
+            return claimed
+
+    def get_memory_summary(self, entry_id) -> dict | None:
+        rows = self._rows("SELECT * FROM memory_outbox WHERE id=?", (entry_id,))
+        return rows[0] if rows else None
+
+    def complete_memory_summary(self, entry_id) -> None:
+        self._exec(
+            "UPDATE memory_outbox SET status='completed',lease_expires_at=0,"
+            "last_error=NULL,updated_at=datetime('now'),completed_at=datetime('now') "
+            "WHERE id=? AND status='processing'", (entry_id,))
+
+    def fail_memory_summary(self, entry_id, error: str,
+                            retryable: bool = True) -> None:
+        status = "failed_retryable" if retryable else "failed_permanent"
+        self._exec(
+            "UPDATE memory_outbox SET status=?,lease_expires_at=0,last_error=?,"
+            "updated_at=datetime('now') WHERE id=? AND status='processing'",
+            (status, error[:500], entry_id))
 
     # ---- messages (async channel log) ---------------------------------------
     def add_message(self, customer_id: str, direction: str, text: str,
-                    channel: str = "chat", meta: dict | None = None) -> int:
-        return self._exec(
-            "INSERT INTO messages (customer_id,direction,channel,text,meta) VALUES (?,?,?,?,?)",
-            (customer_id, direction, channel, text, json.dumps(meta or {})))
+                    channel: str = "chat", meta: dict | None = None,
+                    dedupe_key: str | None = None) -> int:
+        with self._conn() as c:
+            c.execute(
+                "INSERT OR IGNORE INTO messages "
+                "(customer_id,direction,channel,text,meta,dedupe_key) VALUES (?,?,?,?,?,?)",
+                (customer_id, direction, channel, text, json.dumps(meta or {}), dedupe_key))
+            if dedupe_key is not None:
+                row = c.execute(
+                    "SELECT id FROM messages WHERE dedupe_key=?", (dedupe_key,)).fetchone()
+                return int(row[0])
+            return int(c.execute("SELECT last_insert_rowid()").fetchone()[0])
 
     def messages_for(self, customer_id: str, limit: int = 50) -> list[dict]:
         out = self._rows(

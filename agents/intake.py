@@ -8,6 +8,7 @@ import os
 from google.adk.agents import LlmAgent
 from google.adk.tools import preload_memory
 
+from agents.context_safety import sanitize_model_history
 from agents.tools.catalog import get_catalog
 from agents.tools.orders import save_order
 
@@ -30,19 +31,32 @@ intake_agent = LlmAgent(
         "The customer's phone number is {customer_id?} - if that is blank, "
         "ask for their phone number BEFORE saving the order.\n\n"
         "Process:\n"
-        "1. Extract every requested item and quantity from the message or photo.\n"
-        "2. For each item call get_catalog to resolve the sku and unit_price.\n"
+        "1. Extract every requested item and quantity from the message or photo. "
+        "For phrases like 'the usual', use only a verified PAST CONVERSATIONS "
+        "memory that states exact items and quantities. If that memory is "
+        "missing, vague or conflicting, ask the customer what they want and "
+        "stop without saving an order.\n"
+        "2. For each item call get_catalog to resolve the sku. The save_order "
+        "tool re-reads the catalog and derives the current name and price.\n"
         "3. Set confidence 0.0-1.0 for the WHOLE order. Lower it when: an item "
         "didn't match the catalog, a quantity is ambiguous, or handwriting was "
         "hard to read. Never guess amounts - reflect doubt in confidence.\n"
-        "4. Call save_order exactly once with all items.\n"
+        "4. Only after every item has a catalog SKU and positive integer "
+        "quantity, call save_order exactly once with items containing only sku "
+        "and qty, plus confidence and notes. If an item or quantity is still "
+        "unknown, ask a clarification question and do not call save_order. "
+        "Customer identity comes from trusted session state; never supply or "
+        "change it.\n"
         "5. Reply to the customer with an itemized total. If the order needs "
         "review, say the shop will confirm shortly - do NOT promise it is confirmed.\n"
-        "Never invent products or prices. Never skip save_order.\n"
+        "Never invent products, quantities or prices. A clarification turn "
+        "intentionally ends without save_order; a fully resolved order must "
+        "never skip it.\n"
         "If earlier conversations (PAST CONVERSATIONS context) show what this "
         "customer usually orders, you may resolve phrases like 'the usual' "
         "from them - but say what you resolved it to, and lower confidence "
         "if the memory is not an exact order."
     ),
     tools=[get_catalog, save_order, preload_memory],
+    before_model_callback=sanitize_model_history,
 )

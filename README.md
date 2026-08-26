@@ -1,10 +1,10 @@
 # Duka Autopilot
 
-**The always-on AI back office for African SMEs.** Customers order by text
-(and soon Swahili voice notes); owners photograph handwritten ledgers;
+**The autonomous night shift for an independent Kenyan shop.** Customers order
+by text or Swahili voice notes; owners photograph handwritten ledgers;
 payments arrive as M-Pesa statements. Agents do the heavy lifting in the
-background — the owner's whole job is a morning approval queue. **Every
-shilling that moves is gated by a human.**
+background, exact evidence is settled deterministically, and the owner wakes to
+a compressed exception queue.
 
 Built for the [All Things Agentic Hackathon](https://allthingsagentichackathon.devpost.com/)
 (Taskmaster track: event-driven workflow with autonomous routing).
@@ -15,27 +15,29 @@ Built for the [All Things Agentic Hackathon](https://allthingsagentichackathon.d
    `FunctionNode` sanitizes and emits it. Fuzzy matches are proposals; code
    and humans decide.
 2. **Deterministic first.** Reconciliation is an indexed, bulk, plain-code
-   pass. The LLM only ever sees the ~3% residue engineering couldn't settle —
-   which is why a 50,000-row statement month reconciles for well under a dollar.
-3. **Humans gate money.** Refunds, low-confidence orders, and fuzzy matches
-   all stop in the approval queue. No code path can auto-move money.
-4. **Modalities change, guardrails don't.** Text, voice, and photo intake all
-   funnel into the same sanitized, approval-gated pipeline.
+   pass. The LLM only ever sees the bounded residue engineering could not
+   settle. Cost claims are published only after a measured cloud run.
+3. **Humans gate uncertainty.** Refund proposals, low-confidence orders, and
+   fuzzy matches stop in the approval queue. Exact evidence may update the
+   books; Duka never initiates an external transfer.
+4. **Tool invariants survive every modality.** Text, voice, and photo intake
+   share catalog validation, authority scoping, confidence gates, idempotency,
+   and durable history filtering. The deterministic text screen does not claim
+   to understand audio or image semantics.
 
 ## Run in 5 minutes
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+uv sync --extra dev
 cp .env.example .env             # pick model access (Vertex AI recommended)
-python -m agents.seed            # demo base: catalog, regulars, small statement
-uvicorn app.main:app --reload    # open http://localhost:8000
+uv run python -m agents.seed     # explicit synthetic demo seed
+uv run uvicorn app.main:app --reload    # open http://localhost:8000
 ```
 
 Stress-scale reconciliation (no API key needed — it's deterministic):
 
 ```bash
-python -m agents.synth.generate --rows 50000     # one month, engineered noise
+uv run python -m agents.synth.generate --rows 50000  # reproducible stress data
 curl -X POST "localhost:8000/recon/nightly?fuzzy=false"   # settle ~97% in ~1s
 curl localhost:8000/digest/morning                # the owner's morning brief
 ```
@@ -52,7 +54,7 @@ Keyless tests (money invariants, scale recon vs generator ground truth,
 async plumbing, screening, ledger gating, digest):
 
 ```bash
-pytest tests/
+uv run pytest tests/
 # Firestore backend parity (needs the emulator; skips cleanly without):
 firebase emulators:exec --project demo-duka --only firestore \
   ".venv/bin/python -m pytest tests/test_store_firestore.py -q"
@@ -61,19 +63,18 @@ firebase emulators:exec --project demo-duka --only firestore \
 Measured economics (needs model access; writes docs/economics.md):
 
 ```bash
-python scripts/measure_nightly.py --rows 50000
+uv run python scripts/measure_nightly.py --rows 50000
 ```
 
 ## Architecture
 
 ![Duka Autopilot architecture](docs/architecture.svg)
 
-Full notes: [docs/architecture.md](docs/architecture.md) — the three
-swap-by-config seams (Store, Bus, Memory), the graph, and the single place
-money can move.
+Full notes: [docs/architecture.md](docs/architecture.md) — the Store, Bus,
+Sessions, and Memory seams, the graph, and its trust boundaries.
 
 ```
-customer (text / voice note / photo)              owner (phone)
+customer (text / voice note / order photo)        owner (ledger photo)
         │                                             ▲
         ▼                                             │ approvals + digest
   channel API (FastAPI · Cloud Run) ──────▶ [async phase: Pub/Sub topics]
@@ -82,14 +83,14 @@ customer (text / voice note / photo)              owner (phone)
                                         ADK workflow graph (Gemini via Vertex)
                                         classifier ─▶ router ──order──▶ intake
                                                             ├─support─▶ support ─▶ refund_gate ⏸
+                                          trusted owner role ├─ledger──▶ ledger_reader
                                                             └─recon──▶ exact_recon ─▶ fuzzy_recon
                                                       │
                                           Store seam: SQLite (local) / Firestore (cloud)
 ```
 
-- `agents/` — the ADK package (ships whole to Agent Engine): workflow graph,
-  tools, the deterministic `recon_engine`, the `store/` seam, the synthetic
-  statement generator.
+- `agents/` — the ADK workflow graph, tools, deterministic reconciliation
+  engine, Store seam, and synthetic statement generator.
 - `app/` — FastAPI channel layer + WhatsApp-look demo UI.
 - `tests/` — keyless deterministic suite.
 
@@ -105,17 +106,18 @@ customer (text / voice note / photo)              owner (phone)
       /recon/nightly + measure_nightly.py
 - [x] Day 4: deterministic inbound screening (injection + money-path
       social engineering -> owner's queue, optional Model Armor on top);
-      Swahili voice-note intake + reproducible TTS test set
+      Swahili voice-note transport and multimodal runner coverage; the frozen
+      human audio fixture and live model proof remain release gates
 - [x] Day 5: ledger-photo digitization with per-row gating, deterministic
-      morning digest (/digest/morning), Memory Bank memory-service seam
+      morning digest (/digest/morning), and Memory Bank service seam
 - [x] Day 7: owner console UI (async multimodal chat, digest card, shelf
       scan, readable approvals), proactive restock, LLM evalsets ported
 - [x] Day 8: architecture diagram + docs, Devpost submission text
       (docs/submission.md), blog post draft (docs/blog-post.md),
       clean-machine repro pass
-- [ ] Deploy: Cloud Run + Pub/Sub + Firestore + Cloud Scheduler + Agent
-      Engine, Agent Observability traces, measured cloud economics
-- [ ] Submit: demo video, Devpost form, publish blog post
+- [ ] Deploy: Cloud Run services and Job + Pub/Sub + Firestore + Scheduler +
+      managed Sessions/Memory Bank context, traces, and measured economics
+- [ ] Submit: Loom video, reviewed transcript/guide, Devpost form, and blog
 
 ## Disclosure of pre-existing code
 

@@ -88,5 +88,5 @@ that need a human. Approve, approve, reject, chai. The duka slept; the
 back office didn't.
 
 *Stack: Gemini 3.7 Flash on Vertex AI · Google ADK workflow graphs ·
-Agent Engine Memory Bank · Cloud Run · Pub/Sub · Firestore · Cloud
+Agent Platform managed Sessions and Memory Bank · Cloud Run · Pub/Sub · Firestore · Cloud
 Scheduler. The repo's README has a five-minute local quickstart.*

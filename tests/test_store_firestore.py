@@ -39,6 +39,8 @@ def test_seed_and_reads():
     orders = store.orders_for_customer("254711000001", limit=5)
     assert orders and all(o["customer_id"] == "254711000001" for o in orders)
     assert orders[0]["items"], "items must be embedded in the order doc"
+    assert {(item["name"], item["qty"]) for item in orders[0]["items"]} == {
+        ("Unga wa Dola 2kg", 4), ("Laundry soap bar", 3)}
 
 
 def test_payment_dedup_via_doc_ids():
@@ -47,6 +49,7 @@ def test_payment_dedup_via_doc_ids():
     rows = [{"ref": "DUPX000001", "phone": "254700000001", "payer_name": "T",
              "amount": 100, "paid_at": "2026-08-20 10:00:00"}] * 3
     assert store.add_payments(rows) == 1, "create() must reject duplicate refs"
+    assert store.add_payments(rows[:1]) == 0, "existing refs must remain idempotent"
 
 
 def test_exact_pass_parity_on_demo_seed():
@@ -98,3 +101,112 @@ def test_messages_roundtrip():
     msgs = store.messages_for("254711000001")
     assert [m["direction"] for m in msgs] == ["in", "out"]
     assert msgs[1]["meta"]["cost_usd"] == 0.001
+
+
+def test_event_receipt_claim_retry_complete_and_conflict():
+    from agents.store import get_store
+    store = get_store()
+    first = store.claim_event("evt-firestore-1", "254711000001", "hash-a")
+    assert first == {"claimed": True, "status": "processing", "attempts": 1}
+    active = store.claim_event("evt-firestore-1", "254711000001", "hash-a")
+    assert active["claimed"] is False and active["status"] == "processing"
+    store.fail_event("evt-firestore-1", "503", retryable=True)
+    retry = store.claim_event("evt-firestore-1", "254711000001", "hash-a")
+    assert retry["claimed"] is True and retry["attempts"] == 2
+    store.complete_event("evt-firestore-1", {"reply": "ok"})
+    replay = store.claim_event("evt-firestore-1", "254711000001", "hash-a")
+    assert replay["status"] == "completed" and replay["result"] == {"reply": "ok"}
+    conflict = store.claim_event("evt-firestore-1", "254711000001", "hash-b")
+    assert conflict["status"] == "conflict"
+
+
+def test_message_dedupe_key_is_idempotent():
+    from agents.store import get_store
+    store = get_store()
+    first = store.add_message("254711000001", "in", "habari",
+                              dedupe_key="evt-firestore-2:in")
+    second = store.add_message("254711000001", "in", "duplicate",
+                               dedupe_key="evt-firestore-2:in")
+    assert first == second
+    msgs = store.messages_for("254711000001")
+    assert len(msgs) == 1 and msgs[0]["text"] == "habari"
+
+
+def test_active_session_pointer_rotation_is_transactional():
+    from agents.store import get_store
+    store = get_store()
+    initial = store.ensure_active_session("254711000001", "u_testkey")
+    assert initial["generation"] == 0
+    assert store.ensure_active_session("254711000001", "u_testkey")["session_id"] == initial["session_id"]
+    rotated = store.rotate_active_session("254711000001", "u_testkey")
+    assert rotated["generation"] == 1
+    assert store.get_active_session("254711000001")["session_id"] == rotated["session_id"]
+
+
+def test_customer_turn_lease_serializes_instances():
+    from agents.store import get_store
+    store = get_store()
+    first = store.claim_customer_turn("254711000001", "revision-a")
+    blocked = store.claim_customer_turn("254711000001", "revision-b")
+    assert first["claimed"] is True
+    assert blocked["claimed"] is False and blocked["owner"] == "revision-a"
+    store.release_customer_turn("254711000001", "revision-a")
+    assert store.claim_customer_turn(
+        "254711000001", "revision-b")["claimed"] is True
+
+
+def test_memory_outbox_deduplicates_retries_and_completes():
+    from agents.store import get_store
+    store = get_store()
+    entry_id = store.enqueue_memory_summary(
+        "254711000001", "u_test", "This customer usually buys 2x Unga.",
+        "firestore-usual-v1")
+    assert store.enqueue_memory_summary(
+        "254711000001", "u_test", "This customer usually buys 2x Unga.",
+        "firestore-usual-v1") == entry_id
+    first = store.claim_memory_summary("254711000001")
+    assert first["id"] == entry_id and first["attempts"] == 1
+    store.fail_memory_summary(entry_id, "503", retryable=True)
+    second = store.claim_memory_summary("254711000001")
+    assert second["id"] == entry_id and second["attempts"] == 2
+    store.complete_memory_summary(entry_id)
+    assert store.get_memory_summary(entry_id)["status"] == "completed"
+    assert store.claim_memory_summary("254711000001") is None
+
+
+def test_approval_decision_state_machine():
+    from agents.store import get_store
+    store = get_store()
+    approval_id = store.add_approval("refund", {"customer_id": "254711000001"})
+    first = store.claim_approval_decision(approval_id, "approved")
+    assert first["claimed"] is True and first["attempts"] == 1
+    duplicate = store.claim_approval_decision(approval_id, "approved")
+    assert duplicate["outcome"] == "in_progress"
+    conflict = store.claim_approval_decision(approval_id, "rejected")
+    assert conflict["outcome"] == "conflict"
+    store.fail_approval_decision(approval_id, "503")
+    retry = store.claim_approval_decision(approval_id, "approved")
+    assert retry["claimed"] is True and retry["attempts"] == 2
+    store.complete_approval_decision(approval_id, "approved")
+    replay = store.claim_approval_decision(approval_id, "approved")
+    assert replay["outcome"] == "idempotent"
+
+
+def test_approval_effect_is_transactional_and_exactly_once():
+    from agents.store import get_store
+    store = get_store()
+    approval_id = store.add_approval("ledger_row", {
+        "row": {"customer_id": "walk-in", "customer_name": "walk-in",
+                "description": "soda 3", "amount": 210, "paid": True},
+        "reason": "test",
+    })
+    store.claim_approval_decision(approval_id, "approved")
+    first = store.apply_approval_effect(approval_id, "approved")
+    assert first["idempotent"] is False
+    store.fail_approval_decision(approval_id, "revision terminated")
+    store.claim_approval_decision(approval_id, "approved")
+    replay = store.apply_approval_effect(approval_id, "approved")
+    assert replay["idempotent"] is True
+    store.complete_approval_decision(approval_id, "approved")
+    assert len([order for order in store.orders_for_customer("walk-in", limit=20)
+                if order["total"] == 210]) == 1

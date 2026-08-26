@@ -1,0 +1,86 @@
+name: Model evaluation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: model-eval-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  evaluate:
+    name: Run ADK rubric evalsets on Vertex AI
+    if: github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: development
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PYTHON_VERSION: "3.12.12"
+      UV_VERSION: "0.11.13"
+      GOOGLE_GENAI_USE_VERTEXAI: "true"
+      GOOGLE_CLOUD_PROJECT: ${{ vars.GCP_PROJECT_ID }}
+      GOOGLE_CLOUD_LOCATION: global
+      GEMINI_MODEL: gemini-3.7-flash
+      DUKA_ENV: local
+      DUKA_STORE: sqlite
+    steps:
+      - name: Check out the exact revision
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Authenticate the dedicated evaluator through WIF
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEV_EVALUATOR_SA }}
+
+      - name: Install uv and the locked environment
+        run: |
+          python3 -m pip install --disable-pip-version-check "uv==${UV_VERSION}"
+          uv python install "${PYTHON_VERSION}"
+          uv sync --locked --extra dev --python "${PYTHON_VERSION}"
+
+      - name: Configure an isolated deterministic shop
+        run: |
+          echo "DUKA_DB=${RUNNER_TEMP}/duka-eval.db" >>"${GITHUB_ENV}"
+
+      - name: Evaluate intake, support, tool use, authority, and response safety
+        env:
+          EVAL_OUTPUT_DIR: ${{ runner.temp }}/adk-eval
+        run: |
+          set -o pipefail
+          uv run --frozen bash scripts/run_evals.sh
+          cp "${RUNNER_TEMP}/adk-eval/eval-intake.txt" eval-intake.txt
+          cp "${RUNNER_TEMP}/adk-eval/eval-support.txt" eval-support.txt
+          cp "${RUNNER_TEMP}/adk-eval/eval-safety.txt" eval-safety.txt
+          cp "${RUNNER_TEMP}/adk-eval/eval-summary.json" eval-summary.json
+
+      - name: Write evaluation manifest
+        if: always()
+        run: |
+          jq -n \
+            --arg release_sha "${GITHUB_SHA}" \
+            --arg model "${GEMINI_MODEL}" \
+            --arg model_location "${GOOGLE_CLOUD_LOCATION}" \
+            --arg run_id "${GITHUB_RUN_ID}" \
+            '{release_sha:$release_sha,model:$model,model_location:$model_location,github_run_id:$run_id,case_count:20,judge:{model:$model,num_samples:3},evalsets:["intake","support","safety"],summary_file:"eval-summary.json"}' \
+            > eval-manifest.json
+
+      - name: Upload ADK evaluation evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: adk-eval-${{ github.sha }}
+          path: |
+            eval-intake.txt
+            eval-support.txt
+            eval-safety.txt
+            eval-summary.json
+            eval-manifest.json
+          if-no-files-found: warn
+          retention-days: 90

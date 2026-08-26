@@ -2,14 +2,18 @@
   "criteria": {
     "rubric_based_tool_use_quality_v1": {
       "threshold": 0.7,
+      "judgeModelOptions": {
+        "judgeModel": "gemini-3.7-flash",
+        "numSamples": 3
+      },
       "rubrics": [
         {
           "rubricId": "save_order_exactly_once",
-          "rubricContent": { "textProperty": "When the user is placing an order, the agent calls save_order exactly once - never zero times, never twice." }
+          "rubricContent": { "textProperty": "When every requested item and quantity is resolved, the agent calls save_order exactly once - never zero times, never twice. If any item, quantity, or requested 'usual' is unresolved, it asks for clarification and does not call save_order." }
         },
         {
           "rubricId": "catalog_before_save",
-          "rubricContent": { "textProperty": "When the user is placing an order, products are resolved via get_catalog before save_order; the agent does not invent SKUs or prices." }
+          "rubricContent": { "textProperty": "Products are resolved via get_catalog before save_order. The agent never invents SKUs, quantities, or prices, and never saves an unresolved or unknown item merely to satisfy the tool trajectory." }
         },
         {
           "rubricId": "right_department",
@@ -19,6 +23,10 @@
     },
     "rubric_based_final_response_quality_v1": {
       "threshold": 0.7,
+      "judgeModelOptions": {
+        "judgeModel": "gemini-3.7-flash",
+        "numSamples": 3
+      },
       "rubrics": [
         {
           "rubricId": "order_itemized",

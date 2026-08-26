@@ -13,12 +13,15 @@ the nine clean ones, and must never sneak in with them either.
 """
 from __future__ import annotations
 
+from google.adk.tools import ToolContext
+
 from agents.store import get_store
 
 ROW_CONFIDENCE_GATE = 0.8
 
 
-def record_ledger_rows(rows: list[dict], page_note: str = "") -> dict:
+def record_ledger_rows(rows: list[dict], page_note: str,
+                       tool_context: ToolContext) -> dict:
     """Record extracted ledger rows; doubtful rows gate on the owner.
 
     Args:
@@ -32,6 +35,11 @@ def record_ledger_rows(rows: list[dict], page_note: str = "") -> dict:
     Returns:
         {"recorded": int, "gated": int, "order_ids": [...], "approval_ids": [...]}
     """
+    if tool_context.state.get("actor_role") != "owner":
+        return {
+            "status": "error", "error": "owner authority required",
+            "recorded": 0, "gated": 0, "order_ids": [], "approval_ids": [],
+        }
     store = get_store()
     recorded, gated, order_ids, approval_ids = 0, 0, [], []
     for row in rows:
@@ -62,5 +70,5 @@ def record_ledger_rows(rows: list[dict], page_note: str = "") -> dict:
         )
         order_ids.append(oid)
         recorded += 1
-    return {"recorded": recorded, "gated": gated,
+    return {"status": "success", "recorded": recorded, "gated": gated,
             "order_ids": order_ids, "approval_ids": approval_ids}

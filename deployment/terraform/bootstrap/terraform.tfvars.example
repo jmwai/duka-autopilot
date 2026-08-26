@@ -1,0 +1,11 @@
+project_id = "my-duka-autopilot"
+region     = "europe-west1"
+
+# Resolve these from the GitHub API immediately before bootstrap. Numeric IDs
+# are immutable and protect WIF from repository/owner rename or takeover.
+github_owner_id      = "REPLACE_WITH_NUMERIC_OWNER_ID"
+github_repository_id = "REPLACE_WITH_NUMERIC_REPOSITORY_ID"
+
+# Optional. Leave empty if the billing principal cannot create budgets yet.
+billing_account_id = ""
+budget_usd          = 50

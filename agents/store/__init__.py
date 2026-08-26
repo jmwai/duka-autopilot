@@ -1,7 +1,7 @@
 """Store factory. DUKA_STORE=sqlite (default) | firestore.
 
-Resolved per-call so tests can flip backends with an env var and so the
-deployed Agent Engine picks its backend from its own runtime env.
+Resolved per-call so tests can flip backends with an environment variable and
+each Cloud Run workload selects its backend from runtime configuration.
 """
 from __future__ import annotations
 

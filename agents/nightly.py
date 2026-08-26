@@ -10,9 +10,9 @@ Shape of the run (and of the whole thesis):
   3. report        - counts + measured cost (from the cost log delta),
                      persisted as a system message for the morning digest.
 
-The LLM only ever sees step 2. That is why the measured number on the
-economics slide is "a 50,000-row month for under a dollar", not "50,000
-LLM calls".
+The LLM only ever sees step 2. The release economics report records the real
+cloud cost for that bounded residue; no cost headline is published before the
+measurement exists.
 """
 from __future__ import annotations
 
@@ -58,7 +58,9 @@ async def run_nightly(fuzzy: bool = True) -> dict:
             if remaining == 0 or remaining == last_remaining:
                 break  # done, or the model proposed nothing new - stop burning tokens
             last_remaining = remaining
-            await run_turn("owner", "Reconcile the M-Pesa statement residue now.")
+            await run_turn(
+                "owner", "Reconcile the M-Pesa statement residue now.",
+                actor_role="owner")
             report["fuzzy_batches"] += 1
         pending_after = len([a for a in store.pending_approvals()
                              if a["kind"] == "fuzzy_match"])

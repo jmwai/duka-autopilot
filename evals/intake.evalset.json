@@ -18,7 +18,7 @@
           }
         }
       ],
-      "session_input": { "app_name": "agents", "user_id": "254711000003", "state": { "customer_id": "254711000003" } }
+      "session_input": { "app_name": "agents", "user_id": "254711000003", "state": { "customer_id": "254711000003", "actor_role": "customer" } }
     },
     {
       "eval_id": "swahili_mix",
@@ -37,7 +37,7 @@
           }
         }
       ],
-      "session_input": { "app_name": "agents", "user_id": "254711000005", "state": { "customer_id": "254711000005" } }
+      "session_input": { "app_name": "agents", "user_id": "254711000005", "state": { "customer_id": "254711000005", "actor_role": "customer" } }
     },
     {
       "eval_id": "ambiguous_qty",
@@ -46,17 +46,16 @@
           "user_content": { "parts": [{ "text": "Send me the usual unga and some rice" }] },
           "final_response": {
             "role": "model",
-            "parts": [{ "text": "Your order has been received and needs confirmation - the exact quantities were unclear, so the shop will confirm with you shortly." }]
+            "parts": [{ "text": "What quantities of unga and rice would you like? I will save the order once you confirm both amounts." }]
           },
           "intermediate_data": {
             "tool_uses": [
-              { "name": "get_catalog", "args": {} },
-              { "name": "save_order", "args": {} }
+              { "name": "get_catalog", "args": {} }
             ]
           }
         }
       ],
-      "session_input": { "app_name": "agents", "user_id": "254711000007", "state": { "customer_id": "254711000007" } }
+      "session_input": { "app_name": "agents", "user_id": "254711000007", "state": { "customer_id": "254711000007", "actor_role": "customer" } }
     },
     {
       "eval_id": "unknown_product",
@@ -65,17 +64,16 @@
           "user_content": { "parts": [{ "text": "2 crates of mango juice please" }] },
           "final_response": {
             "role": "model",
-            "parts": [{ "text": "Mango juice is not in our catalog, so your request was recorded for the shop to review and confirm with you." }]
+            "parts": [{ "text": "Mango juice is not in our catalog, so I have not saved an order. Would you like a catalog item instead?" }]
           },
           "intermediate_data": {
             "tool_uses": [
-              { "name": "get_catalog", "args": {} },
-              { "name": "save_order", "args": {} }
+              { "name": "get_catalog", "args": {} }
             ]
           }
         }
       ],
-      "session_input": { "app_name": "agents", "user_id": "254711000008", "state": { "customer_id": "254711000008" } }
+      "session_input": { "app_name": "agents", "user_id": "254711000008", "state": { "customer_id": "254711000008", "actor_role": "customer" } }
     },
     {
       "eval_id": "status_not_order",
@@ -93,7 +91,7 @@
           }
         }
       ],
-      "session_input": { "app_name": "agents", "user_id": "254711000001", "state": { "customer_id": "254711000001" } }
+      "session_input": { "app_name": "agents", "user_id": "254711000001", "state": { "customer_id": "254711000001", "actor_role": "customer" } }
     },
     {
       "eval_id": "refund_never_promised",
@@ -111,7 +109,7 @@
           }
         }
       ],
-      "session_input": { "app_name": "agents", "user_id": "254711000006", "state": { "customer_id": "254711000006" } }
+      "session_input": { "app_name": "agents", "user_id": "254711000006", "state": { "customer_id": "254711000006", "actor_role": "customer" } }
     }
   ]
 }

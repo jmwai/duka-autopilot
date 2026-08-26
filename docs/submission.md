@@ -5,10 +5,10 @@
 
 ## Elevator pitch (one-liner)
 
-The always-on AI back office for African SMEs: customers order by Swahili
-voice note, the owner photographs the handwritten ledger, 50,000 M-Pesa
-statement rows reconcile overnight for under a dollar — and every shilling
-that moves waits for a human thumb.
+The autonomous night shift for a Kenyan shop: customers order by Swahili voice
+note, the owner photographs the handwritten ledger, and 50,000 synthetic
+M-Pesa-shaped statement rows reconcile overnight—while ambiguity and
+irreversible actions wait for the owner.
 
 ## Inspiration
 
@@ -34,16 +34,17 @@ shift: a deterministic engine reconciles the month's M-Pesa statement
 only the ~3% residue and may only file proposals, a shelf scan drafts a
 supplier order, and at 6:30 the owner gets a morning digest. Refunds,
 doubtful orders, fuzzy matches, smudged ledger rows, restock drafts and
-security flags all converge on one approval queue — the only place money
-can move.
+security flags all converge on one approval queue. Exact evidence can update
+the books automatically; ambiguity and irreversible external effects cannot.
 
 ## How we built it
 
 Gemini (gemini-3.7-flash on Vertex AI — one model for text, vision and
 audio) inside an ADK 2.x workflow graph where every hop is an explicit
-Edge. Three swap-by-config seams make local and cloud the same codebase:
-Store (SQLite ⇄ Firestore), Bus (in-process ⇄ Pub/Sub push), Memory
-(keyword recall ⇄ Agent Engine Memory Bank). FastAPI on Cloud Run serves
+Edge. Four swap-by-config seams make local and cloud the same codebase:
+Store (SQLite ⇄ Firestore), Bus (in-process ⇄ Pub/Sub push), Sessions
+(in-memory ⇄ Agent Platform managed Sessions), and Memory (keyword recall ⇄
+Agent Platform Memory Bank). FastAPI on Cloud Run serves
 the channel API and the owner console; Cloud Scheduler drives the nightly
 pipeline; a deterministic screening node (with an optional Model Armor
 layer) inspects every inbound message before any LLM sees it. A seeded
@@ -65,9 +66,9 @@ interrupt machinery and the pause never happens.
 
 ## Accomplishments we're proud of
 
-A measured economics story (a full statement month reconciled overnight
-for well under a dollar); a security posture that is auditable code, not a
-prompt asking nicely; 40+ deterministic keyless tests including
+A deterministic-first economics design whose real cloud cost will be published
+from the release benchmark; a security posture that is auditable code, not a
+prompt asking nicely; 60+ deterministic keyless tests including
 generator-ground-truth assertions; and a demo a duka owner would actually
 recognize as their shop.
 
@@ -88,8 +89,8 @@ buying, and M-Pesa statement ingestion via the Daraja API.
 ## Built with
 
 `gemini-3.7-flash` · Vertex AI · Google ADK 2.x (workflow graphs,
-FunctionNodes, graph-native HITL) · Agent Engine (Memory Bank,
-Observability) · Cloud Run · Pub/Sub · Firestore · Cloud Scheduler ·
+FunctionNodes, graph-native HITL) · Agent Platform (managed Sessions and
+Memory Bank) · Cloud Run · Pub/Sub · Firestore · Cloud Scheduler ·
 Model Armor (optional layer) · FastAPI · Python · SQLite (local twin)
 
 ## Data sources

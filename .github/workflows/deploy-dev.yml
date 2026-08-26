@@ -1,0 +1,178 @@
+name: Deploy development
+
+on:
+  push:
+    branches: [dev]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-development
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    uses: ./.github/workflows/ci.yml
+
+  deploy:
+    name: Build once and deploy immutable digests
+    needs: verify
+    if: github.ref == 'refs/heads/dev' && vars.GCP_DEV_DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    environment: development
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      REGION: ${{ vars.GCP_REGION }}
+      IMAGE_REPOSITORY: duka-images
+    steps:
+      - name: Check out the exact revision
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Validate required repository variables
+        run: |
+          test -n "${PROJECT_ID}"
+          test -n "${REGION}"
+          test -n "${{ vars.GCP_WIF_PROVIDER }}"
+          test -n "${{ vars.GCP_DEV_DEPLOYER_SA }}"
+
+      - name: Name release images
+        run: |
+          echo "BACKEND_IMAGE=${REGION}-docker.pkg.dev/${PROJECT_ID}/${IMAGE_REPOSITORY}/duka-backend" >>"${GITHUB_ENV}"
+          echo "FRONTEND_IMAGE=${REGION}-docker.pkg.dev/${PROJECT_ID}/${IMAGE_REPOSITORY}/duka-frontend" >>"${GITHUB_ENV}"
+
+      - name: Build release images before creating cloud credentials
+        run: |
+          docker build \
+            --file deployment/docker/backend.Dockerfile \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            --tag "${BACKEND_IMAGE}:${GITHUB_SHA}" .
+          docker build \
+            --file deployment/docker/frontend.Dockerfile \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            --tag "${FRONTEND_IMAGE}:${GITHUB_SHA}" .
+
+      - name: Authenticate to Google Cloud through WIF
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEV_DEPLOYER_SA }}
+
+      - name: Install gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
+
+      - name: Push images and resolve registry digests
+        run: |
+          gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+          docker push "${BACKEND_IMAGE}:${GITHUB_SHA}"
+          docker push "${FRONTEND_IMAGE}:${GITHUB_SHA}"
+          BACKEND_DIGEST=$(gcloud artifacts docker images describe \
+            "${BACKEND_IMAGE}:${GITHUB_SHA}" --format='value(image_summary.digest)')
+          FRONTEND_DIGEST=$(gcloud artifacts docker images describe \
+            "${FRONTEND_IMAGE}:${GITHUB_SHA}" --format='value(image_summary.digest)')
+          test "${BACKEND_DIGEST}" != ""
+          test "${FRONTEND_DIGEST}" != ""
+          echo "BACKEND_REF=${BACKEND_IMAGE}@${BACKEND_DIGEST}" >>"${GITHUB_ENV}"
+          echo "FRONTEND_REF=${FRONTEND_IMAGE}@${FRONTEND_DIGEST}" >>"${GITHUB_ENV}"
+          echo "BACKEND_DIGEST=${BACKEND_DIGEST}" >>"${GITHUB_ENV}"
+          echo "FRONTEND_DIGEST=${FRONTEND_DIGEST}" >>"${GITHUB_ENV}"
+
+      - name: Require reviewed development infrastructure
+        run: |
+          gcloud run services describe duka-dev-api --project "${PROJECT_ID}" --region "${REGION}" >/dev/null
+          gcloud run services describe duka-dev-worker --project "${PROJECT_ID}" --region "${REGION}" >/dev/null
+          gcloud run services describe duka-dev-web --project "${PROJECT_ID}" --region "${REGION}" >/dev/null
+          gcloud run jobs describe duka-dev-nightly --project "${PROJECT_ID}" --region "${REGION}" >/dev/null
+          gcloud run jobs describe duka-dev-digest --project "${PROJECT_ID}" --region "${REGION}" >/dev/null
+          gcloud run jobs describe duka-dev-seed --project "${PROJECT_ID}" --region "${REGION}" >/dev/null
+
+      - name: Deploy backend, worker, frontend, and Jobs
+        run: |
+          gcloud run services update duka-dev-api \
+            --project "${PROJECT_ID}" --region "${REGION}" \
+            --image "${BACKEND_REF}" \
+            --update-env-vars "RELEASE_SHA=${GITHUB_SHA}" \
+            --update-labels "release_sha=${GITHUB_SHA}" \
+            --quiet
+          gcloud run services update duka-dev-worker \
+            --project "${PROJECT_ID}" --region "${REGION}" \
+            --image "${BACKEND_REF}" \
+            --update-env-vars "RELEASE_SHA=${GITHUB_SHA}" \
+            --update-labels "release_sha=${GITHUB_SHA}" \
+            --quiet
+          gcloud run services update duka-dev-web \
+            --project "${PROJECT_ID}" --region "${REGION}" \
+            --image "${FRONTEND_REF}" \
+            --update-env-vars "RELEASE_SHA=${GITHUB_SHA}" \
+            --update-labels "release_sha=${GITHUB_SHA}" \
+            --quiet
+          gcloud run jobs update duka-dev-nightly \
+            --project "${PROJECT_ID}" --region "${REGION}" \
+            --image "${BACKEND_REF}" \
+            --update-env-vars "RELEASE_SHA=${GITHUB_SHA}" \
+            --update-labels "release_sha=${GITHUB_SHA}" \
+            --quiet
+          gcloud run jobs update duka-dev-digest \
+            --project "${PROJECT_ID}" --region "${REGION}" \
+            --image "${BACKEND_REF}" \
+            --update-env-vars "RELEASE_SHA=${GITHUB_SHA}" \
+            --update-labels "release_sha=${GITHUB_SHA}" \
+            --quiet
+          gcloud run jobs update duka-dev-seed \
+            --project "${PROJECT_ID}" --region "${REGION}" \
+            --image "${BACKEND_REF}" \
+            --update-env-vars "RELEASE_SHA=${GITHUB_SHA}" \
+            --update-labels "release_sha=${GITHUB_SHA}" \
+            --quiet
+
+      - name: Smoke the public web and private API release
+        run: |
+          WEB_URL=$(gcloud run services describe duka-dev-web \
+            --project "${PROJECT_ID}" --region "${REGION}" \
+            --format='value(status.url)')
+          test -n "${WEB_URL}"
+          echo "WEB_URL=${WEB_URL}" >>"${GITHUB_ENV}"
+          python3 scripts/smoke_release.py \
+            --url "${WEB_URL}" --release-sha "${GITHUB_SHA}" \
+            > development-smoke.json
+
+      - name: Write immutable release manifest
+        run: |
+          API_REVISION=$(gcloud run services describe duka-dev-api \
+            --project "${PROJECT_ID}" --region "${REGION}" \
+            --format='value(status.latestReadyRevisionName)')
+          WEB_REVISION=$(gcloud run services describe duka-dev-web \
+            --project "${PROJECT_ID}" --region "${REGION}" \
+            --format='value(status.latestReadyRevisionName)')
+          WORKER_REVISION=$(gcloud run services describe duka-dev-worker \
+            --project "${PROJECT_ID}" --region "${REGION}" \
+            --format='value(status.latestReadyRevisionName)')
+          jq -n \
+            --arg environment dev \
+            --arg project "${PROJECT_ID}" \
+            --arg region "${REGION}" \
+            --arg release_sha "${GITHUB_SHA}" \
+            --arg backend "${BACKEND_REF}" \
+            --arg frontend "${FRONTEND_REF}" \
+            --arg web_url "${WEB_URL}" \
+            --arg api_revision "${API_REVISION}" \
+            --arg web_revision "${WEB_REVISION}" \
+            --arg worker_revision "${WORKER_REVISION}" \
+            '{environment:$environment,project:$project,region:$region,release_sha:$release_sha,images:{backend:$backend,frontend:$frontend},web_url:$web_url,revisions:{api:$api_revision,web:$web_revision,worker:$worker_revision},jobs:{nightly:{name:"duka-dev-nightly",image:$backend},digest:{name:"duka-dev-digest",image:$backend},seed:{name:"duka-dev-seed",image:$backend}}}' \
+            > release-manifest-dev.json
+
+      - name: Upload development release evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: development-release-${{ github.sha }}
+          path: |
+            release-manifest-dev.json
+            development-smoke.json
+          if-no-files-found: warn
+          retention-days: 30

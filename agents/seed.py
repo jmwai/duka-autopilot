@@ -42,6 +42,8 @@ CUSTOMERS = [
     ("254711000008", "Ali Mohammed", "New customer"),
 ]
 
+DEMO_MEMORY_CUSTOMER_ID = "254711000001"
+
 # (customer, [(sku, qty)], status) - history for support/status questions
 ORDERS = [
     ("254711000001", [("UNGA-2KG", 5), ("MAFUTA-1L", 2)], "paid"),
@@ -82,14 +84,16 @@ def seed(force: bool = False) -> dict:
     price = {sku: up for sku, _, _, up, _ in PRODUCTS}
     name = {sku: n for sku, n, _, _, _ in PRODUCTS}
     yesterday = (date.today() - timedelta(days=1)).isoformat()
-    for customer, items, status in ORDERS:
+    for index, (customer, items, status) in enumerate(ORDERS):
         store.create_order(
             customer,
             [{"sku": sku, "name": name[sku], "qty": qty, "unit_price": price[sku]}
              for sku, qty in items],
             status=status,
             # backdated a day so today's statement rows sit inside the 48h window
-            created_at=f"{yesterday} 08:00:00",
+            # Unique chronological values make "latest order" deterministic
+            # on both SQLite (id order) and Firestore (created_at order).
+            created_at=f"{yesterday} 08:{index:02d}:00",
         )
     today = date.today().isoformat()
     store.add_payments([

@@ -7,3 +7,15 @@ data/*.db
 .pytest_cache/
 .adk/
 .DS_Store
+
+# Terraform working data and local state; provider lock files stay tracked.
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+crash.*.log
+gha-creds-*.json
+backend.hcl
+*.tfplan

@@ -7,14 +7,16 @@ transaction. 50,000 rows settle in seconds on SQLite - and because it talks
 to the Store interface, the same code runs against Firestore in the cloud.
 
 No LLM anywhere in this file. That is the point: the LLM only ever sees
-what this pass could not settle (~3% by design), which is why the cost per
-reconciled month stays under a dollar. Deterministic first.
+what this pass could not settle (~3% by design), which keeps model work bounded.
+Release economics are published only from the measured cloud benchmark.
 """
 from __future__ import annotations
 
 import time
 from collections import defaultdict
 from datetime import datetime, timedelta
+
+from agents.store.base import EntityId
 
 TIME_WINDOW_HOURS = 48
 
@@ -46,7 +48,7 @@ def run_exact_pass(store) -> dict:
     for o in sorted(unpaid, key=lambda o: o["created_at"] or ""):
         index[(o["customer_id"], o["total"])].append(o)
 
-    links: list[tuple[int, int, str]] = []
+    links: list[tuple[EntityId, EntityId, str]] = []
     residue: list[dict] = []
     # chronological pairing: when a regular has two same-total open orders,
     # the earlier payment must take the earlier order - otherwise a greedy
