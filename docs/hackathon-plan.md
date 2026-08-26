@@ -10,13 +10,16 @@
 > Durable context decision: Agent Platform Sessions plus Memory Bank
 > Cloud project: `my-duka-autopilot`; hackathon credits applied; ADC quota project set
 > Application region: `europe-west1`; Vertex AI and Agent Platform context: `global`
-> Repository: private `jmwai/duka-autopilot` remote verified locally; no push authorized yet
+> Repository: private `jmwai/duka-autopilot`; `dev` pushed at baseline `4526871`
 > Demo delivery: Loom recording, preceded by a timecoded transcript and reproducible recording/demo guide
 
 This document is the execution contract for the remaining hackathon work. It
 replaces the earlier feature-oriented schedule with measurable goals, milestone
 gates, a cloud and CI/CD contract, a critical path, acceptance tests, evidence
 requirements, demo choreography, scope cuts, and submission-freeze controls.
+From the first private cloud push onward, `docs/release-plan-v2-nextjs.md`
+supersedes this document's execution sequence while preserving this document as
+the full decision and judging record.
 
 ## 1. Executive objective
 
@@ -56,7 +59,7 @@ complete workflow. Broader market potential belongs at the end.
 | Core category | Stay in Taskmaster. Grand Prize is pursued through the highest overall score, not a category switch. |
 | GCP project | Use `my-duka-autopilot`. Local Application Default Credentials have `my-duka-autopilot` set as their quota project. |
 | Application region | Use `europe-west1` for Cloud Run, Artifact Registry, Firestore, Pub/Sub, and Scheduler. Keep the configured Vertex model and Agent Platform context endpoints on `global`. |
-| Repository | Use private GitHub repository `jmwai/duka-autopilot`. Keep the remote unpushed until GitHub Actions/WIF execution is required and the pre-push gate passes. |
+| Repository | Use private GitHub repository `jmwai/duka-autopilot`. Push only the audited `dev` branch until an explicit release decision changes that scope. |
 | Runtime | Cloud Run remains the execution plane. Duka code will not migrate to full Agent Runtime before submission. |
 | Frontend | A public Cloud Run frontend/BFF serves the UI and proxies authenticated application calls. |
 | Backend | A private API service and private Pub/Sub worker run on Cloud Run. |
@@ -75,9 +78,9 @@ complete workflow. Broader market potential belongs at the end.
 | Internal cut | Optional feature work stops August 30 at 12:00 EAT. Submission is complete by 20:00 EAT. |
 
 These choices are planning inputs, not authorization to mutate cloud resources,
-push the private repository, or publish the Loom recording. The first push is
-made only when the Phase 4 pre-push audit passes and GitHub Actions/WIF are ready
-to execute; cloud deployment remains a separately approval-gated action.
+publish other Git refs, or publish the Loom recording. The authorized first
+`dev` push passed its Phase 4 audit; each later push repeats that audit. Cloud
+deployment remains a separately approval-gated action.
 
 ### Owner-confirmed configuration checkpoint — August 26, 2026
 
@@ -90,8 +93,8 @@ to execute; cloud deployment remains a separately approval-gated action.
   Agent Platform Sessions/Memory Bank endpoints remain `global` where required
   by the selected services.
 - The configured `origin` is the private repository
-  `git@github.com:jmwai/duka-autopilot.git`. It remains intentionally unpushed;
-  a first push requires the Phase 4 pre-push audit and explicit authorization.
+  `git@github.com:jmwai/duka-autopilot.git`. The private `dev` branch was pushed
+  after the Phase 4 pre-push audit; no other branch or tag was published.
 - Loom is the delivery platform for the final demo. The recording cannot begin
   until `docs/demo-transcript.md` and `docs/demo-guide.md` exist, match the
   release candidate, and pass a timed rehearsal.
@@ -105,8 +108,8 @@ to execute; cloud deployment remains a separately approval-gated action.
 - [x] Local ADC quota project set with
       `gcloud auth application-default set-quota-project my-duka-autopilot`.
 - [x] Application region locked to `europe-west1`.
-- [x] Private Git remote configured as `jmwai/duka-autopilot`; no push is
-      authorized yet.
+- [x] Private Git remote configured as `jmwai/duka-autopilot`; audited `dev`
+      branch pushed at baseline `4526871` and no other ref published.
 - [x] Taskmaster selected as the core track.
 - [x] Gemini 3.7 Flash configured through Vertex AI.
 - [x] Explicit ADK workflow graph with deterministic screen and allowlisted
@@ -659,7 +662,7 @@ Confirmed inputs:
 | Vertex model endpoint | `global`; preserve the configured model |
 | Sessions and Memory Bank endpoint | `global` |
 | Git remote | `git@github.com:jmwai/duka-autopilot.git` |
-| Repository state | Private and intentionally unpushed |
+| Repository state | Private; audited `dev` branch pushed at baseline `4526871` |
 | Recording platform | Loom |
 
 - [ ] **CFG-01** Record the remaining GCP project number, billing/credit
@@ -1198,7 +1201,7 @@ Internal rubric gate:
 | Four-minute feature tour | High / High | Rehearsal exceeds 4:10 | One causal story; remove secondary beats; lock 3:55 cut |
 | Audio/image variability | Medium / High | One of three rehearsals fails | Stable real fixtures, MIME checks, controlled demo data |
 | Claims outrun evidence | High / High | Copy contains estimates | Evidence ledger; remove unsupported number or component |
-| Repository is unavailable | Planned / Critical | Private remote remains unpushed or judges cannot access it | Run the pre-push audit only when CI/CD needs the remote; verify private judge access before submission; change visibility only through an explicit release decision |
+| Repository is unavailable | Planned / Critical | Judges cannot access the private repository or required revision | Repeat the pre-push audit for every update; verify private judge access before submission; change visibility only through an explicit release decision |
 | Loom playback or captions fail | Medium / Critical | Incognito playback asks for sign-in, captions are inaccurate, or runtime exceeds four minutes | Verify public-link permissions, manually reconcile captions to the transcript, retain a backup, and test playback on two clean browsers |
 | Deadline timezone error | Low / Critical | Work continues Aug 31 night | Submit Aug 30 at 20:00 EAT; Aug 31 is contingency only |
 

@@ -4,12 +4,13 @@
 > Application region: `europe-west1`
 > Vertex AI / Agent Platform context location: `global`
 > Repository: private `jmwai/duka-autopilot`
-> State: local artifacts only; nothing in this runbook has been applied or pushed
+> State: private `dev` branch pushed; no GCP resource in this runbook has been applied
 
 This is the operator contract for the first development release and the final
 production promotion. A command that creates, updates, or deletes a GCP
 resource is run only after an explicit human approval. The first Git push is a
-separate gate. Service-account keys are forbidden.
+completed gate; every later push must still pass the repository audit.
+Service-account keys are forbidden.
 
 ## 1. Release topology
 

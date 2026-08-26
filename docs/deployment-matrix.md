@@ -24,7 +24,7 @@
 | GitHub owner/repository | `jmwai/duka-autopilot` | Locked |
 | Git remote | `git@github.com:jmwai/duka-autopilot.git` | Configured |
 | Repository visibility | Private | Locked for development |
-| Push state | Intentionally unpushed until CICD-00 | Locked |
+| Push state | Private `dev` branch pushed; baseline `4526871`; no other branch or tag pushed | Verified |
 | Scheduler timezone | `Africa/Nairobi` | Locked |
 | Nightly schedule | `02:00` daily | Defined, not applied |
 | Morning digest schedule | `06:30` daily | Defined, not applied |

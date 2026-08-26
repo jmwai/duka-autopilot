@@ -135,3 +135,22 @@ def test_seed_job_is_never_scheduled_and_is_promoted_with_release():
     assert "gcloud run jobs update duka-dev-seed" in deploy_dev
     assert "gcloud run jobs update duka-prod-seed" in release_prod
     assert "steps.previous.outputs.seed_image" in release_prod
+
+
+def test_ci_installs_firestore_emulator_command_group_explicitly():
+    root = Path(__file__).resolve().parent.parent
+    workflow = (root / ".github/workflows/ci.yml").read_text()
+
+    assert "install_components: beta,cloud-firestore-emulator" in workflow
+    assert workflow.index("install_components:") < workflow.index(
+        "gcloud beta emulators firestore start")
+
+
+def test_terraform_provider_locks_cover_local_and_ci_platforms():
+    root = Path(__file__).resolve().parent.parent
+    for module in ("bootstrap", "app"):
+        lock = (root / f"deployment/terraform/{module}/.terraform.lock.hcl").read_text()
+        # Each of the two providers must have one platform-specific h1 checksum
+        # for Darwin ARM64 and one for Linux AMD64. The shared zh checksums alone
+        # did not satisfy `terraform validate` on GitHub's clean Linux runner.
+        assert lock.count('"h1:') == 4
