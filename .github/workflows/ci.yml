@@ -11,7 +11,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  # A direct CI run and this workflow called by a deployment are distinct
+  # checks; they must not cancel one another for the same branch revision.
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -33,6 +35,12 @@ jobs:
           python3 -m pip install --disable-pip-version-check "uv==${UV_VERSION}"
           uv python install "${PYTHON_VERSION}"
           uv sync --locked --extra dev --python "${PYTHON_VERSION}"
+
+      - name: Install Java 21 for the Firestore emulator
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: "21"
 
       - name: Install the Firestore emulator
         uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3

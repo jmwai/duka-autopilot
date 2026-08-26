@@ -141,9 +141,19 @@ def test_ci_installs_firestore_emulator_command_group_explicitly():
     root = Path(__file__).resolve().parent.parent
     workflow = (root / ".github/workflows/ci.yml").read_text()
 
+    assert "actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961" in workflow
+    assert 'java-version: "21"' in workflow
     assert "install_components: beta,cloud-firestore-emulator" in workflow
+    assert workflow.index("Install Java 21") < workflow.index("install_components:")
     assert workflow.index("install_components:") < workflow.index(
         "gcloud beta emulators firestore start")
+
+
+def test_direct_and_reusable_ci_runs_have_distinct_concurrency_groups():
+    root = Path(__file__).resolve().parent.parent
+    workflow = (root / ".github/workflows/ci.yml").read_text()
+
+    assert "group: ci-${{ github.workflow }}-${{ github.ref }}" in workflow
 
 
 def test_terraform_provider_locks_cover_local_and_ci_platforms():
