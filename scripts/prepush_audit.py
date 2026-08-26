@@ -17,7 +17,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
-EXPECTED_REMOTE = "git@github.com:jmwai/duka-autopilot.git"
+EXPECTED_REMOTES = {
+    "git@github.com:jmwai/duka-autopilot.git",
+    "https://github.com/jmwai/duka-autopilot",
+    "https://github.com/jmwai/duka-autopilot.git",
+}
 EXPECTED_BRANCH = "dev"
 
 SECRET_PATTERNS = {
@@ -80,6 +84,11 @@ def _forbidden_path(path: str) -> bool:
     )
 
 
+def _remote_matches(remote: str) -> bool:
+    """Accept only the local SSH or GitHub Actions HTTPS spelling."""
+    return remote in EXPECTED_REMOTES
+
+
 def _secret_hits(payload: bytes, source: str) -> list[dict[str, object]]:
     hits: list[dict[str, object]] = []
     for label, pattern in SECRET_PATTERNS.items():
@@ -126,7 +135,7 @@ def audit() -> dict[str, object]:
     unstaged = bool(_git("diff", "--name-only").strip())
     untracked = bool(_git("ls-files", "--others", "--exclude-standard").strip())
     failures: list[str] = []
-    if remote != EXPECTED_REMOTE:
+    if not _remote_matches(remote):
         failures.append("origin does not match the locked private repository")
     if branch != EXPECTED_BRANCH:
         failures.append("current branch is not the locked development branch")

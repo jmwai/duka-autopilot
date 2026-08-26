@@ -76,6 +76,10 @@ Non-negotiables:
   newer Firestore prerequisite: Java 21 must be selected explicitly. The final
   portability patch pins a Java 21 setup action and prevents a reusable deploy
   verification run from cancelling the standalone CI run for the same SHA.
+- With Java 21 selected, all 109 emulator tests, topology/import checks,
+  Terraform, and both image builds pass in GitHub. The last audit-only parity
+  fix accepts GitHub checkout's exact HTTPS spelling of this private repository
+  as well as the local SSH spelling, while rejecting every other host or path.
 - Development deployment was cancelled because its reusable CI dependency was
   red; the actual deploy job also remains disabled until WIF and development
   infrastructure exist. This is expected gating, not deployment evidence.
@@ -767,8 +771,8 @@ The goal is not complete until all are true:
 
 ## 16. Immediate next actions
 
-1. Push the Java 21/concurrency portability fix and require its replacement CI
-   run to pass before frontend implementation begins.
+1. Push the exact-remote audit parity fix and require its replacement CI run to
+   pass before frontend implementation begins.
 2. Keep the development deployment gate disabled until WIF and infrastructure
    exist; a skipped deploy is not cloud evidence.
 3. Obtain explicit cloud bootstrap/API enablement approval in parallel with the
