@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import sys
 import json
+from types import SimpleNamespace
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -78,6 +79,41 @@ async def test_turn_correlation_enters_adk_state_and_is_explicitly_cleared(
 
     assert calls[0]["state_delta"]["source_event_id"] == "evt-state-1"
     assert calls[1]["state_delta"]["source_event_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_turn_captures_authoritative_order_tool_receipt(monkeypatch):
+    from app import runner as runner_module
+
+    response = {
+        "status": "success", "order_id": 17,
+        "status_detail": "pending_confirmation", "total": 390,
+        "needs_review": False,
+    }
+
+    async def capture_run_async(**kwargs):
+        part = SimpleNamespace(
+            function_call=None,
+            function_response=SimpleNamespace(
+                name="save_order", response=response),
+            text=None,
+        )
+        yield SimpleNamespace(
+            invocation_id="inv-order-proof", node_info=None,
+            author="order_intake", usage_metadata=None,
+            content=SimpleNamespace(parts=[part]),
+            is_final_response=lambda: False,
+        )
+
+    async def no_memory(_customer_id):
+        return False
+
+    monkeypatch.setattr(runner_module.runner, "run_async", capture_run_async)
+    monkeypatch.setattr(runner_module, "_ingest_order_summary", no_memory)
+    result = await runner_module._run_turn_locked(
+        "254711000001", "Nataka unga", source_event_id="evt-order-proof-2")
+
+    assert result.order_result == response
 
 
 @pytest.mark.asyncio

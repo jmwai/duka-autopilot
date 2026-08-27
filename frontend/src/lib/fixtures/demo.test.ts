@@ -112,9 +112,9 @@ describe("Google-only demo fixture boundary", () => {
     ]);
   });
 
-  it("rejects an OpenAI or otherwise unknown generated-media provider", () => {
+  it("rejects any non-Google generated-media provider", () => {
     const manifest = readyManifest();
-    manifest.ledgers[0].source.provider = "openai_image_generation";
+    manifest.ledgers[0].source.provider = "unapproved_image_generator";
     expect(demoFixtureManifestSchema.safeParse(manifest).success).toBe(false);
   });
 

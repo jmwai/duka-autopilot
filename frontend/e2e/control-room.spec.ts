@@ -45,6 +45,64 @@ test.describe("control room release candidate", () => {
     expect(documentWidth.scroll).toBeLessThanOrEqual(documentWidth.client);
   });
 
+  test("every owner route has a clean provenance-aware print state", async ({ page }) => {
+    await page.emulateMedia({ media: "print", reducedMotion: "reduce" });
+    for (const [path, heading] of routes) {
+      await page.goto(path);
+      await expect(page.getByRole("heading", { name: heading, exact: true }).first()).toBeVisible();
+      await expect(page.getByText("Duka Autopilot · Duka la Amani")).toBeVisible();
+      await expect(page.locator("[data-print-hide]").first()).toBeHidden();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+    }
+  });
+
+  test("critical production build stays inside lab performance budgets", async ({ page }, testInfo) => {
+    await page.addInitScript(() => {
+      const metrics = { lcp: 0, cls: 0, interactionDurations: [] as number[] };
+      (window as typeof window & { __dukaLabMetrics?: typeof metrics }).__dukaLabMetrics = metrics;
+      new PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) metrics.lcp = Math.max(metrics.lcp, entry.startTime);
+      }).observe({ type: "largest-contentful-paint", buffered: true });
+      new PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) {
+          const shift = entry as PerformanceEntry & { hadRecentInput?: boolean; value?: number };
+          if (!shift.hadRecentInput) metrics.cls += shift.value ?? 0;
+        }
+      }).observe({ type: "layout-shift", buffered: true });
+      if (PerformanceObserver.supportedEntryTypes.includes("event")) {
+        new PerformanceObserver((list) => {
+          for (const entry of list.getEntries()) {
+            const event = entry as PerformanceEntry & { interactionId?: number; duration: number };
+            if (event.interactionId) metrics.interactionDurations.push(event.duration);
+          }
+        }).observe({ type: "event", buffered: true, durationThreshold: 16 } as PerformanceObserverInit);
+      }
+    });
+
+    await page.goto("/");
+    await expect(page.getByRole("heading", { name: "Your shop is ready for the day." })).toBeVisible();
+    await page.getByRole("button", { name: "Open owner menu" }).click();
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(250);
+    const result = await page.evaluate(() => {
+      const navigation = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming;
+      const metrics = (window as typeof window & { __dukaLabMetrics?: { lcp: number; cls: number; interactionDurations: number[] } }).__dukaLabMetrics;
+      return {
+        ttfb_ms: navigation.responseStart,
+        lcp_ms: metrics?.lcp ?? 0,
+        cls: metrics?.cls ?? 0,
+        max_observed_interaction_ms: Math.max(0, ...(metrics?.interactionDurations ?? [])),
+        environment: "local production build; not hosted field data",
+      };
+    });
+    await testInfo.attach("lab-performance.json", { body: JSON.stringify(result, null, 2), contentType: "application/json" });
+    expect(result.ttfb_ms).toBeLessThan(800);
+    expect(result.lcp_ms).toBeGreaterThan(0);
+    expect(result.lcp_ms).toBeLessThan(2_500);
+    expect(result.cls).toBeLessThan(0.1);
+    expect(result.max_observed_interaction_ms).toBeLessThanOrEqual(200);
+  });
+
   test("keyboard command navigation is visible and non-destructive", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto("/");
@@ -101,8 +159,11 @@ test.describe("control room release candidate", () => {
       items: [{ sku: "UNGA-2KG", qty: 2 }],
       paid: true,
     });
-    await expect(page.getByRole("row").filter({ hasText: "Mama Achieng" }).first()).toContainText("2× Unga wa Dola 2kg");
-    await expect(page.getByRole("row").filter({ hasText: "Mama Achieng" }).first()).toContainText(/Ksh\s*390/);
+    const recordedOrder = page.getByRole("dialog", { name: "Order details" });
+    await expect(recordedOrder).toContainText("Mama Achieng");
+    await expect(recordedOrder).toContainText("Unga wa Dola 2kg");
+    await expect(recordedOrder).toContainText(/2\s*×\s*Ksh\s*195/);
+    await expect(recordedOrder).toContainText(/Total\s*Ksh\s*390/);
   });
 
   test("restock scan is idempotent and the owner can reject the one draft", async ({ page }) => {
@@ -168,6 +229,46 @@ test.describe("control room release candidate", () => {
     const retriedReceipt = await receipt.textContent();
     expect(retriedReceipt).toBe(firstReceipt);
     expect(attempts).toBe(2);
+  });
+
+  test("execution receipt opens the exact authenticated order", async ({ page }) => {
+    const ordersResponse = await page.request.get("/api/orders");
+    expect(ordersResponse.ok()).toBeTruthy();
+    const orders = await ordersResponse.json() as Array<{ id: string; status: string; total: number }>;
+    const persistedOrder = { ...orders[0], id: String(orders[0]?.id ?? "") };
+    expect(persistedOrder).toBeTruthy();
+    await page.route("**/api/messages/*", (route) => {
+      const customerId = decodeURIComponent(new URL(route.request().url()).pathname.split("/").at(-1) ?? "synthetic-customer");
+      return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([
+        {
+          id: "proof-message-1",
+          customer_id: customerId,
+          direction: "out",
+          channel: "voice",
+          text: "Your grounded order is ready.",
+          created_at: "2026-08-27T09:00:00Z",
+          meta: {
+            event_id: "evt-order-proof-e2e",
+            node_path: ["screen", "classifier", "router", "order_intake"],
+            wall_ms: 842,
+            cost_usd: 0.00042,
+            tokens: { input: 140, output: 32 },
+            order: { order_id: persistedOrder.id, status: persistedOrder.status, total: persistedOrder.total, needs_review: false },
+          },
+        },
+      ]),
+      });
+    });
+
+    await page.goto("/inbox");
+    await page.getByText("Execution receipt").click();
+    await expect(page.getByText(`Order #${persistedOrder.id} persisted`)).toBeVisible();
+    await page.getByRole("link", { name: "Open order" }).click();
+    await expect(page).toHaveURL(new RegExp(`/orders\\?order=${persistedOrder.id}$`));
+    await expect(page.getByRole("dialog", { name: "Order details" })).toContainText(`Order #${persistedOrder.id}`);
   });
 
   test("client authorization failure returns the owner to login", async ({ page }) => {

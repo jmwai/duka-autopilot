@@ -161,13 +161,15 @@ function ManualSaleDialog({ open, onOpenChange, data, onCreated }: { open: boole
   );
 }
 
-export function OrdersWorkspace({ data }: { data: OrdersData }) {
+export function OrdersWorkspace({ data, initialOrderId }: { data: OrdersData; initialOrderId?: string }) {
   const [orders, setOrders] = useState(data.orders);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
   const [sort, setSort] = useState("recent");
   const [page, setPage] = useState(1);
-  const [selected, setSelected] = useState<Order | null>(null);
+  const [selected, setSelected] = useState<Order | null>(
+    () => data.orders.find((order) => order.id === initialOrderId) ?? null,
+  );
   const [saleOpen, setSaleOpen] = useState(false);
   const statuses = useMemo(() => [...new Set(orders.map((order) => order.status))].sort(), [orders]);
   const visible = useMemo(() => {
@@ -184,8 +186,10 @@ export function OrdersWorkspace({ data }: { data: OrdersData }) {
   const paidOrders = orders.filter((order) => order.status === "paid");
   const paidRevenue = paidOrders.reduce((sum, order) => sum + order.total, 0);
 
-  async function refreshOrders() {
-    setOrders(await browserApi("orders", ordersSchema));
+  async function refreshOrders(orderId?: string) {
+    const refreshed = await browserApi("orders", ordersSchema);
+    setOrders(refreshed);
+    if (orderId) setSelected(refreshed.find((order) => order.id === orderId) ?? null);
     setPage(1);
   }
 
@@ -220,7 +224,7 @@ export function OrdersWorkspace({ data }: { data: OrdersData }) {
       ) : <EmptyState title="No orders match" description="Clear the search or status filter, or record a catalog-grounded sale." action={<Button variant="outline" onClick={() => { setQuery(""); setStatus("all"); setPage(1); }}>Clear filters</Button>} />}
 
       <Sheet open={Boolean(selected)} onOpenChange={(open) => { if (!open) setSelected(null); }}><SheetContent side="right" className="w-[min(96vw,34rem)] overflow-y-auto"><SheetHeader><SheetTitle>Order details</SheetTitle><SheetDescription>Grounded items, status, effect boundary, and available evidence.</SheetDescription></SheetHeader>{selected ? <OrderDetail order={selected} /> : null}</SheetContent></Sheet>
-      <ManualSaleDialog open={saleOpen} onOpenChange={setSaleOpen} data={data} onCreated={async () => { await refreshOrders(); }} />
+      <ManualSaleDialog open={saleOpen} onOpenChange={setSaleOpen} data={data} onCreated={refreshOrders} />
       <p className="mt-7 text-center text-xs text-muted-foreground">Names and prices are re-derived by the backend. “Paid” records an internal status only.</p>
     </>
   );

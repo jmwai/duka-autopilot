@@ -38,7 +38,7 @@ export function ControlRoomTopBar({ environment }: { environment: string }) {
 
   return (
     <>
-      <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b bg-background/92 px-3 backdrop-blur sm:px-5 md:px-7">
+      <header data-print-hide className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b bg-background/92 px-3 backdrop-blur sm:px-5 md:px-7">
         <SidebarTrigger aria-label="Toggle primary navigation" />
         <div className="h-5 w-px bg-border" aria-hidden="true" />
         <Breadcrumb className="min-w-0 flex-1">

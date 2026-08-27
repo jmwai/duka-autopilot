@@ -175,6 +175,8 @@ def test_ci_runs_the_frozen_nextjs_quality_gate_before_release_images():
     assert "node-version: \"24.12.0\"" in workflow
     assert "pnpm install --frozen-lockfile" in workflow
     assert "run: pnpm check" in workflow
+    assert "pnpm build && pnpm check:bundle" in (
+        root / "frontend/package.json").read_text()
     assert "Smoke the paired non-root release containers" in workflow
     assert "python3 scripts/smoke_release.py" in workflow
     assert "--env DUKA_API_URL=http://duka-ci-api:8080" in workflow

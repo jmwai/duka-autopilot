@@ -1,7 +1,7 @@
 # Duka Autopilot Evidence Ledger
 
 > Status: active release ledger
-> Last updated: August 26, 2026
+> Last updated: August 27, 2026
 > Rule: a claim is submission-ready only when its evidence is tied to the exact
 > committed SHA and, where applicable, immutable image digest and cloud resource
 > execution ID.
@@ -79,6 +79,7 @@
 | `docs/evidence/prepush-audit.json` | Candidate and branch/tag history credential/trailer scan | Preliminary; rerun immediately before each push |
 | `fixtures/demo/manifest.json` | Google-only bilingual fixture allowlist and freeze contract | Schema v2 implemented; release-ready false until four generated assets are frozen |
 | `docs/evidence/benchmark-local.json` | Raw 50,000-row local no-fuzzy baseline | Current local candidate |
+| `docs/evidence/frontend-product-qa-2026-08-27.md` | 115-test backend and 18-journey Next.js product QA, axe, print, correlation, and bundle budgets | Current local candidate |
 | `docs/economics.md` | Interpreted local baseline and claim limits | Current local candidate |
 | `deployment/compatibility.json` | Durable topology fingerprint | Enforced locally and in deploy workflows |
 

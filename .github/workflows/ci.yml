@@ -147,6 +147,9 @@ jobs:
       - name: Lint, typecheck, test, and build
         run: pnpm check
 
+      - name: Capture bundle-budget evidence
+        run: pnpm check:bundle > bundle-budget.json
+
       - name: Install the deterministic E2E backend
         run: |
           python3 -m pip install --disable-pip-version-check "uv==${UV_VERSION}"
@@ -158,6 +161,18 @@ jobs:
 
       - name: Run production browser, accessibility, and mutation journeys
         run: pnpm test:e2e
+
+      - name: Upload frontend release-candidate evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: frontend-quality-${{ github.sha }}
+          path: |
+            frontend/bundle-budget.json
+            frontend/playwright-report
+            frontend/test-results
+          if-no-files-found: warn
+          retention-days: 30
 
   containers:
     name: Reproducible container builds

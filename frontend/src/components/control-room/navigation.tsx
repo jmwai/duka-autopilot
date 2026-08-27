@@ -123,6 +123,7 @@ export function MobileNavigation() {
 
   return (
     <nav
+      data-print-hide
       aria-label="Mobile navigation"
       className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-4 border-t bg-card/95 px-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-1.5 backdrop-blur md:hidden"
     >

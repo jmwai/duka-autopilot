@@ -1,7 +1,7 @@
 # Duka Autopilot Deployment Matrix
 
 > Status: Phase 0 configuration record
-> Last updated: August 26, 2026
+> Last updated: August 27, 2026
 > Secrets: none belong in this file
 
 ## Locked coordinates
@@ -24,7 +24,7 @@
 | GitHub owner/repository | `jmwai/duka-autopilot` | Locked |
 | Git remote | `git@github.com:jmwai/duka-autopilot.git` | Configured |
 | Repository visibility | Private | Locked for development |
-| Push state | Private `dev` branch pushed; baseline `4526871`; no other branch or tag pushed | Verified |
+| Push state | Private `origin/dev` ends at `c585801`; local `dev` has committed successor `7d64ab9` plus reviewed WIP that is not pushed; no other branch/tag release is authorized | Verified locally |
 | Scheduler timezone | `Africa/Nairobi` | Locked |
 | Nightly schedule | `02:00` daily | Defined, not applied |
 | Morning digest schedule | `06:30` daily | Defined, not applied |

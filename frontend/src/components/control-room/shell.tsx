@@ -22,7 +22,7 @@ export async function ControlRoomShell({ children }: { children: React.ReactNode
 
   return (
     <SidebarProvider defaultOpen={sidebarOpen}>
-      <Sidebar>
+      <Sidebar data-print-hide>
         <SidebarHeader className="border-b border-sidebar-border p-3">
           <Link
             href="/"
@@ -60,6 +60,10 @@ export async function ControlRoomShell({ children }: { children: React.ReactNode
 
       <SidebarInset>
         <ControlRoomTopBar environment={environment} />
+        <aside data-print-only className="hidden border-b px-4 py-3 text-xs">
+          <span className="font-bold">Duka Autopilot · Duka la Amani</span>
+          <span className="ml-3 text-muted-foreground">Evidence reflects the release identifiers visible on this page. External payment and supplier effects are not executed.</span>
+        </aside>
         <div className="mx-auto w-full max-w-[96rem] flex-1 px-4 pb-28 pt-6 md:px-7 md:pb-12 md:pt-8 xl:px-9">
           {children}
         </div>

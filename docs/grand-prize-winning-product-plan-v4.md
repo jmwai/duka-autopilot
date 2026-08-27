@@ -534,15 +534,20 @@ developer console, manual data edit, or unsupported claim.
 
   **Progress:** inbound and ledger event IDs now enter ADK `state_delta`, clear
   on the next uncorrelated turn, persist on orders and gated rows, and render in
-  Order proof. Browser approval payloads strip phone-shaped authority keys.
-  Cross-screen navigation and nightly/evidence trace links remain.
+  Order proof. The runner now captures the authoritative `save_order` receipt;
+  the worker exposes only its safe order ID/status/total, Inbox receipts open
+  the exact authenticated order, and recorded ledger rows do the same. Browser
+  approval payloads strip phone-shaped authority keys. Nightly/evidence trace
+  links remain dependent on final cloud artifact URLs.
 - [x] **F3-05** Remove placeholder component and dead frontend paths.
 - [ ] **F3-06** Complete loading, empty, stale, degraded, unauthorized, mobile,
   and print/share states for every route.
 
   **Progress:** shared loading/empty/degraded/failure compositions, responsive
-  route coverage, and the owner re-authentication journey are implemented.
-  Stale-release, print/share, and route-specific degraded mutations remain.
+  route coverage, the owner re-authentication journey, and a provenance-aware
+  print state shared by all eight owner routes are implemented and exercised in
+  the production browser suite. Stale-release and additional route-specific
+  degraded mutations remain.
 
 **Exit:** every navigation route is useful and truthful; Evidence cannot claim
 an artifact that is absent.
@@ -579,6 +584,11 @@ no unknown provenance.
 
 - [ ] **Q5-01** Run lint, strict typecheck, Vitest, production build, bundle
   inspection, and standalone-container smoke.
+
+  **Progress:** lint, strict typecheck, 33 Vitest checks, the production webpack
+  build, and an enforced per-route bundle gate pass. The heaviest route is
+  128,945 gzip bytes against a 153,600-byte ceiling. The standalone output is
+  present; Docker-daemon smoke remains tracked separately in Q5-04.
 - [x] **Q5-02** Run Playwright + axe for all critical desktop/mobile journeys.
 - [ ] **Q5-03** Run complete Python, Firestore emulator, topology, lock,
   Terraform validate, actionlint, credential, commit-trailer, fixture, and docs
@@ -587,6 +597,12 @@ no unknown provenance.
   BFF allowlist, caching, media limits, and safe errors.
 - [ ] **Q5-05** Measure Core Web Vitals and bundle budgets on the production
   image; fix avoidable client-boundary and waterfall costs.
+
+  **Progress:** the reproducible bundle budget is enforced in CI and uploaded
+  as release-candidate evidence. A pinned-Chromium local production-build lab
+  gate now enforces TTFB <800 ms, LCP <2.5 s, CLS <0.1, and observed
+  interaction ≤200 ms, with raw JSON attached to the browser report.
+  Container/hosted measurements and field-user evidence remain.
 - [ ] **Q5-06** Run second-person usability rehearsal and record time to first
   meaning, decision, voice result, ledger result, and recovery.
 
@@ -782,17 +798,24 @@ remains truthful if a network-dependent step is slow.
 
 ## 14. Immediate next sequence
 
-1. Fix Ledger Desk’s manifest migration and restore green frontend gates.
-2. Complete bilingual fixture wiring and fail-closed tests in Inbox/Ledger.
-3. Freeze the design tokens and install the minimum shadcn primitive set.
-4. Build the new responsive shell and proof Sheet.
-5. Redesign Morning Brief and Decisions first.
-6. Polish Inbox, Ledger Desk, and Night Shift around the Loom path.
-7. Build Orders, Stock, and Evidence; remove placeholders.
-8. Reach the local release candidate.
-9. Ask for approval before Google API activation or any cloud mutation.
-10. Generate/freeze media, deploy through WIF, prove durability/evals/economics,
-    then write and record the final Loom guide/transcript.
+1. Obtain A4-00 approval for the bounded Google-only media call set; do not
+   enable APIs or generate media before it.
+2. Generate, human-review, production-extract, hash, and freeze the four
+   English/Kiswahili voice and ledger assets.
+3. Close the remaining local RC gaps: Java 21 Firestore parity, Terraform and
+   workflow validation, non-root paired-container smoke, hosted-performance
+   harness, and second-operator usability rehearsal.
+4. Commit the reviewed release candidate; keep it local until a separate push
+   authorization, then let private GitHub CI produce the zero-skip and image
+   evidence.
+5. Review the saved bootstrap/application plans, IAM, quotas, limits, retention,
+   and spend; obtain C6-00 approval before any GCP mutation.
+6. Provision development, deploy exact digests through WIF, and prove durable
+   Sessions, Memory Bank, sequencing, resumable approvals, and IAM boundaries.
+7. Run ADK evals, the 50,000-row Job, traces, economics, rollback, and release
+   evidence; promote exact digests only after every gate is green.
+8. Freeze the already drafted Loom guide/transcript against final evidence,
+   rehearse three times, record, reconcile captions, publish bonuses, and submit.
 
 ## 15. Official implementation basis
 

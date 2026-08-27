@@ -168,7 +168,9 @@ function OutcomeRows({ ledger }: { ledger: LedgerResult }) {
               </Button>
             </div>
           ) : (
-            <p className="mt-3 font-mono text-[0.68rem] text-muted-foreground">Order {row.order_id ?? "recorded"}</p>
+            <p className="mt-3 font-mono text-[0.68rem] text-muted-foreground">
+              {row.order_id ? <Link href={`/orders?order=${encodeURIComponent(row.order_id)}`} className="font-semibold text-primary underline-offset-4 hover:underline">Open order {row.order_id}</Link> : "Order recorded"}
+            </p>
           )}
         </article>
       ))}

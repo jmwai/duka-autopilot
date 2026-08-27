@@ -46,6 +46,24 @@ def _retryable(exc: Exception) -> bool:
     ))
 
 
+def _safe_order_receipt(result: object) -> dict | None:
+    """Expose proof of the committed order without leaking customer scope."""
+    raw = getattr(result, "order_result", None)
+    if not isinstance(raw, dict) or raw.get("status") != "success":
+        return None
+    order_id = raw.get("order_id")
+    total = raw.get("total")
+    status = raw.get("status_detail")
+    if order_id is None or type(total) is not int or not isinstance(status, str):
+        return None
+    return {
+        "order_id": str(order_id),
+        "status": status,
+        "total": total,
+        "needs_review": raw.get("needs_review") is True,
+    }
+
+
 async def handle_inbound(payload: dict) -> dict:
     """Claim and process one event, producing at most one business result."""
     store = get_store()
@@ -118,6 +136,7 @@ async def handle_inbound(payload: dict) -> dict:
         return {"event_id": event_id, "reply": None, "error": error,
                 "retryable": False, "suspended": False, "node_path": []}
 
+    order_receipt = _safe_order_receipt(result)
     response = {
         "event_id": event_id,
         "reply": result.reply,
@@ -126,16 +145,21 @@ async def handle_inbound(payload: dict) -> dict:
         "tokens": {"input": result.input_tokens, "output": result.output_tokens},
         "duplicate": False,
     }
+    if order_receipt:
+        response["order"] = order_receipt
+    message_meta = {
+        "event_id": event_id,
+        "node_path": result.node_path,
+        "suspended": result.suspended,
+        "cost_usd": round(result.cost_usd, 6),
+        "wall_ms": result.wall_ms,
+        "tokens": {"input": result.input_tokens, "output": result.output_tokens},
+    }
+    if order_receipt:
+        message_meta["order"] = order_receipt
     store.add_message(
         customer_id, "out", result.reply, channel=channel,
-        meta={
-            "event_id": event_id,
-            "node_path": result.node_path,
-            "suspended": result.suspended,
-            "cost_usd": round(result.cost_usd, 6),
-            "wall_ms": result.wall_ms,
-            "tokens": {"input": result.input_tokens, "output": result.output_tokens},
-        },
+        meta=message_meta,
         dedupe_key=f"{event_id}:out",
     )
     store.complete_event(event_id, response)

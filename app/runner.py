@@ -84,6 +84,7 @@ class TurnResult:
     output_tokens: int = 0
     wall_ms: int = 0
     suspended: bool = False  # workflow paused at a human gate this turn
+    order_result: dict | None = None  # authoritative save_order receipt
     ledger_result: dict | None = None  # deterministic record_ledger_rows receipt
 
     @property
@@ -330,6 +331,10 @@ async def _run_turn_locked(customer_id: str, text: str,
                         if (p.function_call
                                 and p.function_call.name == "adk_request_input"):
                             result.suspended = True
+                        if (p.function_response
+                                and p.function_response.name == "save_order"
+                                and isinstance(p.function_response.response, dict)):
+                            result.order_result = dict(p.function_response.response)
                         if (p.function_response
                                 and p.function_response.name == "record_ledger_rows"
                                 and isinstance(p.function_response.response, dict)):

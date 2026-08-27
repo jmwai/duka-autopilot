@@ -21,7 +21,12 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "google-adk[eval]==2.7.1",
+    # ADK's rubric evaluators call the configured Gemini judge directly. Keep
+    # only their eager local imports instead of the broad multi-provider
+    # google-cloud-aiplatform evaluation extra.
+    "pandas==2.3.3; python_version < '3.14'",
+    "pandas==3.0.5; python_version >= '3.14'",
+    "rouge-score==0.1.2",
     "pytest==9.1.1",
     "pytest-asyncio==1.4.0",
     "pillow==12.3.0",

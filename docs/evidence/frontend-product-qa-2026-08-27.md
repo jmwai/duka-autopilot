@@ -16,15 +16,25 @@ claim that the pending Google-generated bilingual media exists.
 - Keyboard-visible focus, command-menu navigation, and mobile navigation Sheet.
 - Orders, Stock, and Evidence checks for their explicit authority and external-
   effect boundaries.
+- A provenance-aware print composition on every owner route.
+- Causal navigation from a completed Inbox execution receipt to the exact
+  authenticated persisted order.
+- An enforced per-route JavaScript budget from production client-reference
+  manifests.
+- A pinned-Chromium local production-build lab check for TTFB, LCP, CLS, and
+  observed interaction duration, attached as JSON to the browser report.
 
 ## Results
 
 | Gate | Result |
 |---|---:|
 | Vitest component/contract tests | 33 passed |
-| Playwright production journeys | 16 passed |
+| Playwright production journeys | 19 passed |
 | Route-level axe scans | 8 passed, 0 reported violations |
-| Python suite | 113 passed, 13 skipped |
+| Python suite | 115 passed, 13 skipped |
+| Heaviest route JavaScript | 128,945 bytes gzip / 153,600-byte budget |
+| Total production static assets | 1,676,440 bytes |
+| Local production-build lab budgets | TTFB < 800 ms; LCP < 2.5 s; CLS < 0.1; observed interaction ≤ 200 ms |
 
 The skipped Python tests require optional cloud/emulator infrastructure and are
 not represented as passing release evidence.
@@ -36,7 +46,8 @@ cd frontend
 pnpm lint
 pnpm typecheck
 pnpm test
-pnpm build --webpack
+pnpm check
+pnpm check:bundle
 pnpm test:e2e
 
 cd ..
@@ -51,7 +62,9 @@ The mutation journeys additionally prove a catalog-key-only manual-sale
 request with an authoritative backend-rendered total; one duplicate-safe
 restock draft; owner rejection plus idempotent replay; a locally attributed
 night-run receipt; preservation of one inbound event ID across a simulated
-handoff failure and retry; and redirect to login when the owner session expires.
+handoff failure and retry; safe navigation from an allowlisted order receipt to
+the authenticated order Sheet; clean print output on all owner routes; and
+redirect to login when the owner session expires.
 
 ## Captured screenshots
 
@@ -75,3 +88,5 @@ cloud-deployment evidence.
 - No external M-Pesa transfer, refund, supplier order, or payment is initiated.
 - Cloud Run, managed Sessions, Memory Bank, Scheduler, Pub/Sub, and cloud trace
   proof remain pending until an approved deployment is exercised and captured.
+- Core Web Vitals remain production-image work; the current bundle result is a
+  local lab gate, not hosted field-user evidence.

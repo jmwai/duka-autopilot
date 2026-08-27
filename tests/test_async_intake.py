@@ -23,6 +23,7 @@ class FakeTurn:
     wall_ms = 42
     input_tokens = 100
     output_tokens = 20
+    order_result = None
 
 
 @pytest.fixture(autouse=True)
@@ -64,6 +65,36 @@ async def test_bus_dispatch_persists_conversation(stub_turn):
     assert msgs[1]["text"] == FakeTurn.reply
     assert msgs[1]["meta"]["node_path"][-1] == "order_intake"
     assert stub_turn.calls[0]["customer_id"] == "254711000001"
+
+
+@pytest.mark.asyncio
+async def test_order_receipt_is_allowlisted_in_event_and_message(monkeypatch):
+    class OrderTurn(FakeTurn):
+        order_result = {
+            "status": "success", "order_id": 42,
+            "status_detail": "pending_confirmation", "total": 710,
+            "needs_review": False, "customer_id": "must-not-leak",
+        }
+
+    async def fake_run_turn(customer_id, text, **kw):
+        return OrderTurn()
+
+    from app import runner
+    monkeypatch.setattr(runner, "run_turn", fake_run_turn)
+    from app.worker import handle_inbound
+    out = await handle_inbound({
+        "event_id": "evt-order-proof-1",
+        "customer_id": "254711000001",
+        "text": "Nataka unga",
+    })
+
+    expected = {
+        "order_id": "42", "status": "pending_confirmation",
+        "total": 710, "needs_review": False,
+    }
+    assert out["order"] == expected
+    assert get_store().messages_for("254711000001")[-1]["meta"]["order"] == expected
+    assert "customer_id" not in out["order"]
 
 
 @pytest.mark.asyncio
