@@ -15,7 +15,7 @@ FROM base AS builder
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY frontend/ ./
-COPY fixtures/demo/ledger-page-v1.png fixtures/demo/manifest.json /fixtures/demo/
+COPY fixtures/demo/ /fixtures/demo/
 RUN pnpm build
 
 FROM ${NODE_IMAGE} AS runner

@@ -98,9 +98,11 @@ Model Armor (optional layer) · FastAPI · Python · SQLite (local twin)
 All demo data is synthetic: a seeded generator (`agents/synth`) produces
 customers with Kenyan names, a month of orders, and M-Pesa-statement-shaped
 rows with engineered noise (payer-name variants, partial and split
-payments, duplicate refs, unknown deposits). The Swahili voice-note test
-set is generated offline with espeak-ng and ships with ground-truth
-expected orders. No real customer or payment data is used anywhere.
+payments, duplicate refs, unknown deposits). The release voice-note test set
+contains English and Kiswahili variants created with Google Cloud Gemini-TTS
+and ships with ground-truth transcripts and expected orders. The Loom may also
+use a purpose-recorded first-party human voice. No real customer or payment
+data is used anywhere.
 
 ## Disclosure of pre-existing work
 

@@ -214,6 +214,10 @@ export function LedgerDesk() {
 
   async function loadFrozenFixture() {
     if (loadingFixture) return;
+    if (!LEDGER_FIXTURE.releaseEligible) {
+      toast.error("The legacy fixture is quarantined. Generate the Google bilingual release fixtures first.");
+      return;
+    }
     setLoadingFixture(true);
     try {
       const fixtureResponse = await fetch(LEDGER_FIXTURE.url, { cache: "force-cache" });
@@ -315,7 +319,7 @@ export function LedgerDesk() {
                 )}
                 {error ? <div role="alert" className="flex gap-3 rounded-lg border border-destructive/35 bg-destructive/5 p-3 text-sm text-destructive"><AlertTriangle aria-hidden="true" className="mt-0.5 size-4 shrink-0" /><p>{error}</p></div> : null}
                 <div className="grid gap-2 sm:grid-cols-2">
-                  <Button type="button" variant="outline" onClick={() => void loadFrozenFixture()} disabled={loadingFixture || submitting}>{loadingFixture ? <LoaderCircle aria-hidden="true" className="animate-spin" /> : <FileCheck2 aria-hidden="true" />}{loadingFixture ? "Verifying…" : "Use frozen demo page"}</Button>
+                  <Button type="button" variant="outline" onClick={() => void loadFrozenFixture()} disabled={!LEDGER_FIXTURE.releaseEligible || loadingFixture || submitting}>{loadingFixture ? <LoaderCircle aria-hidden="true" className="animate-spin" /> : <FileCheck2 aria-hidden="true" />}{loadingFixture ? "Verifying…" : "Google fixture pending"}</Button>
                   <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={submitting}><ImageIcon aria-hidden="true" /> Choose another photo</Button>
                 </div>
                 <Button type="submit" size="lg" className="w-full" disabled={!selected || submitting}>{submitting ? <LoaderCircle aria-hidden="true" className="animate-spin" /> : <Sparkles aria-hidden="true" />}{submitting ? "Reading and gating rows…" : "Read this ledger page"}</Button>
@@ -332,7 +336,7 @@ export function LedgerDesk() {
           <Card>
             <CardHeader><CardTitle>Release integrity</CardTitle><CardDescription>The demo image is copied into the standalone image only after its source hash and byte count match the frozen manifest.</CardDescription></CardHeader>
             <CardContent className="grid gap-3 sm:grid-cols-2">
-              <div className="rounded-lg bg-muted p-3"><p className="text-xs text-muted-foreground">Fixture creator</p><p className="mt-1 text-sm font-semibold">OpenAI image generation · synthetic</p></div>
+              <div className="rounded-lg bg-muted p-3"><p className="text-xs text-muted-foreground">Release fixture</p><p className="mt-1 text-sm font-semibold">Quarantined · Google bilingual replacement required</p></div>
               <div className="rounded-lg bg-muted p-3"><p className="text-xs text-muted-foreground">External financial effect</p><p className="mt-1 text-sm font-semibold">None · internal books and proposals only</p></div>
             </CardContent>
           </Card>

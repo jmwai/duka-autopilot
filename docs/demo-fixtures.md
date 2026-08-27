@@ -1,6 +1,6 @@
 # Duka Autopilot Demo Fixture Manifest
 
-> Status: ledger fixture frozen; human voice fixture pending
+> Status: legacy media quarantined; Google bilingual release fixtures pending API activation
 > Environment: synthetic data only
 > Release SHA: `{{FINAL_RELEASE_SHA}}`
 
@@ -33,20 +33,22 @@ authority.
 
 | Fixture | Required artifact | Ground truth | Status |
 |---|---|---|---|
-| Swahili voice | Purpose-recorded human `.ogg`, `.webm`, or `.wav`; SHA-256 and duration | Exact transcript above; expected usual items and current KSh 1,035 total | Pending recording |
-| Handwritten ledger | `fixtures/demo/ledger-page-v1.png`; PNG; 3,014,160 bytes; 1024×1536; SHA-256 `9b85c98d1d35e5b9c8a5e98d03dea9168ff014ce157c51bfa09da99de62f59a0` | Two legible rows: Unga Dola 2kg, qty 2, KSh 390, paid; Mafuta 1L, qty 1, KSh 320, paid. One Sukari 1kg row has an unreadable amount and must gate. | Bitmap and manifest frozen; actual Gemini extraction validation remains cloud-pending |
+| English voice | Google Cloud Gemini-TTS `.wav` plus optional purpose-recorded human variant; SHA-256 and duration | “Hello, please bring me my usual order tomorrow morning.”; expected usual items and current KSh 1,035 total | Pending API activation |
+| Kiswahili voice | Google Cloud Gemini-TTS `.wav` plus optional purpose-recorded human variant; SHA-256 and duration | `Habari, niletee vitu vyangu vya kawaida kesho asubuhi.`; expected usual items and current KSh 1,035 total | Pending API activation |
+| English handwritten ledger | `fixtures/demo/ledger-en-v2.png`; Vertex AI synthetic PNG | Two readable rows and one unreadable amount that must gate | Pending API activation |
+| Kiswahili handwritten ledger | `fixtures/demo/ledger-sw-v2.png`; Vertex AI synthetic PNG | Equivalent two-record/one-gate truth | Pending API activation |
 
 The audio must be a real purpose-recorded human voice if the submission says
 “real human voice.” A TTS file may be used only if the transcript and demo label
 it synthetic. The ledger must contain no real name, phone, account, or payment
 reference.
 
-The ledger was created with OpenAI's built-in image-generation tool on August
-26, 2026 and is intentionally synthetic. Its machine-readable ground truth and
-integrity contract live in `fixtures/demo/manifest.json`; local tests verify its
-hash, byte size, dimensions, decoded-size limit, and two-record/one-gate
-contract. This protects artifact drift but does not substitute for running the
-actual Gemini vision path on the final cloud release.
+The earlier ledger and offline voice candidates do not satisfy the Google-only
+release policy and are quarantined. They must not appear in the hosted app,
+Loom, or submission evidence. Schema v2 of `fixtures/demo/manifest.json` will
+freeze the bilingual Google assets, their prompt/transcript provenance, hashes,
+dimensions or duration, and expected tool outcomes. Integrity checks do not
+substitute for running the actual Gemini multimodal path on the final release.
 
 ## Freeze procedure
 

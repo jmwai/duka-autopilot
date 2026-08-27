@@ -26,6 +26,11 @@ dev = [
     "pytest-asyncio==1.4.0",
     "pillow==12.3.0",
 ]
+assets = [
+    "google-genai==2.20.0",
+    "google-cloud-texttospeech==2.37.0",
+    "pillow==12.3.0",
+]
 # cloud screening layer on top of the local rules (see agents/screening.py)
 armor = ["google-cloud-modelarmor>=0.2"]
 

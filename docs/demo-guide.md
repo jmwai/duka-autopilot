@@ -20,7 +20,7 @@ steps. Do not record until every blocking checkpoint is green.
 - [ ] The 50,000-row cloud report and model cost are captured for this SHA.
 - [ ] Intake/support/safety ADK evals pass their final thresholds.
 - [ ] Restart/resume, memory isolation, duplicate delivery, IAM denial, and rollback reports pass.
-- [ ] `{{VOICE_FIXTURE_FILENAME}}` and `{{LEDGER_FIXTURE_FILENAME}}` match the frozen fixture manifest.
+- [ ] English and Kiswahili voice and ledger filenames match the schema-v2 frozen fixture manifest.
 - [ ] No secret, raw credential, real payment data, or personal customer data appears in any tab.
 
 If any prerequisite is false, rehearse with placeholders but do not publish a
@@ -35,11 +35,12 @@ Record these values in the fixture manifest before the first timed rehearsal:
 | Demo customer ID/name | `254711000001` / `Mama Achieng` (synthetic) |
 | Usual order ground truth | `4x Unga wa Dola 2kg + 3x Laundry soap bar` |
 | Expected current catalog total | `KSh 1,035` |
-| Voice fixture | `{{VOICE_FIXTURE_PATH}}` |
-| Voice SHA-256 | `{{VOICE_FIXTURE_SHA256}}` |
-| Voice transcript | `Habari, niletee ya kawaida kesho asubuhi.` |
-| Ledger fixture | `fixtures/demo/ledger-page-v1.png` |
-| Ledger SHA-256 | `9b85c98d1d35e5b9c8a5e98d03dea9168ff014ce157c51bfa09da99de62f59a0` |
+| English voice fixture | `{{VOICE_EN_FIXTURE_PATH}}` / `{{VOICE_EN_SHA256}}` |
+| English voice transcript | `Hello, please bring me my usual order tomorrow morning.` |
+| Kiswahili voice fixture | `{{VOICE_SW_FIXTURE_PATH}}` / `{{VOICE_SW_SHA256}}` |
+| Kiswahili voice transcript | `Habari, niletee vitu vyangu vya kawaida kesho asubuhi.` |
+| English ledger fixture | `fixtures/demo/ledger-en-v2.png` / `{{LEDGER_EN_SHA256}}` |
+| Kiswahili ledger fixture | `fixtures/demo/ledger-sw-v2.png` / `{{LEDGER_SW_SHA256}}` |
 | Ledger expected clean/gated rows | `2` / `1` |
 | Inbound event ID strategy | Fresh server-generated ID; capture visible first 12 characters |
 | Synthetic statement seed | `2026` |
@@ -122,10 +123,10 @@ Follow `docs/demo-transcript.md` exactly:
 
 1. Start on outcome: digest and compressed approval queue.
 2. Select `{{DEMO_CUSTOMER_NAME}}` and confirm the fresh-session marker.
-3. Record or attach the frozen Swahili voice note.
+3. Attach the frozen English voice note for judge comprehension; keep the equivalent Kiswahili fixture visible as verified evidence.
 4. Hold on the visible `202 queued`, event prefix, and acknowledgement time.
 5. Hold on the final node path, itemized order, current KSh total, and order row.
-6. Upload `fixtures/demo/ledger-page-v1.png` through **Upload ledger**.
+6. Upload `fixtures/demo/ledger-en-v2.png` through **Upload ledger**, then show the equivalent Kiswahili fixture selector.
 7. Show the recorded/gated result and the one doubtful row in the queue.
 8. In Cloud Scheduler, force-run `{{NIGHTLY_SCHEDULER_NAME}}` without a cut.
 9. Show execution `{{JOB_EXECUTION_ID}}` succeed; return to the dashboard and refresh.
@@ -174,7 +175,7 @@ proof beat before attempting to speak faster.
 - A pre-recorded execution is acceptable only when labeled as such and tied to
   the exact release; never narrate it as the action just triggered.
 - If a model response, count, cost, or route differs, stop and investigate.
-- If the voice microphone fails, attach only the frozen purpose-recorded file.
+- If the voice microphone fails, attach only the frozen English Google fixture; never substitute an unmanifested file.
 - If eventual Memory generation is incomplete, do not wait live; use the
   pre-verified memory specified by the fixture manifest.
 - If the app, Scheduler, Job, or console is unavailable, abandon the take. A

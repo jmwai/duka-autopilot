@@ -3,6 +3,8 @@
 > Scope: local Phase F2 candidate after private commit `903f06c`
 > Cloud claim: none
 > Real-model claim: none in this verification run
+> Superseded: the media candidate documented here was quarantined and removed
+> from the active release on August 27; this file is historical evidence only.
 
 ## Implemented contract
 

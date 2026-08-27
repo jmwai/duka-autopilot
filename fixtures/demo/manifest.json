@@ -1,49 +1,16 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "release_ready": false,
   "synthetic_only": true,
-  "ledger": {
-    "path": "fixtures/demo/ledger-page-v1.png",
-    "mime_type": "image/png",
-    "sha256": "9b85c98d1d35e5b9c8a5e98d03dea9168ff014ce157c51bfa09da99de62f59a0",
-    "bytes": 3014160,
-    "width": 1024,
-    "height": 1536,
-    "created_utc": "2026-08-26",
-    "creator": "OpenAI built-in image generation",
-    "ground_truth": {
-      "recorded_rows": 2,
-      "gated_rows": 1,
-      "rows": [
-        {
-          "date": "12/08",
-          "description": "Unga Dola 2kg",
-          "quantity": 2,
-          "amount_ksh": 390,
-          "paid": true,
-          "expected_action": "record"
-        },
-        {
-          "date": "12/08",
-          "description": "Mafuta 1L",
-          "quantity": 1,
-          "amount_ksh": 320,
-          "paid": true,
-          "expected_action": "record"
-        },
-        {
-          "date": "12/08",
-          "description": "Sukari 1kg",
-          "quantity": 1,
-          "amount_ksh": null,
-          "paid": false,
-          "expected_action": "gate",
-          "issue": "amount unreadable"
-        }
-      ]
-    }
+  "provider_policy": {
+    "generated_media": "google_only",
+    "allowed": [
+      "google_vertex_ai",
+      "google_cloud_text_to_speech",
+      "first_party_human_recording"
+    ]
   },
-  "voice": {
-    "status": "pending_human_recording",
-    "transcript": "Habari, niletee ya kawaida kesho asubuhi."
-  }
+  "ledgers": [],
+  "voices": [],
+  "blocked_reason": "Vertex AI and Cloud Text-to-Speech APIs require explicit activation before bilingual release assets can be generated."
 }

@@ -1,45 +1,41 @@
-"""Integrity contract for stable, synthetic judge-facing demo fixtures."""
+"""Fail-closed state before Google bilingual fixtures are frozen."""
 from __future__ import annotations
 
-import hashlib
 import json
-import struct
 from pathlib import Path
+
+import pytest
+
+from scripts.verify_demo_fixtures import verify
 
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "fixtures" / "demo" / "manifest.json"
 
 
-def test_demo_fixture_manifest_and_ledger_bitmap_are_frozen():
+def test_demo_fixture_manifest_quarantines_legacy_media():
     manifest = json.loads(MANIFEST.read_text())
-    assert manifest["schema_version"] == 1
+    assert manifest["schema_version"] == 2
+    assert manifest["release_ready"] is False
     assert manifest["synthetic_only"] is True
-
-    ledger = manifest["ledger"]
-    image = ROOT / ledger["path"]
-    payload = image.read_bytes()
-    assert hashlib.sha256(payload).hexdigest() == ledger["sha256"]
-    assert len(payload) == ledger["bytes"]
-    assert len(payload) <= 6_000_000
-    assert payload[:8] == b"\x89PNG\r\n\x1a\n"
-    width, height = struct.unpack(">II", payload[16:24])
-    assert (width, height) == (ledger["width"], ledger["height"])
-    assert (width, height) == (1024, 1536)
-
-    truth = ledger["ground_truth"]
-    assert truth["recorded_rows"] == 2
-    assert truth["gated_rows"] == 1
-    assert len(truth["rows"]) == 3
-    assert [row["expected_action"] for row in truth["rows"]] == [
-        "record", "record", "gate"]
-    assert truth["rows"][2]["amount_ksh"] is None
-    assert truth["rows"][2]["issue"] == "amount unreadable"
-
-
-def test_voice_fixture_remains_explicitly_unfrozen_until_human_recording():
-    manifest = json.loads(MANIFEST.read_text())
-    assert manifest["voice"] == {
-        "status": "pending_human_recording",
-        "transcript": "Habari, niletee ya kawaida kesho asubuhi.",
+    assert manifest["provider_policy"] == {
+        "generated_media": "google_only",
+        "allowed": [
+            "google_vertex_ai",
+            "google_cloud_text_to_speech",
+            "first_party_human_recording",
+        ],
     }
+    assert manifest["ledgers"] == []
+    assert manifest["voices"] == []
+
+
+def test_quarantined_manifest_cannot_pass_release_verification():
+    with pytest.raises(ValueError, match="release_ready=true"):
+        verify(MANIFEST)
+
+
+def test_removed_non_google_media_is_not_present():
+    assert not (ROOT / "fixtures" / "demo" / "ledger-page-v1.png").exists()
+    voice_dir = ROOT / "data" / "voice_notes"
+    assert not voice_dir.exists() or list(voice_dir.iterdir()) == []

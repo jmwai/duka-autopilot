@@ -66,7 +66,7 @@
 | A24 | Negative memory | `IMPLEMENTED` | negative examples and allowlist tests | Memory Bank inspection |
 | A25 | Memory outage | `LOCAL-PROVEN` | durable outbox retry test | cloud degraded/retry trace |
 | A26 | Real voice | `CONTENT-PENDING` | byte-pipeline stub coverage only | human Swahili audio eval/video |
-| A27 | Ledger image | `IMPLEMENTED` | frozen synthetic bitmap/hash/ground truth plus per-row confidence tests | Gemini cloud extraction result and Loom proof |
+| A27 | Bilingual ledger images | `CONTENT-PENDING` | Google-only schema, prompts, generator, and verifier implemented; APIs disabled | English/Kiswahili Vertex-generated fixtures, Gemini extraction results, and Loom proof |
 | A28 | Scheduled night shift | `IMPLEMENTED` | Job/Scheduler Terraform and local nightly tests | Scheduler execution ID/report |
 | A29 | Authorization | `IMPLEMENTED` | local BFF/route auth tests and IAM config | incognito/IAM denial matrix |
 | A30 | Rollback | `IMPLEMENTED` | promotion workflow | timed production drill |
@@ -77,7 +77,7 @@
 |---|---|---|
 | `docs/evidence/local-preflight-2026-08-26.md` | 107/0/0 suite, schema/workflow/container/seed/eval-package gate | Current local candidate |
 | `docs/evidence/prepush-audit.json` | Candidate and branch/tag history credential/trailer scan | Preliminary; rerun immediately before each push |
-| `fixtures/demo/manifest.json` | Frozen synthetic ledger hash, dimensions, size, and extraction ground truth | Current local candidate; model validation cloud-pending |
+| `fixtures/demo/manifest.json` | Google-only bilingual fixture allowlist and freeze contract | Schema v2 implemented; release-ready false until four generated assets are frozen |
 | `docs/evidence/benchmark-local.json` | Raw 50,000-row local no-fuzzy baseline | Current local candidate |
 | `docs/economics.md` | Interpreted local baseline and claim limits | Current local candidate |
 | `deployment/compatibility.json` | Durable topology fingerprint | Enforced locally and in deploy workflows |
