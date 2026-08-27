@@ -44,7 +44,6 @@ function confidence(value: number | null) {
 
 export function decisionPresentation(approval: Approval): DecisionPresentation {
   const payload = approval.payload;
-  const customerId = text(payload, "customer_id");
   const orderId = text(payload, "order_id") ?? number(payload, "order_id")?.toString();
 
   switch (approval.kind) {
@@ -59,7 +58,7 @@ export function decisionPresentation(approval: Approval): DecisionPresentation {
         approveLabel: "Approve proposal",
         rejectLabel: "Reject refund",
         canApprove: true,
-        identifiers: [orderId ? `Order #${orderId}` : null, customerId ? `Customer ${customerId}` : null].filter(Boolean) as string[],
+        identifiers: [orderId ? `Order #${orderId}` : null].filter(Boolean) as string[],
         evidence: [text(payload, "reason") ? `Customer reason: ${text(payload, "reason")}` : null].filter(Boolean) as string[],
       };
     case "fuzzy_match": {
@@ -91,7 +90,7 @@ export function decisionPresentation(approval: Approval): DecisionPresentation {
         approveLabel: "Keep draft",
         rejectLabel: "Reject draft",
         canApprove: true,
-        identifiers: [orderId ? `Order #${orderId}` : null, customerId ? `Customer ${customerId}` : null].filter(Boolean) as string[],
+        identifiers: [orderId ? `Order #${orderId}` : null].filter(Boolean) as string[],
         evidence: [score, text(payload, "notes")].filter(Boolean) as string[],
       };
     }
@@ -114,7 +113,7 @@ export function decisionPresentation(approval: Approval): DecisionPresentation {
         approveLabel: "Record row",
         rejectLabel: "Reject row",
         canApprove: positiveAmount,
-        identifiers: [text(row, "customer_id") ? `Customer ${text(row, "customer_id")}` : rowCustomer].filter(Boolean) as string[],
+        identifiers: [rowCustomer],
         evidence: [score, text(payload, "page_note")].filter(Boolean) as string[],
       };
     }
@@ -125,14 +124,14 @@ export function decisionPresentation(approval: Approval): DecisionPresentation {
       return {
         label: "Security flag",
         risk: "security",
-        observed: `A message from ${customerId ?? "an unknown sender"} matched the deterministic security screen.`,
+        observed: "A customer message matched the deterministic security screen.",
         stopped: "Blocked content never reached a business agent or tool.",
         approveEffect: "Record that the owner acknowledged this security review. The blocked message is not replayed or treated as authority.",
         rejectEffect: "Close the flag as rejected. The blocked message remains excluded from agent context and Memory.",
         approveLabel: "Acknowledge",
         rejectLabel: "Dismiss",
         canApprove: true,
-        identifiers: [customerId ? `Customer ${customerId}` : null].filter(Boolean) as string[],
+        identifiers: [],
         evidence: [...reasons, text(payload, "message_excerpt") ? `Excerpt: “${text(payload, "message_excerpt")}”` : null].filter(Boolean) as string[],
       };
     }

@@ -85,12 +85,15 @@ def save_order(items: list[dict], confidence: float, notes: str,
     needs_review = confidence_value < CONFIDENCE_GATE
     status = "needs_review" if needs_review else "pending_confirmation"
     safe_notes = str(notes or "")[:500]
+    source_event_id = str(
+        tool_context.state.get("source_event_id") or "").strip() or None
     order_id = store.create_order(
         customer_id,
         grounded_items,
         status=status,
         needs_review=needs_review,
         notes=safe_notes,
+        source_event_id=source_event_id,
     )
     total = sum(i["unit_price"] * i["qty"] for i in grounded_items)
     if needs_review:
@@ -99,6 +102,7 @@ def save_order(items: list[dict], confidence: float, notes: str,
             "customer_id": customer_id,
             "confidence": confidence_value,
             "notes": safe_notes,
+            "source_event_id": source_event_id,
         })
     return {
         "status": "success",

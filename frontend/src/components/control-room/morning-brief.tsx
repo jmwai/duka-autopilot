@@ -3,68 +3,59 @@ import {
   CheckCircle2,
   Clock3,
   Coins,
+  FileSearch,
   MessageSquareText,
+  PackageSearch,
   ShieldCheck,
   ShoppingBag,
 } from "lucide-react";
 import Link from "next/link";
 
+import { AuthorityRail } from "@/components/control-room/authority-rail";
+import { KshValue, Metric } from "@/components/control-room/metric";
+import { PageHeader } from "@/components/control-room/page-header";
+import { ProofSheet } from "@/components/control-room/proof-sheet";
+import { TrustBadge } from "@/components/control-room/trust-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import type { MorningBriefData } from "@/lib/api/morning-brief";
-import { formatKsh } from "@/lib/format/money";
-
-import { PageHeader } from "./page-header";
-import { TrustBadge } from "./trust-badge";
+import { decisionPresentation } from "@/lib/decisions/decision";
 
 function approvalLabel(kind: string) {
   return kind.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function finishLabel(value?: string) {
+  if (!value) return "Finish time not reported";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.valueOf())) return value;
+  return new Intl.DateTimeFormat("en-KE", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Africa/Nairobi",
+    timeZoneName: "short",
+  }).format(parsed);
+}
+
 export function MorningBrief({ data }: { data: MorningBriefData }) {
   const { digest, approvals, statement, version } = data;
+  const nightly = digest.digest.nightly;
   const settledRate = statement.total ? statement.matched_exact / statement.total : 0;
   const settledPercent = new Intl.NumberFormat("en", { style: "percent", maximumFractionDigits: 1 }).format(settledRate);
-
-  const cards = [
-    {
-      label: "Settled exactly",
-      value: statement.matched_exact.toLocaleString(),
-      detail: `${settledPercent} of statement rows`,
-      icon: CheckCircle2,
-      tone: "text-exact bg-exact/10",
-    },
-    {
-      label: "Needs your decision",
-      value: digest.digest.approvals_pending.toLocaleString(),
-      detail: approvals.length ? `${approvalLabel(approvals[0].kind)} is first` : "Queue is clear",
-      icon: ShieldCheck,
-      tone: "text-foreground bg-attention/15",
-    },
-    {
-      label: "Orders · 24h",
-      value: digest.digest.orders_last_24h.toLocaleString(),
-      detail: `${digest.digest.paid_last_24h} already paid`,
-      icon: ShoppingBag,
-      tone: "text-primary bg-primary/10",
-    },
-    {
-      label: "Paid revenue · 24h",
-      value: formatKsh(digest.digest.revenue_paid_last_24h),
-      detail: "Integer KSh from the books",
-      icon: Coins,
-      tone: "text-gemini bg-gemini/10",
-    },
-  ];
+  const residue = statement.unmatched + statement.fuzzy_proposed;
+  const environment = version.environment || "unknown";
+  const releaseProven = Boolean(version.release_sha && version.release_sha !== "unknown");
+  const nightlyObserved = Boolean(nightly?.finished_at || nightly?.run_id);
+  const firstDecisions = approvals.slice(0, 3).map((approval) => ({ approval, view: decisionPresentation(approval) }));
 
   return (
     <>
       <PageHeader
         eyebrow={`Morning brief · ${digest.digest.date}`}
         title="Your shop is ready for the day."
-        description="Routine evidence was handled overnight. What remains is small, explicit and yours to decide."
+        description="Routine evidence was handled overnight. What remains is small, explicit, and yours to decide."
         action={
           <Button asChild size="lg">
             <Link href="/approvals">
@@ -75,136 +66,133 @@ export function MorningBrief({ data }: { data: MorningBriefData }) {
         }
       />
 
-      <section className="paper-noise relative mb-6 overflow-hidden rounded-2xl bg-sidebar px-5 py-6 text-sidebar-foreground shadow-sm sm:px-7 sm:py-7">
-        <div className="relative z-10 flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+      <section className="paper-noise relative mb-5 overflow-hidden rounded-2xl bg-sidebar px-5 py-6 text-sidebar-foreground shadow-sm sm:px-7 sm:py-7">
+        <div className="relative z-10 grid gap-7 lg:grid-cols-[minmax(0,1fr)_minmax(19rem,0.48fr)] lg:items-end">
           <div>
-            <div className="mb-3 flex flex-wrap items-center gap-2">
-              <Badge className="border-white/15 bg-white/10 text-white">Autopilot is on</Badge>
-              <Badge className="border-white/15 bg-transparent font-mono text-sidebar-muted">
-                {version.release_sha.slice(0, 9)}
+            <div className="mb-4 flex flex-wrap items-center gap-2">
+              <Badge className="border-white/15 bg-white/10 text-white">
+                <CheckCircle2 aria-hidden="true" className="size-3.5" />
+                {nightlyObserved ? "Night shift complete" : "Brief assembled"}
               </Badge>
+              <Badge className="border-white/15 bg-transparent font-mono text-sidebar-muted">{environment}</Badge>
             </div>
-            <h2 className="max-w-2xl text-2xl font-bold tracking-tight sm:text-3xl">
-              The duka slept. Its back office did not.
+            <p className="text-xs font-semibold text-sidebar-muted">{nightlyObserved ? `Finished ${finishLabel(nightly?.finished_at)}` : "No observed run finish time is available"}</p>
+            <h2 className="numeric mt-2 text-4xl font-bold tracking-[-0.045em] sm:text-5xl">
+              {statement.matched_exact.toLocaleString()}
+              <span className="ml-2 text-lg font-semibold tracking-normal text-sidebar-muted sm:text-xl">settled exactly</span>
             </h2>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-sidebar-muted">
-              Exact evidence settles automatically. Gemini sees only bounded ambiguity. Consequential uncertainty waits for you.
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-sidebar-muted">
+              {settledPercent} of {statement.total.toLocaleString()} statement rows cleared without model judgment. Gemini saw only bounded residue; consequential ambiguity stopped for you.
             </p>
           </div>
-          <div className="grid grid-cols-3 gap-2 sm:min-w-[24rem]">
-            <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-              <p className="text-[0.65rem] font-bold uppercase tracking-wider text-sidebar-muted">Model</p>
-              <p className="mt-1 break-words font-mono text-[0.68rem] leading-4">{version.model}</p>
-            </div>
-            <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-              <p className="text-[0.65rem] font-bold uppercase tracking-wider text-sidebar-muted">Location</p>
-              <p className="mt-1 font-mono text-xs">{version.model_location}</p>
-            </div>
-            <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-              <p className="text-[0.65rem] font-bold uppercase tracking-wider text-sidebar-muted">Topology</p>
-              <p className="mt-1 font-mono text-xs">{version.durable_topology.compatible ? "compatible" : "blocked"}</p>
+
+          <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+            <p className="text-[0.68rem] font-bold uppercase tracking-[0.16em] text-sidebar-muted">Your morning action</p>
+            <p className="numeric mt-2 text-3xl font-bold">{approvals.length}</p>
+            <p className="mt-1 text-sm text-sidebar-muted">decision{approvals.length === 1 ? "" : "s"} need owner authority</p>
+            <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+              <Button asChild className="bg-white text-sidebar hover:bg-white/90">
+                <Link href="/approvals">Review queue <ArrowRight aria-hidden="true" /></Link>
+              </Button>
+              <ProofSheet
+                title="Morning brief proof"
+                description="Release and execution evidence behind the visible overnight outcome."
+                outcome={<>{statement.matched_exact.toLocaleString()} rows are reported as exact matches; {approvals.length} consequential item{approvals.length === 1 ? " is" : "s are"} waiting.</>}
+                reason="Exact matching is deterministic. Gemini may interpret bounded residue, but uncertain money-adjacent outcomes enter the owner queue instead of being declared settled."
+                facts={[
+                  { label: "Environment", value: environment },
+                  { label: "Release SHA", value: version.release_sha || "not proven" },
+                  { label: "Model", value: version.model },
+                  { label: "Model location", value: version.model_location },
+                  ...(nightly?.run_id ? [{ label: "Night run", value: nightly.run_id }] : []),
+                ]}
+                sources={[
+                  { label: "Validated API release", detail: version.release_sha || "Release identifier absent", state: releaseProven ? "proven" : "not-proven" },
+                  { label: "Backend image digest", detail: version.backend_image_digest || "Not returned by this environment", state: version.backend_image_digest ? "proven" : "pending" },
+                  { label: "Observed night run", detail: nightly?.run_id || "No run identifier returned", state: nightlyObserved ? "proven" : "pending" },
+                ]}
+                limitations={[
+                  "Exact matches update internal bookkeeping only.",
+                  "This release does not initiate an external M-Pesa transfer or supplier order.",
+                  environment === "local" ? "Local evidence is not presented as Google Cloud execution proof." : "Cloud status is proven only by the linked release artifacts.",
+                ]}
+                trigger={<Button type="button" variant="outline" className="border-white/20 bg-transparent text-white hover:bg-white/10 hover:text-white"><FileSearch aria-hidden="true" /> Show proof</Button>}
+              />
             </div>
           </div>
         </div>
       </section>
 
+      <AuthorityRail
+        className="mb-5"
+        steps={[
+          { lane: "exact", title: "Routine evidence settled", detail: "Reference, amount, and chronology satisfied deterministic invariants.", value: statement.matched_exact.toLocaleString() },
+          { lane: "gemini", title: "Ambiguity stayed bounded", detail: "The model may extract or propose; it cannot declare uncertain money paid.", value: residue.toLocaleString() },
+          { lane: "owner", title: "Consequences stopped here", detail: "Only the exact effect written in the decision queue can be authorized.", value: approvals.length.toLocaleString() },
+        ]}
+      />
+
       <section aria-label="Morning outcomes" className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {cards.map(({ label, value, detail, icon: Icon, tone }) => (
-          <Card key={label}>
-            <CardContent className="p-5">
-              <div className={`mb-5 grid size-10 place-items-center rounded-lg ${tone}`}>
-                <Icon aria-hidden="true" className="size-4.5" />
-              </div>
-              <p className="text-sm font-medium text-muted-foreground">{label}</p>
-              <p className="numeric mt-1 text-2xl font-bold tracking-tight">{value}</p>
-              <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
-            </CardContent>
-          </Card>
-        ))}
+        <Metric label="Settled exactly" value={statement.matched_exact.toLocaleString()} detail={`${settledPercent} of statement rows`} icon={CheckCircle2} tone="exact" />
+        <Metric label="Needs your decision" value={digest.digest.approvals_pending.toLocaleString()} detail={approvals.length ? `${approvalLabel(approvals[0].kind)} is first` : "Queue is clear"} icon={ShieldCheck} tone="owner" />
+        <Metric label="Paid orders · 24h" value={digest.digest.paid_last_24h.toLocaleString()} detail={`${digest.digest.orders_last_24h.toLocaleString()} total orders`} icon={ShoppingBag} />
+        <Metric label="Paid revenue · 24h" value={<KshValue value={digest.digest.revenue_paid_last_24h} />} detail="Integer KSh from the books" icon={Coins} />
       </section>
 
-      <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+      <div className="grid items-start gap-6 xl:grid-cols-[1.05fr_0.95fr]">
         <Card>
           <CardHeader>
             <div className="flex items-start justify-between gap-4">
-              <div>
-                <CardTitle>What happened overnight</CardTitle>
-                <CardDescription>A single causal path, separated by authority.</CardDescription>
-              </div>
+              <div><CardTitle>First decisions</CardTitle><CardDescription>Why Duka stopped, and the exact internal effect awaiting authority.</CardDescription></div>
               <Clock3 aria-hidden="true" className="size-5 text-muted-foreground" />
             </div>
           </CardHeader>
-          <CardContent>
-            <ol className="space-y-0">
-              {[
-                { lane: "exact" as const, title: "Exact evidence settled", text: `${statement.matched_exact.toLocaleString()} payment rows matched without model judgment.` },
-                { lane: "gemini" as const, title: "Ambiguity stayed bounded", text: `${statement.unmatched.toLocaleString()} unmatched and ${statement.fuzzy_proposed.toLocaleString()} proposed; Gemini cannot declare uncertain money paid.` },
-                { lane: "owner" as const, title: "Consequences stopped here", text: `${approvals.length.toLocaleString()} decision${approvals.length === 1 ? "" : "s"} remain in one review queue.` },
-              ].map((step, index, all) => (
-                <li key={step.lane} className="grid grid-cols-[2rem_1fr] gap-3">
-                  <div className="flex flex-col items-center">
-                    <span className="mt-1 grid size-7 place-items-center rounded-full border bg-card font-mono text-xs font-bold">{index + 1}</span>
-                    {index < all.length - 1 ? <span className="my-1 h-full w-px bg-border" /> : null}
+          <CardContent className="space-y-0">
+            {firstDecisions.map(({ approval, view }, index) => (
+              <div key={approval.id}>
+                {index ? <Separator className="my-4" /> : null}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold">{view.label}</p>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">{view.stopped}</p>
+                    <p className="mt-2 rounded-lg bg-muted/50 p-2.5 text-xs leading-5"><span className="font-semibold">If approved:</span> {view.approveEffect}</p>
                   </div>
-                  <div className="pb-6">
-                    <TrustBadge lane={step.lane} />
-                    <p className="mt-2 font-semibold">{step.title}</p>
-                    <p className="mt-1 text-sm leading-6 text-muted-foreground">{step.text}</p>
-                  </div>
-                </li>
-              ))}
-            </ol>
+                  <TrustBadge lane="owner" />
+                </div>
+              </div>
+            ))}
+            {!approvals.length ? <div className="rounded-lg bg-exact/10 p-4 text-sm text-exact">Nothing is waiting for you. The decision queue is clear.</div> : null}
+            <Button asChild variant="outline" className="mt-5 w-full"><Link href="/approvals">Open decision queue <ArrowRight aria-hidden="true" /></Link></Button>
           </CardContent>
         </Card>
 
         <div className="space-y-6">
           <Card>
             <CardHeader>
-              <div className="flex items-center gap-2">
-                <MessageSquareText aria-hidden="true" className="size-4.5 text-primary" />
-                <CardTitle>Morning digest</CardTitle>
-              </div>
-              <CardDescription>Deterministic prose assembled directly from the books.</CardDescription>
+              <div className="flex items-center gap-2"><MessageSquareText aria-hidden="true" className="size-4.5 text-primary" /><CardTitle>Morning digest</CardTitle></div>
+              <CardDescription>Deterministic prose assembled directly from validated books.</CardDescription>
             </CardHeader>
-            <CardContent>
-              <p className="whitespace-pre-line text-sm leading-6">{digest.text}</p>
-            </CardContent>
+            <CardContent><p className="whitespace-pre-line text-sm leading-6">{digest.text}</p></CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle>First decisions</CardTitle>
-              <CardDescription>Why Duka stopped instead of guessing.</CardDescription>
+              <div className="flex items-center gap-2"><PackageSearch aria-hidden="true" className="size-4.5 text-owner" /><CardTitle>Stock attention</CardTitle></div>
+              <CardDescription>Evidence for the next review, not a supplier order.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3">
-              {approvals.slice(0, 3).map((approval, index) => (
-                <div key={approval.id}>
-                  {index ? <Separator className="mb-3" /> : null}
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold">{approvalLabel(approval.kind)}</p>
-                      <p className="mt-1 font-mono text-xs text-muted-foreground">#{approval.id}</p>
-                    </div>
-                    <Badge variant="attention">Owner</Badge>
-                  </div>
+            <CardContent>
+              {digest.digest.low_stock.length ? (
+                <div className="space-y-3">
+                  {digest.digest.low_stock.slice(0, 3).map((item) => <div key={item.sku} className="flex items-center justify-between gap-3 text-sm"><span className="min-w-0 truncate font-medium">{item.name}</span><span className="numeric shrink-0 font-mono text-xs text-muted-foreground">{item.stock} left</span></div>)}
+                  <Button asChild variant="outline" className="w-full"><Link href="/inventory">Review stock evidence <ArrowRight aria-hidden="true" /></Link></Button>
                 </div>
-              ))}
-              {!approvals.length ? (
-                <div className="rounded-lg bg-exact/10 p-4 text-sm text-exact">
-                  Nothing is waiting for you. The decision queue is clear.
-                </div>
-              ) : null}
-              <Button asChild variant="outline" className="mt-2 w-full">
-                <Link href="/approvals">Open decision queue <ArrowRight aria-hidden="true" /></Link>
-              </Button>
+              ) : <p className="text-sm text-muted-foreground">No low-stock items were reported in this brief.</p>}
             </CardContent>
           </Card>
         </div>
       </div>
 
-      <p className="mt-7 text-center text-xs text-muted-foreground">
-        Synthetic judging environment · No external M-Pesa transfer or supplier order is initiated.
-      </p>
+      <p className="mt-7 text-center text-xs text-muted-foreground">Synthetic judging environment · No external M-Pesa transfer or supplier order is initiated.</p>
     </>
   );
 }

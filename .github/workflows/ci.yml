@@ -147,6 +147,18 @@ jobs:
       - name: Lint, typecheck, test, and build
         run: pnpm check
 
+      - name: Install the deterministic E2E backend
+        run: |
+          python3 -m pip install --disable-pip-version-check "uv==${UV_VERSION}"
+          cd ..
+          uv sync --locked --extra dev --python "${PYTHON_VERSION}"
+
+      - name: Install the pinned Playwright browser
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run production browser, accessibility, and mutation journeys
+        run: pnpm test:e2e
+
   containers:
     name: Reproducible container builds
     runs-on: ubuntu-24.04

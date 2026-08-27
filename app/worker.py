@@ -100,6 +100,7 @@ async def handle_inbound(payload: dict) -> dict:
             customer_id, text,
             image_bytes=image, image_mime=image_mime,
             audio_bytes=audio, audio_mime=audio_mime,
+            source_event_id=event_id,
         )
     except Exception as exc:
         retryable = _retryable(exc)

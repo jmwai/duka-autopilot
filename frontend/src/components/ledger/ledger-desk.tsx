@@ -21,8 +21,10 @@ import { useRouter } from "next/navigation";
 import { DragEvent, FormEvent, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { AuthorityRail } from "@/components/control-room/authority-rail";
 import { PageHeader } from "@/components/control-room/page-header";
-import { TrustBadge } from "@/components/control-room/trust-badge";
+import { PendingState } from "@/components/control-room/product-states";
+import { EvidenceSource, ProofSheet } from "@/components/control-room/proof-sheet";
 import { ExecutionReceipt } from "@/components/inbox/execution-receipt";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -80,21 +82,7 @@ function ExpectedTruth({ fixture, blockedReason }: {
   blockedReason?: string;
 }) {
   if (!fixture) {
-    return (
-      <Card className="border-dashed">
-        <CardContent className="grid min-h-64 place-items-center p-8 text-center">
-          <div>
-            <span className="mx-auto grid size-12 place-items-center rounded-xl bg-muted text-muted-foreground">
-              <FileCheck2 aria-hidden="true" className="size-5" />
-            </span>
-            <p className="mt-4 font-semibold">Verified bilingual fixtures are pending</p>
-            <p className="mt-1 max-w-lg text-sm leading-6 text-muted-foreground">
-              {blockedReason ?? "Choose an owner photograph, or wait until both Google-generated English and Kiswahili release fixtures pass integrity checks."}
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-    );
+    return <PendingState title="Verified bilingual fixtures are pending" description={blockedReason ?? "Choose an owner photograph, or wait until both Google-generated English and Kiswahili release fixtures pass integrity checks."} />;
   }
   return (
     <Card>
@@ -104,9 +92,30 @@ function ExpectedTruth({ fixture, blockedReason }: {
             <CardTitle>Frozen ground truth</CardTitle>
             <CardDescription>{fixture.label} · expected outcome, not a model result.</CardDescription>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap justify-end gap-2">
             <Badge variant="outline">{fixture.language === "en-KE" ? "English" : "Kiswahili"}</Badge>
             <Badge variant="outline">Google · synthetic</Badge>
+            <ProofSheet
+              title={`${fixture.label} provenance`}
+              description="Frozen source, integrity, and reviewed expected truth for this release ledger."
+              outcome={`Two rows must record and one unreadable row must stop for owner review.`}
+              reason="The image is admitted only after its byte count and SHA-256 match the manifest. Frozen truth is reviewed independently from the observed model result."
+              facts={[
+                { label: "Language", value: fixture.language },
+                { label: "Provider", value: fixture.source.provider },
+                { label: "Model", value: fixture.source.model },
+                { label: "Location", value: fixture.source.location },
+                { label: "SHA-256", value: fixture.sha256 },
+                { label: "Prompt SHA-256", value: fixture.source.prompt_sha256 },
+              ]}
+              sources={[
+                { label: "Google Vertex AI image", detail: `${fixture.source.model} · ${fixture.source.location}`, state: "proven" },
+                { label: "Release integrity", detail: `${formatMediaBytes(fixture.bytes)} · ${fixture.width}×${fixture.height}`, state: "proven" },
+                { label: "Reviewed ground truth", detail: "2 record · 1 gate", state: "proven" },
+              ]}
+              limitations={["Synthetic media is used for privacy and known ground truth.", "Source integrity does not by itself prove extraction accuracy; observed truth is compared separately."]}
+              trigger={<Button type="button" size="sm" variant="ghost">Provenance</Button>}
+            />
           </div>
         </div>
       </CardHeader>
@@ -312,11 +321,14 @@ export function LedgerDesk() {
         action={<Button asChild variant="outline"><Link href="/approvals"><ShieldAlert aria-hidden="true" /> Review gated rows</Link></Button>}
       />
 
-      <div className="mb-5 grid gap-3 sm:grid-cols-3">
-        <div className="rounded-xl border bg-card p-3.5"><TrustBadge lane="gemini" /><p className="mt-2 text-xs leading-5 text-muted-foreground">Reads handwriting and proposes structured rows.</p></div>
-        <div className="rounded-xl border bg-card p-3.5"><TrustBadge lane="exact" /><p className="mt-2 text-xs leading-5 text-muted-foreground">Validates amount, confidence, identity and row effect.</p></div>
-        <div className="rounded-xl border bg-card p-3.5"><TrustBadge lane="owner" /><p className="mt-2 text-xs leading-5 text-muted-foreground">Receives only doubtful rows, never the whole page.</p></div>
-      </div>
+      <AuthorityRail
+        className="mb-5"
+        steps={[
+          { lane: "gemini", title: "Handwriting becomes proposals", detail: "Gemini reads the page but does not commit a row." },
+          { lane: "exact", title: "Every row is validated", detail: "Amount, confidence, identity, and effect are checked separately." },
+          { lane: "owner", title: "Only doubtful rows stop", detail: "Clear entries continue; unreadable values remain blank." },
+        ]}
+      />
 
       <div className="grid items-start gap-5 xl:grid-cols-[0.85fr_1.15fr]">
         <div className="space-y-5 xl:sticky xl:top-24">
@@ -327,7 +339,7 @@ export function LedgerDesk() {
             </CardHeader>
             <CardContent>
               <form onSubmit={submitLedger} className="space-y-4">
-                <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; if (file) chooseFile(file); event.currentTarget.value = ""; }} />
+                <input ref={fileInputRef} type="file" aria-label="Choose a handwritten ledger image" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; if (file) chooseFile(file); event.currentTarget.value = ""; }} />
                 {selected ? (
                   <>
                     <Preview key={selected.id} selected={selected} />
@@ -392,19 +404,15 @@ export function LedgerDesk() {
           )}
           <Card>
             <CardHeader><CardTitle>Release integrity</CardTitle><CardDescription>The demo image is copied into the standalone image only after its source hash and byte count match the frozen manifest.</CardDescription></CardHeader>
-            <CardContent className="grid gap-3 sm:grid-cols-2">
-              <div className="rounded-lg bg-muted p-3">
-                <p className="text-xs text-muted-foreground">Release fixture</p>
-                <p className="mt-1 text-sm font-semibold">
-                  {selected?.fixture
-                    ? `${selected.fixture.language === "en-KE" ? "English" : "Kiswahili"} · Google Vertex AI · verified`
-                    : manifest?.release_ready
-                      ? "English and Kiswahili · ready"
-                      : "English and Kiswahili · pending Google generation"}
-                </p>
-                {selected?.fixture ? <p className="mt-1 font-mono text-[0.66rem] text-muted-foreground">{selected.fixture.source.model} · {selected.fixture.source.location} · {selected.fixture.sha256.slice(0, 16)}…</p> : null}
-              </div>
-              <div className="rounded-lg bg-muted p-3"><p className="text-xs text-muted-foreground">External financial effect</p><p className="mt-1 text-sm font-semibold">None · internal books and proposals only</p></div>
+            <CardContent className="grid gap-2 sm:grid-cols-2">
+              <EvidenceSource
+                label="Bilingual Google fixtures"
+                detail={selected?.fixture
+                  ? `${selected.fixture.language === "en-KE" ? "English" : "Kiswahili"} · ${selected.fixture.source.model} · ${selected.fixture.sha256.slice(0, 16)}…`
+                  : manifest?.release_ready ? "English and Kiswahili release set" : manifest?.blocked_reason ?? "Pending Google generation"}
+                state={selected?.fixture || manifest?.release_ready ? "proven" : "pending"}
+              />
+              <EvidenceSource label="External financial effect" detail="None · internal books and proposals only" state="proven" />
             </CardContent>
           </Card>
         </div>

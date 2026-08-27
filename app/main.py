@@ -158,6 +158,28 @@ def products(_auth: None = Depends(require_owner)):
     return get_store().products()
 
 
+@app.get("/inventory")
+def inventory(_auth: None = Depends(require_owner)):
+    """Catalog stock annotated with the deterministic restock policy.
+
+    The frontend must not duplicate or guess reorder thresholds. This endpoint
+    exposes only reviewed catalog arithmetic; it does not place a supplier
+    order or mutate stock.
+    """
+    from agents.restock import REORDER_POINT, TARGET_STOCK
+
+    return [
+        {
+            **product,
+            "reorder_point": REORDER_POINT,
+            "target_stock": TARGET_STOCK,
+            "low": int(product["stock"]) <= REORDER_POINT,
+            "suggested_qty": max(0, TARGET_STOCK - int(product["stock"])),
+        }
+        for product in get_store().products()
+    ]
+
+
 class SaleItem(BaseModel):
     sku: str
     qty: int = Field(gt=0, le=10_000)
@@ -207,6 +229,11 @@ def approvals(_auth: None = Depends(require_owner)):
         # owner UI needs business evidence, never session or interrupt IDs.
         payload.pop("session_id", None)
         payload.pop("interrupt_id", None)
+        # Phone-shaped customer keys are authority scope, not browser evidence.
+        payload.pop("customer_id", None)
+        if isinstance(payload.get("row"), dict):
+            payload["row"] = dict(payload["row"])
+            payload["row"].pop("customer_id", None)
         public.append({
             "id": approval["id"],
             "kind": approval["kind"],
@@ -375,7 +402,8 @@ async def ledger_upload(body: LedgerUploadIn,
     try:
         result = await run_turn(
             "owner", "Digitize this handwritten ledger page.",
-            image_bytes=image, image_mime=body.image_mime, actor_role="owner")
+            image_bytes=image, image_mime=body.image_mime, actor_role="owner",
+            source_event_id=event_id)
     except Exception as exc:
         from app.worker import _retryable
         store.fail_event(
@@ -524,6 +552,12 @@ def version():
         "model_location": os.environ.get("GOOGLE_CLOUD_LOCATION", "global"),
         "durable_topology": manifest_status(),
     }
+
+
+@app.get("/evidence/release")
+def evidence_release(_auth: None = Depends(require_owner)):
+    from app.evidence import release_evidence
+    return release_evidence()
 
 
 class OwnerLogin(BaseModel):

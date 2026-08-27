@@ -17,6 +17,9 @@ frontend/*.tsbuildinfo
 frontend/.eslintcache
 frontend/pnpm-debug.log*
 frontend/public/demo/
+frontend/.e2e/
+frontend/test-results/
+frontend/playwright-report/
 
 # Terraform working data and local state; provider lock files stay tracked.
 **/.terraform/

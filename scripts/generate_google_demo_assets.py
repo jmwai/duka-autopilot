@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import wave
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -42,6 +43,7 @@ LEDGERS = {
 VOICES = {
     "en-KE": {
         "text": "Hello, please bring me my usual order tomorrow morning.",
+        "english_translation": "Hello, please bring me my usual order tomorrow morning.",
         "prompt": (
             "Speak as a friendly adult Kenyan shop customer leaving a short "
             "voice note. Use a natural conversational pace, clear diction, and "
@@ -51,6 +53,7 @@ VOICES = {
     },
     "sw-KE": {
         "text": "Habari, niletee vitu vyangu vya kawaida kesho asubuhi.",
+        "english_translation": "Hello, please bring me my usual items tomorrow morning.",
         "prompt": (
             "Sema kama mteja mtu mzima wa Kenya anayeacha ujumbe mfupi wa sauti "
             "kwa duka. Tumia kasi ya kawaida, matamshi wazi, na sauti ya kirafiki. "
@@ -78,6 +81,9 @@ def _metadata(path: Path, *, source: dict[str, Any]) -> dict[str, Any]:
             result.update({"mime_type": "image/png", "width": image.width, "height": image.height})
     else:
         result["mime_type"] = "audio/wav"
+        with wave.open(str(path), "rb") as audio:
+            result["duration_seconds"] = round(
+                audio.getnframes() / audio.getframerate(), 3)
     return result
 
 
@@ -164,6 +170,7 @@ def generate_voices(project: str, location: str, model: str, speaker: str) -> li
             {
                 "language": language,
                 "transcript": fixture["text"],
+                "english_translation": fixture["english_translation"],
                 **_metadata(
                     output_path,
                     source={
@@ -173,6 +180,10 @@ def generate_voices(project: str, location: str, model: str, speaker: str) -> li
                         "model": model,
                         "speaker": speaker,
                         "style_prompt": fixture["prompt"],
+                        "transcript_sha256": _sha256(
+                            fixture["text"].encode("utf-8")),
+                        "style_prompt_sha256": _sha256(
+                            fixture["prompt"].encode("utf-8")),
                         "generated_utc": datetime.now(timezone.utc).isoformat(),
                         "synthetic": True,
                     },
@@ -188,7 +199,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--project", default="my-duka-autopilot")
     parser.add_argument("--image-location", default="global")
     parser.add_argument("--image-model", default="gemini-2.5-flash-image")
-    parser.add_argument("--voice-location", default="europe-west1")
+    # Cloud Text-to-Speech exposes Gemini-TTS in the EU multi-region. The
+    # europe-west1 listing applies to the Vertex AI API, not Cloud TTS.
+    parser.add_argument("--voice-location", default="eu")
     parser.add_argument("--voice-model", default="gemini-2.5-flash-tts")
     parser.add_argument("--speaker", default="Kore")
     return parser.parse_args()

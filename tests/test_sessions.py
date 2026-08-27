@@ -52,6 +52,35 @@ async def test_session_rotation_persists_pointer_and_preserves_old_session():
 
 
 @pytest.mark.asyncio
+async def test_turn_correlation_enters_adk_state_and_is_explicitly_cleared(
+        monkeypatch):
+    from app import runner as runner_module
+
+    calls = []
+
+    async def capture_run_async(**kwargs):
+        calls.append(kwargs)
+        if False:
+            yield None
+
+    async def no_memory(_customer_id):
+        return False
+
+    monkeypatch.setattr(runner_module.runner, "run_async", capture_run_async)
+    monkeypatch.setattr(runner_module, "_ingest_order_summary", no_memory)
+
+    await runner_module._run_turn_locked(
+        "254711000001", "Nataka unga",
+        source_event_id="evt-state-1")
+    await runner_module._run_turn_locked(
+        "254711000001", "Asante",
+        source_event_id=None)
+
+    assert calls[0]["state_delta"]["source_event_id"] == "evt-state-1"
+    assert calls[1]["state_delta"]["source_event_id"] is None
+
+
+@pytest.mark.asyncio
 async def test_memory_summary_is_allowlisted_and_opaque(monkeypatch):
     from app import runner as runner_module
     captured = {}

@@ -36,15 +36,18 @@ ROWS = [
 ]
 
 
-def _owner_tool_context():
-    return SimpleNamespace(state={"actor_role": "owner"})
+def _owner_tool_context(source_event_id: str | None = None):
+    return SimpleNamespace(state={
+        "actor_role": "owner",
+        "source_event_id": source_event_id,
+    })
 
 
 def test_ledger_rows_gate_per_row():
     from agents.tools.ledger import record_ledger_rows
     out = record_ledger_rows(
         ROWS, page_note="Aug 21, page total 1070",
-        tool_context=_owner_tool_context())
+        tool_context=_owner_tool_context("ledger-page-1"))
     assert out["recorded"] == 2 and out["gated"] == 2
     assert [row["outcome"] for row in out["rows"]] == [
         "recorded", "recorded", "gated", "gated"]
@@ -55,9 +58,11 @@ def test_ledger_rows_gate_per_row():
     assert len(gates) == 2
     reasons = {g["payload"]["reason"] for g in gates}
     assert "amount unreadable" in reasons
+    assert {g["payload"]["source_event_id"] for g in gates} == {"ledger-page-1"}
     # the paid walk-in sale is on the books as paid
     walkin = store.orders_for_customer("walk-in", limit=5)
     assert walkin and walkin[0]["status"] == "paid" and walkin[0]["total"] == 210
+    assert walkin[0]["source_event_id"] == "ledger-page-1"
 
 
 def test_approving_ledger_row_records_the_sale():

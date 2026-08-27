@@ -1,0 +1,114 @@
+"""Sanitized, fail-closed release evidence for the owner/judge UI.
+
+Artifact links become proven only when their immutable release SHA matches the
+currently running release. Missing configuration stays pending; malformed or
+cross-release evidence is explicitly not proven. No service-account identity,
+managed context identifier, session handle, or secret is returned.
+"""
+from __future__ import annotations
+
+import os
+from urllib.parse import urlparse
+
+from app.compatibility import manifest_status, topology_contract
+
+
+_ARTIFACTS = (
+    ("ci", "Deterministic test suite", "EVIDENCE_CI_URL", "EVIDENCE_CI_SHA", "EVIDENCE_CI_SUMMARY"),
+    ("adk_eval", "ADK model evaluation", "EVIDENCE_ADK_EVAL_URL", "EVIDENCE_ADK_EVAL_SHA", "EVIDENCE_ADK_EVAL_SUMMARY"),
+    ("cloud_trace", "Cloud Trace story", "EVIDENCE_TRACE_URL", "EVIDENCE_TRACE_SHA", "EVIDENCE_TRACE_SUMMARY"),
+    ("benchmark", "Cloud 50k benchmark", "EVIDENCE_BENCHMARK_URL", "EVIDENCE_BENCHMARK_SHA", "EVIDENCE_BENCHMARK_SUMMARY"),
+    ("durability", "Restart and replay proof", "EVIDENCE_DURABILITY_URL", "EVIDENCE_DURABILITY_SHA", "EVIDENCE_DURABILITY_SUMMARY"),
+    ("iam", "IAM and WIF proof", "EVIDENCE_IAM_URL", "EVIDENCE_IAM_SHA", "EVIDENCE_IAM_SUMMARY"),
+    ("rollback", "Digest rollback drill", "EVIDENCE_ROLLBACK_URL", "EVIDENCE_ROLLBACK_SHA", "EVIDENCE_ROLLBACK_SUMMARY"),
+    ("sbom", "Image provenance and SBOM", "EVIDENCE_SBOM_URL", "EVIDENCE_SBOM_SHA", "EVIDENCE_SBOM_SUMMARY"),
+)
+
+
+def _safe_text(name: str, maximum: int = 300) -> str | None:
+    value = os.environ.get(name, "").strip()
+    if not value:
+        return None
+    return " ".join(value.split())[:maximum]
+
+
+def _safe_https_url(name: str) -> str | None:
+    value = os.environ.get(name, "").strip()
+    if not value:
+        return None
+    parsed = urlparse(value)
+    if parsed.scheme != "https" or not parsed.netloc or parsed.username or parsed.password:
+        return None
+    return value[:2_000]
+
+
+def _artifact(spec: tuple[str, str, str, str, str], release_sha: str) -> dict:
+    key, label, url_env, sha_env, summary_env = spec
+    configured_url = os.environ.get(url_env, "").strip()
+    url = _safe_https_url(url_env)
+    artifact_sha = _safe_text(sha_env, maximum=100)
+    summary = _safe_text(summary_env)
+    if not configured_url:
+        state = "pending"
+        detail = summary or "Artifact has not been attached to this release."
+    elif url is None:
+        state = "not_proven"
+        detail = "Configured artifact URL is not an allowed HTTPS link."
+    elif not artifact_sha or artifact_sha != release_sha:
+        state = "not_proven"
+        detail = summary or "Artifact is not bound to the running release SHA."
+    else:
+        state = "proven"
+        detail = summary or "Immutable artifact is bound to the running release SHA."
+    return {
+        "key": key,
+        "label": label,
+        "state": state,
+        "detail": detail,
+        "url": url,
+        "release_sha": artifact_sha,
+    }
+
+
+def release_evidence() -> dict:
+    release_sha = os.environ.get("RELEASE_SHA", "local")
+    environment = os.environ.get("DUKA_ENV", "local").lower()
+    topology = manifest_status()
+    contract = topology_contract()
+    api_revision = _safe_text("K_REVISION", maximum=100)
+    return {
+        "schema_version": 1,
+        "release": {
+            "sha": release_sha,
+            "environment": environment,
+            "api_revision": api_revision,
+            "backend_image_digest": _safe_text("BACKEND_IMAGE_DIGEST", maximum=200),
+        },
+        "model": {
+            "name": os.environ.get("GEMINI_MODEL", "gemini-3.7-flash"),
+            "location": os.environ.get("GOOGLE_CLOUD_LOCATION", "global"),
+            "provider": "Google Vertex AI",
+        },
+        "topology": {
+            "compatible": bool(topology["compatible"]),
+            "fingerprint": topology["actual"],
+            "workflow_name": contract["workflow_name"],
+            "adk_version": contract["adk_version"],
+            "node_count": len(contract["nodes"]),
+            "edge_count": len(contract["edges"]),
+            "nodes": [node["name"] for node in contract["nodes"]],
+        },
+        "runtime": {
+            "store": os.environ.get("DUKA_STORE", "sqlite"),
+            "bus": os.environ.get("DUKA_BUS", "local"),
+            "managed_sessions_configured": bool(os.environ.get("AGENT_PLATFORM_CONTEXT_ID")),
+            "memory_bank_configured": bool(os.environ.get("AGENT_PLATFORM_CONTEXT_ID")),
+        },
+        "artifacts": [_artifact(spec, release_sha) for spec in _ARTIFACTS],
+        "disclosures": {
+            "synthetic_data": "Synthetic shop, statement, voice, and ledger data protect privacy and provide reviewed ground truth.",
+            "pre_existing_work": "The submission discloses code ported from the earlier my-duka-agent talk repository; hackathon-built work is separated in the project history and submission.",
+            "external_effects": "This release does not initiate M-Pesa transfers or place supplier orders.",
+            "media_policy": "Generated release media must come from Google Vertex AI or Google Cloud Text-to-Speech; consented first-party human recordings are also allowed.",
+        },
+    }

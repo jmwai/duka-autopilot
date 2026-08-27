@@ -82,12 +82,17 @@ def test_fuzzy_proposal_rejects_invalid_entities_and_confidence():
 
 def test_save_order_confidence_gate():
     from agents.tools.orders import save_order
-    tool_ctx = SimpleNamespace(state={"customer_id": "254711000001"})
+    tool_ctx = SimpleNamespace(state={
+        "customer_id": "254711000001",
+        "source_event_id": "evt-grounded-order-1",
+    })
     confident = save_order(
         [{"sku": "UNGA-2KG", "name": "tampered", "qty": 2, "unit_price": 1}],
         confidence=0.95, notes="", tool_context=tool_ctx)
     assert confident["needs_review"] is False
     assert confident["total"] == 390, "catalog price must override model input"
+    assert get_store().get_order(confident["order_id"])[
+        "source_event_id"] == "evt-grounded-order-1"
     doubtful = save_order(
         [{"sku": "UNGA-2KG", "qty": 2}], confidence=0.5,
         notes="ambiguous", tool_context=tool_ctx)
@@ -98,6 +103,7 @@ def test_save_order_confidence_gate():
     assert unknown_sku["status"] == "error" and unknown_sku["order_id"] is None
     gates = [a for a in get_store().pending_approvals() if a["kind"] == "low_confidence_order"]
     assert len(gates) == 1
+    assert gates[0]["payload"]["source_event_id"] == "evt-grounded-order-1"
 
 
 @pytest.mark.parametrize("items,confidence", [

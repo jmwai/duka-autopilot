@@ -7,6 +7,7 @@ import * as React from "react";
 
 import { LogoutButton } from "@/components/control-room/logout-button";
 import { currentNavigationItem, navigationGroups } from "@/components/control-room/navigation";
+import { EnvironmentBadge } from "@/components/control-room/proof-sheet";
 import { Button } from "@/components/ui/button";
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "@/components/ui/breadcrumb";
 import { CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandShortcut } from "@/components/ui/command";
@@ -57,9 +58,7 @@ export function ControlRoomTopBar({ environment }: { environment: string }) {
         </Button>
         <Button type="button" variant="ghost" size="icon" className="size-9 lg:hidden" aria-label="Open command menu" onClick={() => setCommandOpen(true)}><Search aria-hidden="true" /></Button>
 
-        <span className="hidden rounded-full border bg-card px-2.5 py-1 font-mono text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground sm:inline-flex">
-          {environment}
-        </span>
+        <span className="hidden sm:inline-flex"><EnvironmentBadge environment={environment} /></span>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

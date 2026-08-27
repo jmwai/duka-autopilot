@@ -40,6 +40,7 @@ CREATE TABLE IF NOT EXISTS orders (
     total INTEGER NOT NULL DEFAULT 0,     -- KSh
     needs_review INTEGER NOT NULL DEFAULT 0,
     notes TEXT DEFAULT '',
+    source_event_id TEXT,
     created_at TEXT DEFAULT (datetime('now'))
 );
 CREATE TABLE IF NOT EXISTS order_items (
@@ -202,6 +203,10 @@ class SqliteStore:
             for name, definition in approval_migrations.items():
                 if name not in approval_columns:
                     c.execute(f"ALTER TABLE approvals ADD COLUMN {name} {definition}")
+            order_columns = {
+                row[1] for row in c.execute("PRAGMA table_info(orders)")}
+            if "source_event_id" not in order_columns:
+                c.execute("ALTER TABLE orders ADD COLUMN source_event_id TEXT")
 
     def reset(self) -> None:
         self.init()
@@ -235,13 +240,15 @@ class SqliteStore:
     # ---- orders ----------------------------------------------------------
     def create_order(self, customer_id: str, items: list[dict], status: str,
                      needs_review: bool = False, notes: str = "",
-                     created_at: str | None = None) -> int:
+                     created_at: str | None = None,
+                     source_event_id: str | None = None) -> int:
         total = sum(int(i["unit_price"]) * int(i["qty"]) for i in items)
         with self._conn() as c:
             cur = c.execute(
-                "INSERT INTO orders (customer_id,status,total,needs_review,notes,created_at) "
-                "VALUES (?,?,?,?,?,COALESCE(?,datetime('now')))",
-                (customer_id, status, total, int(needs_review), notes, created_at))
+                "INSERT INTO orders (customer_id,status,total,needs_review,notes,source_event_id,created_at) "
+                "VALUES (?,?,?,?,?,?,COALESCE(?,datetime('now')))",
+                (customer_id, status, total, int(needs_review), notes,
+                 source_event_id, created_at))
             oid = cur.lastrowid
             c.executemany(
                 "INSERT INTO order_items (order_id,sku,name,qty,unit_price) VALUES (?,?,?,?,?)",
@@ -250,7 +257,7 @@ class SqliteStore:
 
     def get_order(self, order_id) -> dict | None:
         rows = self._rows(
-            "SELECT id, customer_id, status, total, needs_review, notes, created_at "
+            "SELECT id, customer_id, status, total, needs_review, notes, source_event_id, created_at "
             "FROM orders WHERE id=?", (order_id,))
         if not rows:
             return None
@@ -280,7 +287,7 @@ class SqliteStore:
 
     def orders_for_customer(self, customer_id: str, limit: int = 5) -> list[dict]:
         orders = self._rows(
-            "SELECT id, status, total, created_at FROM orders WHERE customer_id=? "
+            "SELECT id, status, total, source_event_id, created_at FROM orders WHERE customer_id=? "
             "ORDER BY id DESC LIMIT ?", (customer_id, limit))
         for o in orders:
             items = self._rows("SELECT name, qty, unit_price FROM order_items WHERE order_id=?", (o["id"],))
@@ -493,9 +500,11 @@ class SqliteStore:
                      "from ledger page"))
                 cur = c.execute(
                     "INSERT INTO orders "
-                    "(customer_id,status,total,needs_review,notes) VALUES (?,?,?,?,?)",
+                    "(customer_id,status,total,needs_review,notes,source_event_id) "
+                    "VALUES (?,?,?,?,?,?)",
                     (customer_id, "paid" if row.get("paid") else "confirmed",
-                     amount, 0, "ledger row approved by owner"))
+                     amount, 0, "ledger row approved by owner",
+                     payload.get("source_event_id")))
                 order_id = cur.lastrowid
                 c.execute(
                     "INSERT INTO order_items "

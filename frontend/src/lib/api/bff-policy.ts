@@ -10,11 +10,13 @@ const EXACT_GET = new Set([
   "version",
   "customers",
   "products",
+  "inventory",
   "orders",
   "approvals",
   "recon/report",
   "digest/morning",
   "metrics/costs",
+  "evidence/release",
 ]);
 
 const EXACT_POST = new Set([

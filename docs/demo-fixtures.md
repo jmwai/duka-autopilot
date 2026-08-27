@@ -17,7 +17,7 @@ and rehearsal.
 | Opaque Memory scope | `app_name=duka-autopilot`; HMAC-derived user key | Record only the opaque key after cloud seed; never publish the raw HMAC secret |
 | Confirmed usual | `4x Unga wa Dola 2kg + 3x Laundry soap bar` | Latest seeded Mama Achieng order; unique timestamp `08:03:00` |
 | Current catalog total | `4 × 195 + 3 × 85 = KSh 1,035` | Recomputed from current catalog on every order |
-| Voice transcript | `Habari, niletee ya kawaida kesho asubuhi.` | “Hello, bring me the usual tomorrow morning.” |
+| Voice transcript | `Habari, niletee vitu vyangu vya kawaida kesho asubuhi.` | “Hello, please bring me my usual items tomorrow morning.” |
 | Event ID | Fresh server-generated UUID per take | Capture the visible first 12 characters and the complete ID in evidence |
 | Statement generator | `rows=50000`, `seed=2026`, duplicate rate `0.005` | `docs/evidence/benchmark-local.json`; cloud result must be separately measured |
 | Demo statement | Six fixed synthetic M-Pesa-like rows | `agents/seed.py`; no real payment data |

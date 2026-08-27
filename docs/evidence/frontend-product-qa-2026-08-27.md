@@ -1,0 +1,77 @@
+# Frontend product QA — 2026-08-27
+
+This record captures local release-candidate evidence for the standalone Next.js
+control room. It is not evidence of a Google Cloud deployment and does not
+claim that the pending Google-generated bilingual media exists.
+
+## Verified surface
+
+- Production webpack build of Next.js 16.3.3.
+- Google Chrome driven by Playwright 1.62.1.
+- axe-core 4.13.0 checks tagged for WCAG 2 A/AA, WCAG 2.1 AA, and WCAG 2.2 AA.
+- Eight owner routes: Morning Brief, Decisions, Inbox, Ledger Desk, Night Shift,
+  Orders, Stock, and How Duka Worked.
+- Release widths 390, 768, 1280, and 1440 pixels with reduced motion enabled.
+- A 640-pixel no-horizontal-overflow check as the layout proxy for 200% zoom.
+- Keyboard-visible focus, command-menu navigation, and mobile navigation Sheet.
+- Orders, Stock, and Evidence checks for their explicit authority and external-
+  effect boundaries.
+
+## Results
+
+| Gate | Result |
+|---|---:|
+| Vitest component/contract tests | 33 passed |
+| Playwright production journeys | 16 passed |
+| Route-level axe scans | 8 passed, 0 reported violations |
+| Python suite | 113 passed, 13 skipped |
+
+The skipped Python tests require optional cloud/emulator infrastructure and are
+not represented as passing release evidence.
+
+## Commands
+
+```bash
+cd frontend
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build --webpack
+pnpm test:e2e
+
+cd ..
+.venv/bin/python -m pytest -q
+```
+
+`pnpm test:e2e` first builds the production application, then starts a
+deterministic local FastAPI/SQLite fixture backend and the production Next.js
+server. It does not mutate Google Cloud.
+
+The mutation journeys additionally prove a catalog-key-only manual-sale
+request with an authoritative backend-rendered total; one duplicate-safe
+restock draft; owner rejection plus idempotent replay; a locally attributed
+night-run receipt; preservation of one inbound event ID across a simulated
+handoff failure and retry; and redirect to login when the owner session expires.
+
+## Captured screenshots
+
+| Width | Artifact | SHA-256 |
+|---:|---|---|
+| 390 | `frontend/morning-brief-390-local-production.png` | `7884bd8df5956540d7abb256b3b0d9be6da4557d5e308a57efc841a1a084dad4` |
+| 768 | `frontend/morning-brief-768-local-production.png` | `e74c90fdac5b753c92a985e2c6248def217b95182056860a02c5190cf771e71a` |
+| 1280 | `frontend/morning-brief-1280-local-production.png` | `7995c684cedf6f97496bb06d28de0840d83bf7d3c9ebbe474e2fae4f9126a140` |
+| 1440 | `frontend/morning-brief-1440-local-production.png` | `05dbd6e61f6a3e35f212ea00b66438a80cb7f52ac4ac5334bf6530098ad80633` |
+
+These screenshots are product captures, not AI-generated media. Their hashes
+are bound to the Git commit that contains this evidence record; they are not
+cloud-deployment evidence.
+
+## Truth boundary
+
+- The browser environment is local and says so in the interface.
+- Google-generated English and Kiswahili voice/ledger fixtures remain pending.
+- Missing evidence is rendered as pending or not proven; it does not degrade to
+  a green badge.
+- No external M-Pesa transfer, refund, supplier order, or payment is initiated.
+- Cloud Run, managed Sessions, Memory Bank, Scheduler, Pub/Sub, and cloud trace
+  proof remain pending until an approved deployment is exercised and captured.

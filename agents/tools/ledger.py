@@ -105,6 +105,8 @@ def record_ledger_rows(rows: list[dict], page_note: str,
             "recorded": 0, "gated": 0, "order_ids": [], "approval_ids": [],
         }
     store = get_store()
+    source_event_id = str(
+        tool_context.state.get("source_event_id") or "").strip() or None
     recorded, gated, order_ids, approval_ids, outcomes = 0, 0, [], [], []
     for index, raw_row in enumerate(rows):
         row, issues = _normalize_row(raw_row)
@@ -115,6 +117,7 @@ def record_ledger_rows(rows: list[dict], page_note: str,
             approval_ids.append(store.add_approval("ledger_row", {
                 "row": row, "page_note": page_note,
                 "reason": reason,
+                "source_event_id": source_event_id,
             }))
             outcomes.append({
                 "index": index, "outcome": "gated",
@@ -139,6 +142,7 @@ def record_ledger_rows(rows: list[dict], page_note: str,
             items,
             status="paid" if row.get("paid") else "confirmed",
             notes=f"ledger page: {page_note}" if page_note else "ledger row",
+            source_event_id=source_event_id,
         )
         order_ids.append(oid)
         outcomes.append({

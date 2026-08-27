@@ -26,6 +26,30 @@ describe("Decision presentation contracts", () => {
     expect(restock.approveEffect).toContain("No supplier order");
   });
 
+  it("does not expose internal customer keys in owner-facing decision copy", () => {
+    const internalKey = "customer_internal_9d82";
+    const refund = decisionPresentation(approval("refund", { customer_id: internalKey, order_id: "9" }));
+    const security = decisionPresentation(approval("security_flag", { customer_id: internalKey, reasons: ["instruction override"] }));
+    expect(JSON.stringify(refund)).not.toContain(internalKey);
+    expect(JSON.stringify(security)).not.toContain(internalKey);
+  });
+
+  it("uses the observed ledger name instead of the internal customer key", () => {
+    const internalKey = "254711000001";
+    const ledger = decisionPresentation(approval("ledger_row", {
+      row: {
+        customer_id: internalKey,
+        customer_name: "Mama Achieng",
+        description: "Unga",
+        amount: 390,
+        confidence: 0.71,
+      },
+    }));
+
+    expect(ledger.identifiers).toEqual(["Mama Achieng"]);
+    expect(JSON.stringify(ledger)).not.toContain(internalKey);
+  });
+
   it("fails closed for an unreadable ledger amount and an unknown kind", () => {
     const ledger = decisionPresentation(approval("ledger_row", {
       row: { customer_name: "Asha", description: "Sukari", amount: 0, confidence: 0.4 },

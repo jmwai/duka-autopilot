@@ -27,11 +27,13 @@ import {
 } from "react";
 import { toast } from "sonner";
 
+import { AuthorityRail } from "@/components/control-room/authority-rail";
 import { PageHeader } from "@/components/control-room/page-header";
-import { TrustBadge } from "@/components/control-room/trust-badge";
+import { EvidenceSource, ProofSheet } from "@/components/control-room/proof-sheet";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   BrowserApiError,
   browserApi,
@@ -207,6 +209,24 @@ export function InboxWorkspace({ initialCustomers }: { initialCustomers: Custome
     },
   });
   const messages = useMemo(() => messagesQuery.data ?? [], [messagesQuery.data]);
+  const latestExecutionMeta = useMemo(() => {
+    const message = [...messages].reverse().find((candidate) => (
+      candidate.direction === "out"
+      && candidate.meta
+      && typeof candidate.meta === "object"
+      && (
+        typeof candidate.meta.event_id === "string"
+        || Array.isArray(candidate.meta.node_path)
+      )
+    ));
+    return message?.meta ?? null;
+  }, [messages]);
+  const latestEventId = latestExecutionMeta && typeof latestExecutionMeta.event_id === "string"
+    ? latestExecutionMeta.event_id
+    : null;
+  const latestNodePath = latestExecutionMeta && Array.isArray(latestExecutionMeta.node_path)
+    ? latestExecutionMeta.node_path.filter((node): node is string => typeof node === "string")
+    : [];
   const selectedPending = pendingEvents.filter((event) => (
     event.customerId === selectedCustomerId && !hasCompletedReply(messages, event.eventId)
   ));
@@ -404,20 +424,14 @@ export function InboxWorkspace({ initialCustomers }: { initialCustomers: Custome
         }
       />
 
-      <div className="scrollbar-none mb-4 flex gap-3 overflow-x-auto pb-1 sm:grid sm:grid-cols-3 sm:overflow-visible">
-        <div className="min-w-[15rem] rounded-xl border bg-card p-3.5 sm:min-w-0">
-          <TrustBadge lane="exact" />
-          <p className="mt-2 text-xs leading-5 text-muted-foreground">The event ID and queue handoff are deterministic.</p>
-        </div>
-        <div className="min-w-[15rem] rounded-xl border bg-card p-3.5 sm:min-w-0">
-          <TrustBadge lane="gemini" />
-          <p className="mt-2 text-xs leading-5 text-muted-foreground">Voice and photo meaning stays bounded by tools.</p>
-        </div>
-        <div className="min-w-[15rem] rounded-xl border bg-card p-3.5 sm:min-w-0">
-          <TrustBadge lane="owner" />
-          <p className="mt-2 text-xs leading-5 text-muted-foreground">Ambiguous or consequential work stops for review.</p>
-        </div>
-      </div>
+      <AuthorityRail
+        className="mb-4"
+        steps={[
+          { lane: "exact", title: "Event accepted once", detail: "The event ID and asynchronous queue handoff are deterministic." },
+          { lane: "gemini", title: "Messy meaning interpreted", detail: "Voice and photo understanding stays bounded by validated tools." },
+          { lane: "owner", title: "Consequence stops", detail: "Ambiguous or consequential work enters the owner queue." },
+        ]}
+      />
 
       <div className="grid min-h-[42rem] gap-4 lg:grid-cols-[16rem_minmax(0,1fr)] xl:grid-cols-[16rem_minmax(0,1fr)_18rem]">
         <Card className="hidden overflow-hidden lg:block">
@@ -478,6 +492,23 @@ export function InboxWorkspace({ initialCustomers }: { initialCustomers: Custome
             <div className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground" aria-live="polite">
               {messagesQuery.isFetching ? <LoaderCircle aria-hidden="true" className="size-3.5 animate-spin" /> : <CircleCheck aria-hidden="true" className="size-3.5 text-exact" />}
               {messagesQuery.isFetching ? "Checking" : "Caught up"}
+              <ProofSheet
+                title="Selected thread proof"
+                description="Validated outcome, execution receipt, and release evidence for this customer thread."
+                outcome={latestEventId ? `The latest completed worker reply carries event ${latestEventId.slice(0, 12)}….` : "No completed execution receipt is visible in this thread yet."}
+                reason="The browser records queue acceptance separately from worker completion. A node path appears only when the persisted outbound reply returns validated execution metadata."
+                facts={[
+                  ...(latestEventId ? [{ label: "Event ID", value: latestEventId }] : []),
+                  ...(latestNodePath.length ? [{ label: "Node path", value: latestNodePath.join(" → ") }] : []),
+                ]}
+                sources={[
+                  { label: "Validated thread read", detail: messagesQuery.isError ? "The API read failed" : `${messages.length} persisted message${messages.length === 1 ? "" : "s"}`, state: messagesQuery.isError ? "not-proven" : messagesQuery.isPending ? "pending" : "proven" },
+                  { label: "Worker execution receipt", detail: latestEventId ? `Event ${latestEventId}` : "No completed receipt selected", state: latestEventId ? "proven" : "pending" },
+                  { label: "Google bilingual fixture set", detail: fixtureManifest?.release_ready ? "English and Kiswahili release voices verified" : fixtureManifest?.blocked_reason ?? "Release fixtures pending", state: fixtureManifest?.release_ready ? "proven" : "pending" },
+                ]}
+                limitations={["A queue acceptance is not presented as a completed agent action.", "Fixture provenance proves the media source, not the business outcome."]}
+                trigger={<Button type="button" size="sm" variant="ghost">Proof</Button>}
+              />
             </div>
           </div>
 
@@ -624,6 +655,7 @@ export function InboxWorkspace({ initialCustomers }: { initialCustomers: Custome
               <input
                 ref={fileInputRef}
                 type="file"
+                aria-label="Attach a voice or photo file"
                 className="sr-only"
                 accept="image/jpeg,image/png,image/webp,audio/ogg,audio/webm,audio/wav,audio/mpeg,audio/mp4"
                 onChange={(event) => {
@@ -656,11 +688,11 @@ export function InboxWorkspace({ initialCustomers }: { initialCustomers: Custome
 
         <aside className="hidden space-y-4 xl:block">
           <Card>
-            <CardHeader><CardTitle className="flex items-center gap-2"><ShieldCheck aria-hidden="true" className="size-4 text-primary" /> What this proves</CardTitle></CardHeader>
-            <CardContent className="space-y-4 text-sm leading-6 text-muted-foreground">
-              <div><p className="font-semibold text-foreground">Immediate handoff</p><p>HTTP 202 returns an event ID before the agent runs.</p></div>
-              <div><p className="font-semibold text-foreground">Durable execution</p><p>The worker writes the message and its node path once.</p></div>
-              <div><p className="font-semibold text-foreground">Visible restraint</p><p>Suspension and cost are evidence, not hidden implementation detail.</p></div>
+            <CardHeader><CardTitle className="flex items-center gap-2"><ShieldCheck aria-hidden="true" className="size-4 text-primary" /> Selected evidence</CardTitle></CardHeader>
+            <CardContent className="space-y-2">
+              <EvidenceSource label="Thread read" detail={messagesQuery.isError ? "Validated read failed" : `${messages.length} persisted messages`} state={messagesQuery.isError ? "not-proven" : messagesQuery.isPending ? "pending" : "proven"} />
+              <EvidenceSource label="Worker receipt" detail={latestEventId ? `Event ${latestEventId.slice(0, 12)}…` : "Waiting for a completed reply"} state={latestEventId ? "proven" : "pending"} />
+              <EvidenceSource label="Bilingual voices" detail={fixtureManifest?.release_ready ? "English and Kiswahili Google fixtures" : "Google release fixtures pending"} state={fixtureManifest?.release_ready ? "proven" : "pending"} />
             </CardContent>
           </Card>
           <Card>
@@ -689,34 +721,24 @@ export function InboxWorkspace({ initialCustomers }: { initialCustomers: Custome
         </aside>
       </div>
 
-      {rotationOpen ? (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-foreground/45 p-4" role="presentation" onMouseDown={() => !rotating && setRotationOpen(false)}>
-          <Card
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="rotate-title"
-            className="w-full max-w-lg shadow-xl"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <CardHeader>
-              <span className="mb-2 grid size-10 place-items-center rounded-xl bg-accent text-accent-foreground"><RotateCcw aria-hidden="true" className="size-4.5" /></span>
-              <CardTitle id="rotate-title" className="text-xl">Start a fresh managed session?</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm leading-6 text-muted-foreground">
-                {selectedCustomer?.name} gets a clean conversational session. The audit thread stays visible, pending refund invocations remain resumable in their original session, and only allowlisted trusted usuals may return through Memory Bank—not raw chat history, prices, payment references, or authority claims.
-              </p>
-              <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                <Button type="button" variant="outline" disabled={rotating} onClick={() => setRotationOpen(false)}>Keep this session</Button>
-                <Button type="button" disabled={rotating} onClick={() => void rotateSession()}>
-                  {rotating ? <LoaderCircle aria-hidden="true" className="animate-spin" /> : <RotateCcw aria-hidden="true" />}
-                  {rotating ? "Rotating…" : "Start new day"}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      ) : null}
+      <Dialog open={rotationOpen} onOpenChange={(open) => { if (!rotating) setRotationOpen(open); }}>
+        <DialogContent>
+          <span className="grid size-10 place-items-center rounded-xl bg-accent text-accent-foreground"><RotateCcw aria-hidden="true" className="size-4.5" /></span>
+          <DialogHeader>
+            <DialogTitle>Start a fresh managed session?</DialogTitle>
+            <DialogDescription>
+              {selectedCustomer?.name} gets a clean conversational session. The audit thread stays visible, pending refund invocations remain resumable in their original session, and only allowlisted trusted usuals may return through Memory Bank—not raw chat history, prices, payment references, or authority claims.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button type="button" variant="outline" disabled={rotating} onClick={() => setRotationOpen(false)}>Keep this session</Button>
+            <Button type="button" disabled={rotating} onClick={() => void rotateSession()}>
+              {rotating ? <LoaderCircle aria-hidden="true" className="animate-spin" /> : <RotateCcw aria-hidden="true" />}
+              {rotating ? "Rotating…" : "Start new day"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

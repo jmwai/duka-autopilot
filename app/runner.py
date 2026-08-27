@@ -254,14 +254,15 @@ async def drain_memory_outbox(customer_id: str | None = None,
 async def run_turn(customer_id: str, text: str, image_bytes: bytes | None = None,
                    image_mime: str = "image/jpeg", audio_bytes: bytes | None = None,
                    audio_mime: str = "audio/ogg",
-                   actor_role: str = "customer") -> TurnResult:
+                   actor_role: str = "customer",
+                   source_event_id: str | None = None) -> TurnResult:
     if actor_role not in ("customer", "owner"):
         raise ValueError("actor_role must be customer or owner")
     with _customer_turn_lease(customer_id):
         return await _run_turn_locked(
             customer_id, text, image_bytes=image_bytes, image_mime=image_mime,
             audio_bytes=audio_bytes, audio_mime=audio_mime,
-            actor_role=actor_role)
+            actor_role=actor_role, source_event_id=source_event_id)
 
 
 async def _run_turn_locked(customer_id: str, text: str,
@@ -269,7 +270,8 @@ async def _run_turn_locked(customer_id: str, text: str,
                            image_mime: str = "image/jpeg",
                            audio_bytes: bytes | None = None,
                            audio_mime: str = "audio/ogg",
-                           actor_role: str = "customer") -> TurnResult:
+                           actor_role: str = "customer",
+                           source_event_id: str | None = None) -> TurnResult:
     """Run one customer message through the workflow; log cost.
 
     Modalities change, guardrails don't: text, order-note/ledger photos and
@@ -298,8 +300,17 @@ async def _run_turn_locked(customer_id: str, text: str,
             span.set_attribute("duka.input.has_image", image_bytes is not None)
             span.set_attribute("duka.input.has_audio", audio_bytes is not None)
             span.set_attribute("duka.actor.role", actor_role)
+            if source_event_id:
+                span.set_attribute("duka.source.event_id", source_event_id)
             async for event in runner.run_async(
-                    user_id=user_id, session_id=session_id, new_message=message):
+                    user_id=user_id, session_id=session_id, new_message=message,
+                    state_delta={
+                        "customer_id": customer_id,
+                        "user_key": user_id,
+                        "actor_role": actor_role,
+                        # Explicit None clears an earlier turn's correlation.
+                        "source_event_id": source_event_id,
+                    }):
                 invocation_id = invocation_id or getattr(event, "invocation_id", None)
                 # node_info.path like 'duka_autopilot@1/order_intake@1' - node
                 # identity comes from the path, not event.author.

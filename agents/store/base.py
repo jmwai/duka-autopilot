@@ -32,7 +32,8 @@ class Store(Protocol):
     # ---- orders ----------------------------------------------------------
     def create_order(self, customer_id: str, items: list[dict], status: str,
                      needs_review: bool = False, notes: str = "",
-                     created_at: str | None = None) -> EntityId: ...
+                     created_at: str | None = None,
+                     source_event_id: str | None = None) -> EntityId: ...
     def get_order(self, order_id: EntityId) -> dict | None: ...
     def bulk_create_orders(self, orders: list[dict]) -> int:
         """orders: [{customer_id, items, status, total, created_at}] - the

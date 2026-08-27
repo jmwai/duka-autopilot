@@ -451,19 +451,19 @@ Scheduler OIDC -> private Cloud Run Jobs
 
 **Goal:** return the current pushed WIP to a green, truthful local baseline.
 
-- [ ] **R0-01** Refactor Ledger Desk to consume `DemoLedgerFixture` from the v2
+- [x] **R0-01** Refactor Ledger Desk to consume `DemoLedgerFixture` from the v2
   manifest; remove the deleted hardcoded fixture import and local hash helper.
-- [ ] **R0-02** Render a truthful fixture-pending state when
+- [x] **R0-02** Render a truthful fixture-pending state when
   `release_ready=false`; never offer a missing file.
-- [ ] **R0-03** Wire English/Kiswahili manifest ledgers, dimensions, ground
+- [x] **R0-03** Wire English/Kiswahili manifest ledgers, dimensions, ground
   truth, provider/model/location, and integrity verification into Ledger Desk.
-- [ ] **R0-04** Wire English/Kiswahili voice fixtures, transcripts,
+- [x] **R0-04** Wire English/Kiswahili voice fixtures, transcripts,
   translations, provider/model, and verification into Inbox.
-- [ ] **R0-05** Add component and contract tests for pending, valid, wrong hash,
+- [x] **R0-05** Add component and contract tests for pending, valid, wrong hash,
   wrong provider, missing language, and failed fetch states.
-- [ ] **R0-06** Run lint, typecheck, Vitest, webpack production build, full
+- [x] **R0-06** Run lint, typecheck, Vitest, webpack production build, full
   Python suite, fixture verifier/quarantine, and source provenance scan.
-- [ ] **R0-07** Commit the repaired local baseline; do not activate APIs or
+- [x] **R0-07** Commit the repaired local baseline; do not activate APIs or
   generate cloud assets without approval.
 
 **Exit:** all local gates green; no missing asset is clickable; both screens are
@@ -473,19 +473,19 @@ manifest-driven; release remains truthfully pending.
 
 **Goal:** establish the visual and interaction grammar before completing pages.
 
-- [ ] **F1-01** Finalize semantic OKLCH tokens for canvas, surface, ink, exact,
+- [x] **F1-01** Finalize semantic OKLCH tokens for canvas, surface, ink, exact,
   Gemini, owner, conflict, focus, charts, sidebar, and muted states.
-- [ ] **F1-02** Add the selected shadcn primitives with pinned dependencies and
+- [x] **F1-02** Add the selected shadcn primitives with pinned dependencies and
   owned source.
-- [ ] **F1-03** Build grouped collapsible Sidebar, mobile More Sheet, sticky top
+- [x] **F1-03** Build grouped collapsible Sidebar, mobile More Sheet, sticky top
   bar, breadcrumbs, account menu, and command palette.
-- [ ] **F1-04** Build the Duka-owned trust, metric, proof, release, timeline,
+- [x] **F1-04** Build the Duka-owned trust, metric, proof, release, timeline,
   empty, pending, failed, and degraded compositions.
-- [ ] **F1-05** Create shared page skeletons and route-level expected/unexpected
+- [x] **F1-05** Create shared page skeletons and route-level expected/unexpected
   error states.
-- [ ] **F1-06** Add a local component gallery route available only in
+- [x] **F1-06** Add a local component gallery route available only in
   development/test for state and accessibility QA.
-- [ ] **F1-07** Capture 390/768/1280/1440 shell screenshots and pass keyboard,
+- [x] **F1-07** Capture 390/768/1280/1440 shell screenshots and pass keyboard,
   focus, 200% zoom, reduced-motion, contrast, and axe checks.
 
 **Exit:** one coherent shell and trust grammar; no visual component relies on
@@ -495,20 +495,26 @@ color alone; no page must invent its own error/proof pattern.
 
 **Goal:** make the four-minute causal story delightful and deterministic.
 
-- [ ] **F2-01** Redesign Morning Brief around status, compression, one CTA,
+- [x] **F2-01** Redesign Morning Brief around status, compression, one CTA,
   digest, and top owner decisions.
-- [ ] **F2-02** Convert Decisions to queue + inspector + exact-effect
+- [x] **F2-02** Convert Decisions to queue + inspector + exact-effect
   AlertDialog with durable replay/conflict states.
-- [ ] **F2-03** Apply three-zone Inbox, verified bilingual examples, event
+- [x] **F2-03** Apply three-zone Inbox, verified bilingual examples, event
   lifecycle, and Proof Sheet.
-- [ ] **F2-04** Apply bilingual tactile Ledger Desk, expected/observed
+- [x] **F2-04** Apply bilingual tactile Ledger Desk, expected/observed
   separation, and recorded/gated visual split.
-- [ ] **F2-05** Apply observed-run-first Night Shift with accessible compression,
+- [x] **F2-05** Apply observed-run-first Night Shift with accessible compression,
   bounds, run receipt, and honest local/cloud distinction.
-- [ ] **F2-06** Add a deterministic local seed/reset contract for rehearsal;
+- [x] **F2-06** Add a deterministic local seed/reset contract for rehearsal;
   no hidden database edits.
 - [ ] **F2-07** Add Playwright journeys for voice, ledger, decision, night run,
   failed network, retry, duplicate, and unauthorized states.
+
+  **Progress:** 16 production-browser journeys now cover all eight routes,
+  responsive/accessibility checks, catalog-grounded sale, duplicate-safe
+  restock, decision replay, local night receipt, same-event retry, and owner
+  re-authentication. Locked Google voice and ledger mutation journeys remain
+  approval-gated under Phase 4.
 
 **Exit:** the primary Loom journey rehearses locally from a reset state with no
 developer console, manual data edit, or unsupported claim.
@@ -517,17 +523,26 @@ developer console, manual data edit, or unsupported claim.
 
 **Goal:** remove every placeholder and make navigation feel intentional.
 
-- [ ] **F3-01** Build Orders contracts, screen-specific table, filters, detail
+- [x] **F3-01** Build Orders contracts, screen-specific table, filters, detail
   Sheet, and catalog-derived manual sale.
-- [ ] **F3-02** Build Stock summary, low-stock evidence, proposal flow, and
+- [x] **F3-02** Build Stock summary, low-stock evidence, proposal flow, and
   truthful supplier boundary.
-- [ ] **F3-03** Build Evidence from sanitized live/release artifacts with
+- [x] **F3-03** Build Evidence from sanitized live/release artifacts with
   fail-closed statuses.
 - [ ] **F3-04** Add safe correlation links across messages, ledger rows, orders,
   decisions, nightly reports, and evidence.
-- [ ] **F3-05** Remove placeholder component and dead frontend paths.
+
+  **Progress:** inbound and ledger event IDs now enter ADK `state_delta`, clear
+  on the next uncorrelated turn, persist on orders and gated rows, and render in
+  Order proof. Browser approval payloads strip phone-shaped authority keys.
+  Cross-screen navigation and nightly/evidence trace links remain.
+- [x] **F3-05** Remove placeholder component and dead frontend paths.
 - [ ] **F3-06** Complete loading, empty, stale, degraded, unauthorized, mobile,
   and print/share states for every route.
+
+  **Progress:** shared loading/empty/degraded/failure compositions, responsive
+  route coverage, and the owner re-authentication journey are implemented.
+  Stale-release, print/share, and route-specific degraded mutations remain.
 
 **Exit:** every navigation route is useful and truthful; Evidence cannot claim
 an artifact that is absent.
@@ -538,6 +553,10 @@ an artifact that is absent.
 
 - [ ] **A4-00 APPROVAL** Review APIs, models, regions, scripts, expected calls,
   quotas, and spend with the user.
+
+  **Prepared:** `docs/google-media-approval-packet.md` bounds the request to
+  two APIs, four initial calls, eight calls maximum, Google-only synthetic
+  inputs, EU TTS processing, global image generation, and a $1 stop ceiling.
 - [ ] **A4-01** Enable only approved Vertex AI and Cloud Text-to-Speech APIs.
 - [ ] **A4-02** Generate English/Kiswahili ledger candidates with the declared
   Google Vertex image model; human-review text and layout.
@@ -560,7 +579,7 @@ no unknown provenance.
 
 - [ ] **Q5-01** Run lint, strict typecheck, Vitest, production build, bundle
   inspection, and standalone-container smoke.
-- [ ] **Q5-02** Run Playwright + axe for all critical desktop/mobile journeys.
+- [x] **Q5-02** Run Playwright + axe for all critical desktop/mobile journeys.
 - [ ] **Q5-03** Run complete Python, Firestore emulator, topology, lock,
   Terraform validate, actionlint, credential, commit-trailer, fixture, and docs
   link checks.

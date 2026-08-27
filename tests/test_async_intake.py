@@ -77,6 +77,7 @@ async def test_voice_payload_reaches_runner_as_audio(stub_turn):
     call = stub_turn.calls[0]
     assert call["audio_bytes"] == b"OggS-fake-voice-note"
     assert call["audio_mime"] == "audio/ogg"
+    assert call["source_event_id"] == "evt-voice-1"
     # channel inferred as voice for the message log
     msgs = get_store().messages_for("254711000003")
     assert msgs[0]["channel"] == "voice"

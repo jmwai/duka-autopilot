@@ -5,6 +5,8 @@ import { acceptedContentType, matchBffRoute, requestContentLength } from "./bff-
 describe("BFF route policy", () => {
   it("allows only the declared method and path shapes", () => {
     expect(matchBffRoute("GET", ["version"])?.upstreamPath).toBe("version");
+    expect(matchBffRoute("GET", ["inventory"])?.upstreamPath).toBe("inventory");
+    expect(matchBffRoute("GET", ["evidence", "release"])?.upstreamPath).toBe("evidence/release");
     expect(matchBffRoute("GET", ["messages", "254711000001"])?.upstreamPath).toBe(
       "messages/254711000001",
     );

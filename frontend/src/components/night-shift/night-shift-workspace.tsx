@@ -1,24 +1,25 @@
 "use client";
 
 import {
-  Bot,
   CheckCircle2,
-  Clock3,
   CloudCog,
   Coins,
   FileCheck2,
-  Gauge,
   LoaderCircle,
   Play,
   Rows3,
   ShieldCheck,
   Timer,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 
+import { AuthorityRail } from "@/components/control-room/authority-rail";
+import { Metric } from "@/components/control-room/metric";
 import { PageHeader } from "@/components/control-room/page-header";
-import { TrustBadge } from "@/components/control-room/trust-badge";
+import { PendingState } from "@/components/control-room/product-states";
+import { ProofSheet } from "@/components/control-room/proof-sheet";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -34,7 +35,6 @@ import {
   observedSettlePercent,
   reportReleaseState,
 } from "@/lib/night-shift/night-shift";
-import { cn } from "@/lib/utils";
 
 function metric(value: number) {
   return value.toLocaleString("en-KE");
@@ -44,58 +44,26 @@ function duration(value: number) {
   return value < 1_000 ? `${value.toLocaleString()} ms` : `${(value / 1_000).toFixed(2)} s`;
 }
 
-function StatusCard({ label, value, detail, icon: Icon, tone }: {
-  label: string;
-  value: string;
-  detail: string;
-  icon: typeof CheckCircle2;
-  tone: string;
-}) {
-  return (
-    <Card>
-      <CardContent className="p-5">
-        <span className={cn("grid size-10 place-items-center rounded-lg", tone)}><Icon aria-hidden="true" className="size-4.5" /></span>
-        <p className="mt-4 text-sm font-medium text-muted-foreground">{label}</p>
-        <p className="numeric mt-1 text-2xl font-bold tracking-tight">{value}</p>
-        <p className="mt-1 text-xs leading-5 text-muted-foreground">{detail}</p>
-      </CardContent>
-    </Card>
-  );
-}
-
 function RunConfirmation({ busy, onCancel, onConfirm }: {
   busy: boolean;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
-  const dialogRef = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (dialog && !dialog.open) dialog.showModal();
-  }, []);
   return (
-    <dialog
-      ref={dialogRef}
-      aria-labelledby="night-run-title"
-      aria-describedby="night-run-description"
-      onCancel={(event) => { event.preventDefault(); if (!busy) onCancel(); }}
-      className="m-auto w-[min(92vw,36rem)] rounded-2xl border bg-card p-0 text-card-foreground shadow-2xl backdrop:bg-foreground/45 backdrop:backdrop-blur-[2px]"
-    >
-      <div className="p-5 sm:p-6">
-        <span className="grid size-11 place-items-center rounded-xl bg-exact/10 text-exact"><Rows3 aria-hidden="true" className="size-5" /></span>
-        <h2 id="night-run-title" className="mt-4 text-xl font-bold tracking-tight">Run the local exact pass?</h2>
-        <p id="night-run-description" className="mt-2 text-sm leading-6 text-muted-foreground">
+    <AlertDialogContent>
+      <span className="grid size-11 place-items-center rounded-xl bg-exact/10 text-exact"><Rows3 aria-hidden="true" className="size-5" /></span>
+      <AlertDialogHeader>
+        <AlertDialogTitle>Run the local exact pass?</AlertDialogTitle>
+        <AlertDialogDescription>
           This invokes the deterministic indexed pass with fuzzy review disabled. It may link exact payments in the local books, persist a new report, and draft one restock proposal.
-        </p>
-        <div className="mt-4 rounded-lg border border-attention/40 bg-attention/10 p-3 text-xs leading-5">
-          <span className="font-semibold">Evidence boundary:</span> this is not Gemini evidence, Cloud Run Job evidence, or proof that Cloud Scheduler fired. Re-running an already-settled dataset is not a comparable benchmark.
-        </div>
-        <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <Button variant="outline" onClick={onCancel} disabled={busy}>Cancel</Button>
-          <Button onClick={onConfirm} disabled={busy}>{busy ? <LoaderCircle aria-hidden="true" className="animate-spin" /> : <Play aria-hidden="true" />}{busy ? "Running exact pass…" : "Run exact pass"}</Button>
-        </div>
-      </div>
-    </dialog>
+        </AlertDialogDescription>
+      </AlertDialogHeader>
+      <div className="rounded-lg border border-owner/40 bg-owner/10 p-3 text-xs leading-5"><span className="font-semibold">Evidence boundary:</span> this is not Gemini evidence, Cloud Run Job evidence, or proof that Cloud Scheduler fired. Re-running an already-settled dataset is not a comparable benchmark.</div>
+      <AlertDialogFooter>
+        <AlertDialogCancel onClick={onCancel} disabled={busy}>Cancel</AlertDialogCancel>
+        <AlertDialogAction onClick={(event) => { event.preventDefault(); onConfirm(); }} disabled={busy}>{busy ? <LoaderCircle aria-hidden="true" className="animate-spin" /> : <Play aria-hidden="true" />}{busy ? "Running exact pass…" : "Run exact pass"}</AlertDialogAction>
+      </AlertDialogFooter>
+    </AlertDialogContent>
   );
 }
 
@@ -108,10 +76,10 @@ function LiveReport({ report, data }: { report: NightlyReport; data: NightShiftD
   return (
     <>
       <section aria-label="Observed night shift outcomes" className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <StatusCard label="Settled exactly" value={metric(report.exact_matched)} detail={`${observedSettlePercent(report)} of ${metric(total)} rows considered this run`} icon={CheckCircle2} tone="bg-exact/10 text-exact" />
-        <StatusCard label="Residue after run" value={metric(report.residue_end)} detail={`${metric(report.residue_start)} entered the bounded review stage`} icon={Rows3} tone="bg-attention/15 text-foreground" />
-        <StatusCard label="Owner proposals" value={metric(report.fuzzy_proposals)} detail={`${metric(report.fuzzy_batches)} Gemini batch${report.fuzzy_batches === 1 ? "" : "es"} executed`} icon={ShieldCheck} tone="bg-primary/10 text-primary" />
-        <StatusCard label="Measured model cost" value={formatCost(report.cost_usd)} detail={`${metric(report.model_input_tokens ?? 0)} in · ${metric(report.model_output_tokens ?? 0)} out tokens`} icon={Coins} tone="bg-gemini/10 text-gemini" />
+        <Metric label="Settled exactly" value={metric(report.exact_matched)} detail={`${observedSettlePercent(report)} of ${metric(total)} rows considered this run`} icon={CheckCircle2} tone="exact" />
+        <Metric label="Residue after run" value={metric(report.residue_end)} detail={`${metric(report.residue_start)} entered bounded review`} icon={Rows3} tone="owner" />
+        <Metric label="Owner proposals" value={metric(report.fuzzy_proposals)} detail={`${metric(report.fuzzy_batches)} Gemini batch${report.fuzzy_batches === 1 ? "" : "es"} executed`} icon={ShieldCheck} />
+        <Metric label="Measured model cost" value={formatCost(report.cost_usd)} detail={`${metric(report.model_input_tokens ?? 0)} in · ${metric(report.model_output_tokens ?? 0)} out tokens`} icon={Coins} tone="gemini" />
       </section>
 
       <div className="grid items-start gap-5 xl:grid-cols-[1.15fr_0.85fr]">
@@ -142,18 +110,11 @@ function LiveReport({ report, data }: { report: NightlyReport; data: NightShiftD
           <Card>
             <CardHeader><CardTitle>One workflow, three authority lanes</CardTitle><CardDescription>Autonomy where evidence is exact. Gemini where reality is messy. A human where consequences matter.</CardDescription></CardHeader>
             <CardContent>
-              <ol className="space-y-0">
-                {[
-                  { lane: "exact" as const, title: "Indexed exact pass", detail: `${metric(report.exact_matched)} rows linked on phone, integer amount and a 48-hour window. No model saw them.`, meta: duration(report.exact_wall_ms) },
-                  { lane: "gemini" as const, title: "Bounded residue review", detail: `${metric(report.residue_start)} ambiguous rows entered; ${metric(report.fuzzy_proposals)} proposals were created. Gemini cannot mark them paid.`, meta: `${report.fuzzy_batches}/${NIGHTLY_BOUNDS.batchCeiling} batches` },
-                  { lane: "owner" as const, title: "Consequences wait", detail: `${metric(report.fuzzy_proposals)} fuzzy proposals remain subject to the Decisions queue’s exact-effect confirmation.`, meta: "Human gate" },
-                ].map((step, index, all) => (
-                  <li key={step.lane} className="grid grid-cols-[2rem_1fr] gap-3">
-                    <div className="flex flex-col items-center"><span className="mt-1 grid size-7 place-items-center rounded-full border bg-card font-mono text-xs font-bold">{index + 1}</span>{index < all.length - 1 ? <span className="my-1 h-full w-px bg-border" /> : null}</div>
-                    <div className="pb-6"><div className="flex flex-wrap items-center justify-between gap-2"><TrustBadge lane={step.lane} /><Badge variant="outline" className="font-mono">{step.meta}</Badge></div><p className="mt-2 font-semibold">{step.title}</p><p className="mt-1 text-sm leading-6 text-muted-foreground">{step.detail}</p></div>
-                  </li>
-                ))}
-              </ol>
+              <AuthorityRail steps={[
+                { lane: "exact", title: "Indexed exact pass", detail: `${metric(report.exact_matched)} rows linked on phone, integer amount, and a 48-hour window.`, value: duration(report.exact_wall_ms) },
+                { lane: "gemini", title: "Bounded residue review", detail: `${metric(report.residue_start)} ambiguous rows entered; Gemini cannot mark them paid.`, value: `${report.fuzzy_batches}/${NIGHTLY_BOUNDS.batchCeiling}` },
+                { lane: "owner", title: "Consequences wait", detail: `${metric(report.fuzzy_proposals)} proposals require exact-effect confirmation.`, value: metric(report.fuzzy_proposals) },
+              ]} />
             </CardContent>
           </Card>
         </div>
@@ -214,6 +175,7 @@ export function NightShiftWorkspace({ data }: { data: NightShiftData }) {
   const [confirming, setConfirming] = useState(false);
   const [running, setRunning] = useState(false);
   const local = data.version.environment === "local";
+  const releaseState = report ? reportReleaseState(report, data.version) : "unattributed";
 
   async function runExact() {
     if (!local || running) return;
@@ -244,18 +206,45 @@ export function NightShiftWorkspace({ data }: { data: NightShiftData }) {
       <section className="paper-noise mb-5 overflow-hidden rounded-2xl bg-sidebar p-5 text-sidebar-foreground shadow-sm sm:p-6">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
           <div><div className="flex flex-wrap items-center gap-2"><Badge className="border-white/15 bg-white/10 text-white">{report ? "Night shift complete" : "Awaiting persisted run"}</Badge><Badge className="border-white/15 bg-transparent font-mono text-sidebar-muted">{data.version.environment}</Badge></div><h2 className="mt-3 text-xl font-bold sm:text-2xl">Exact evidence settles. Ambiguity waits.</h2><p className="mt-1 max-w-2xl text-sm leading-6 text-sidebar-muted">{report ? `${formatRunTime(report.finished_at ?? report.started_at)} · ${report.execution_surface ?? "legacy persisted report"}` : "No observed pipeline report is stored yet. Current statement totals are not presented as a completed night run."}</p></div>
-          <div className="grid grid-cols-3 gap-2 sm:min-w-[25rem]"><div className="rounded-xl border border-white/10 bg-white/5 p-3"><Timer aria-hidden="true" className="size-4 text-emerald-300" /><p className="mt-2 text-[0.65rem] uppercase tracking-wider text-sidebar-muted">Status</p><p className="mt-1 text-sm font-semibold">{report ? "Completed" : "Pending"}</p></div><div className="rounded-xl border border-white/10 bg-white/5 p-3"><Bot aria-hidden="true" className="size-4 text-sky-300" /><p className="mt-2 text-[0.65rem] uppercase tracking-wider text-sidebar-muted">Model</p><p className="mt-1 break-words font-mono text-[0.68rem]">{data.version.model}</p></div><div className="rounded-xl border border-white/10 bg-white/5 p-3"><Gauge aria-hidden="true" className="size-4 text-amber-200" /><p className="mt-2 text-[0.65rem] uppercase tracking-wider text-sidebar-muted">Topology</p><p className="mt-1 text-sm font-semibold">{data.version.durable_topology.compatible ? "Compatible" : "Blocked"}</p></div></div>
+          <div className="grid gap-2 sm:min-w-[25rem] sm:grid-cols-3">
+            <div className="rounded-xl border border-white/10 bg-white/5 p-3"><Timer aria-hidden="true" className="size-4 text-emerald-300" /><p className="mt-2 text-[0.65rem] uppercase tracking-wider text-sidebar-muted">Status</p><p className="mt-1 text-sm font-semibold">{report ? "Completed" : "Pending"}</p></div>
+            <div className="rounded-xl border border-white/10 bg-white/5 p-3"><CloudCog aria-hidden="true" className="size-4 text-sky-300" /><p className="mt-2 text-[0.65rem] uppercase tracking-wider text-sidebar-muted">Surface</p><p className="mt-1 break-words font-mono text-[0.68rem]">{report?.execution_surface ?? "not observed"}</p></div>
+            <div className="rounded-xl border border-white/10 bg-white/5 p-3"><FileCheck2 aria-hidden="true" className="size-4 text-amber-200" /><p className="mt-2 text-[0.65rem] uppercase tracking-wider text-sidebar-muted">Attribution</p><p className="mt-1 text-sm font-semibold">{releaseState === "current" ? "Current release" : releaseState === "stale" ? "Different release" : "Not proven"}</p></div>
+          </div>
+        </div>
+        <div className="mt-4 flex justify-end">
+          <ProofSheet
+            title="Night shift execution proof"
+            description="Release attribution and execution metadata behind the observed report."
+            outcome={report ? `${metric(report.exact_matched)} rows settled exactly in this persisted run.` : "No persisted run report is available."}
+            reason="The observed report is kept separate from the historical local benchmark. Scheduler and Cloud Run evidence are proven only by attributed cloud artifacts."
+            facts={[
+              { label: "Environment", value: data.version.environment },
+              { label: "Current SHA", value: data.version.release_sha },
+              { label: "Model", value: data.version.model },
+              { label: "Model location", value: data.version.model_location },
+              ...(report?.run_id ? [{ label: "Run ID", value: report.run_id }] : []),
+              ...(report?.execution_surface ? [{ label: "Surface", value: report.execution_surface }] : []),
+            ]}
+            sources={[
+              { label: "Persisted run report", detail: report?.run_id ?? "No observed run identifier", state: report ? "proven" : "pending" },
+              { label: "Release attribution", detail: report?.release_sha ?? "Report SHA missing", state: releaseState === "current" ? "proven" : releaseState === "stale" ? "not-proven" : "pending" },
+              { label: "Backend image digest", detail: data.version.backend_image_digest ?? "Cloud release manifest pending", state: data.version.backend_image_digest ? "proven" : "pending" },
+            ]}
+            limitations={["A local exact check is not Cloud Scheduler evidence.", "The historical local baseline is not attributed to the current release.", "Measured model cost is reported only when the observed run made model calls."]}
+            trigger={<Button type="button" variant="outline" className="border-white/20 bg-transparent text-white hover:bg-white/10 hover:text-white"><FileCheck2 aria-hidden="true" /> Show execution proof</Button>}
+          />
         </div>
       </section>
 
       {report ? <LiveReport report={report} data={data} /> : (
-        <Card>
-          <CardContent className="grid min-h-64 place-items-center p-8 text-center"><div><span className="mx-auto grid size-12 place-items-center rounded-xl bg-attention/15"><Clock3 aria-hidden="true" className="size-5" /></span><h2 className="mt-4 text-lg font-bold">No observed night run yet</h2><p className="mt-1 max-w-lg text-sm leading-6 text-muted-foreground">The current statement has {metric(data.digest.digest.statement.total)} rows, but this page will not infer a run report from aggregate state. Trigger the real Job in cloud, or use the explicitly local deterministic check.</p></div></CardContent>
-        </Card>
+        <PendingState title="No observed night run yet" description={`The current statement has ${metric(data.digest.digest.statement.total)} rows, but this page will not infer a run report from aggregate state. Trigger the real Job in cloud, or use the explicitly local deterministic check.`} />
       )}
       <Baseline />
       <p className="mt-7 text-center text-xs text-muted-foreground">The Loom must show Cloud Scheduler or the reviewed proof workflow starting the real Cloud Run Job. This page alone is not scheduler evidence.</p>
-      {confirming ? <RunConfirmation busy={running} onCancel={() => { if (!running) setConfirming(false); }} onConfirm={() => void runExact()} /> : null}
+      <AlertDialog open={confirming} onOpenChange={(open) => { if (!running) setConfirming(open); }}>
+        {confirming ? <RunConfirmation busy={running} onCancel={() => { if (!running) setConfirming(false); }} onConfirm={() => void runExact()} /> : null}
+      </AlertDialog>
     </>
   );
 }

@@ -103,7 +103,8 @@ class FirestoreStore:
     # ---- orders ----------------------------------------------------------
     def _order_doc(self, customer_id: str, items: list[dict], status: str,
                    needs_review: bool, notes: str, created_at: str | None,
-                   total: int | None = None, customer_name: str | None = None) -> dict:
+                   total: int | None = None, customer_name: str | None = None,
+                   source_event_id: str | None = None) -> dict:
         if customer_name is None:
             cust = self.get_customer(customer_id)
             customer_name = (cust or {}).get("name")
@@ -115,15 +116,19 @@ class FirestoreStore:
                      sum(int(i["unit_price"]) * int(i["qty"]) for i in items),
             "needs_review": bool(needs_review),
             "notes": notes,
+            "source_event_id": source_event_id,
             "items": items,
             "created_at": created_at or _now(),
         }
 
     def create_order(self, customer_id: str, items: list[dict], status: str,
                      needs_review: bool = False, notes: str = "",
-                     created_at: str | None = None):
+                     created_at: str | None = None,
+                     source_event_id: str | None = None):
         ref = self._col("orders").document()
-        ref.set(self._order_doc(customer_id, items, status, needs_review, notes, created_at))
+        ref.set(self._order_doc(
+            customer_id, items, status, needs_review, notes, created_at,
+            source_event_id=source_event_id))
         return ref.id
 
     def get_order(self, order_id) -> dict | None:
@@ -416,6 +421,7 @@ class FirestoreStore:
                     "status": "paid" if row.get("paid") else "confirmed",
                     "total": amount, "needs_review": False,
                     "notes": "ledger row approved by owner",
+                    "source_event_id": payload.get("source_event_id"),
                     "items": [{
                         "sku": None,
                         "name": row.get("description") or "ledger sale",
