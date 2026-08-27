@@ -353,17 +353,17 @@ resource "google_cloud_run_v2_job" "seed" {
 
     template {
       service_account = google_service_account.runtime["job"].email
-      timeout         = "600s"
+      timeout         = "3600s"
       max_retries     = 0
 
       containers {
         name    = "seed"
         image   = var.backend_image
         command = ["python", "-m", "app.jobs"]
-        args    = ["seed"]
+        args    = ["seed", "--seed-profile", "judge", "--seed-rows", "50000"]
 
         resources {
-          limits = { cpu = "1", memory = "1Gi" }
+          limits = { cpu = "2", memory = "2Gi" }
         }
 
         dynamic "env" {

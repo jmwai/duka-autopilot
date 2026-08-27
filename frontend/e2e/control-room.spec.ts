@@ -153,17 +153,54 @@ test.describe("control room release candidate", () => {
     await dialog.getByLabel("Mark paid in the books").check();
     await dialog.getByRole("button", { name: "Record sale", exact: true }).click();
 
-    await expect(page.getByText(/Order #\d+ recorded from current catalog prices/)).toBeVisible();
-    expect(submittedBody).toEqual({
+    await expect(page.getByText(/Order #\d+ recorded exactly once from current catalog prices/)).toBeVisible();
+    expect(submittedBody).toMatchObject({
       customer_id: "254711000001",
       items: [{ sku: "UNGA-2KG", qty: 2 }],
       paid: true,
     });
+    expect((submittedBody as { event_id?: string }).event_id).toMatch(/^sale-[a-f0-9]{32}$/);
     const recordedOrder = page.getByRole("dialog", { name: "Order details" });
     await expect(recordedOrder).toContainText("Mama Achieng");
     await expect(recordedOrder).toContainText("Unga wa Dola 2kg");
     await expect(recordedOrder).toContainText(/2\s*×\s*Ksh\s*195/);
     await expect(recordedOrder).toContainText(/Total\s*Ksh\s*390/);
+  });
+
+  test("manual sale reuses one event ID after a lost response", async ({ page }) => {
+    const attempts: Array<{ event_id: string }> = [];
+    await page.route("**/api/orders", async (route) => {
+      const request = route.request();
+      if (request.method() !== "POST") return route.continue();
+      const payload = request.postDataJSON() as { event_id: string };
+      attempts.push(payload);
+      if (attempts.length === 1) {
+        await route.fetch();
+        return route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Simulated response loss after persistence" }),
+        });
+      }
+      return route.continue();
+    });
+
+    await page.goto("/orders");
+    await page.getByRole("button", { name: "Record sale" }).click();
+    const dialog = page.getByRole("dialog", { name: "Record a catalog-grounded sale" });
+    await dialog.getByLabel("Customer").selectOption("254711000002");
+    await dialog.getByLabel("Product").selectOption("SUKARI-1KG");
+    await dialog.getByLabel("Quantity").fill("2");
+    await dialog.getByRole("button", { name: "Record sale", exact: true }).click();
+
+    await expect(dialog.getByRole("alert")).toContainText("The sale result could not be confirmed");
+    await dialog.getByRole("button", { name: "Record sale", exact: true }).click();
+    await expect(page.getByText(/recorded exactly once.*safe replay/)).toBeVisible();
+
+    expect(attempts).toHaveLength(2);
+    expect(attempts[1].event_id).toBe(attempts[0].event_id);
+    const orders = await (await page.request.get("/api/orders")).json() as Array<{ source_event_id?: string }>;
+    expect(orders.filter((order) => order.source_event_id === attempts[0].event_id)).toHaveLength(1);
   });
 
   test("restock scan is idempotent and the owner can reject the one draft", async ({ page }) => {
@@ -194,6 +231,30 @@ test.describe("control room release candidate", () => {
     expect(await replay.json()).toMatchObject({ ok: true, idempotent: true, decision: "rejected" });
   });
 
+  test("restock scan keeps a visible retry state after failure", async ({ page }) => {
+    let attempts = 0;
+    await page.route("**/api/restock/check", async (route) => {
+      attempts += 1;
+      if (attempts === 1) {
+        return route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Simulated shelf scan outage" }),
+        });
+      }
+      return route.continue();
+    });
+
+    await page.goto("/inventory");
+    await page.getByRole("button", { name: "Run shelf scan" }).click();
+    const failure = page.getByRole("alert").filter({ hasText: "The shelf scan did not complete" });
+    await expect(failure).toContainText("The shelf scan did not complete");
+    await expect(failure).toContainText("cannot create a second pending restock draft");
+    await failure.getByRole("button", { name: "Retry scan" }).click();
+    await expect(page.getByRole("status")).toBeVisible();
+    expect(attempts).toBe(2);
+  });
+
   test("local night run persists a receipt without claiming Scheduler evidence", async ({ page }) => {
     await page.goto("/night-shift");
     await page.getByRole("button", { name: "Run local exact check" }).click();
@@ -204,6 +265,30 @@ test.describe("control room release candidate", () => {
     await expect(page.getByText("Night shift complete")).toBeVisible();
     await expect(page.getByText("Surface", { exact: true }).first().locator("..")).toContainText("api");
     await expect(page.getByText("This page alone is not scheduler evidence.")).toBeVisible();
+  });
+
+  test("local night run keeps an explicit failure state before retry", async ({ page }) => {
+    let attempts = 0;
+    await page.route("**/api/recon/nightly?fuzzy=false", async (route) => {
+      attempts += 1;
+      if (attempts === 1) {
+        return route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Simulated local run outage" }),
+        });
+      }
+      return route.continue();
+    });
+
+    await page.goto("/night-shift");
+    await page.getByRole("button", { name: "Run local exact check" }).click();
+    const confirmation = page.getByRole("alertdialog");
+    await confirmation.getByRole("button", { name: "Run exact pass" }).click();
+    await expect(confirmation.getByRole("alert")).toContainText("result could not be confirmed");
+    await confirmation.getByRole("button", { name: "Run exact pass" }).click();
+    await expect(page.getByText("Local exact report persisted. This is not Scheduler proof.")).toBeVisible();
+    expect(attempts).toBe(2);
   });
 
   test("inbox preserves an event ID across an uncertain handoff and retry", async ({ page }) => {
@@ -229,6 +314,37 @@ test.describe("control room release candidate", () => {
     const retriedReceipt = await receipt.textContent();
     expect(retriedReceipt).toBe(firstReceipt);
     expect(attempts).toBe(2);
+  });
+
+  test("session rotation reuses one operation after a lost response", async ({ page }) => {
+    const attempts: Array<{ event_id: string; customer_id: string }> = [];
+    await page.route("**/api/sessions/new", async (route) => {
+      const request = route.request();
+      if (request.method() !== "POST") return route.continue();
+      const payload = request.postDataJSON() as { event_id: string; customer_id: string };
+      attempts.push(payload);
+      if (attempts.length === 1) {
+        await route.fetch();
+        return route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Simulated response loss after rotation" }),
+        });
+      }
+      return route.continue();
+    });
+
+    await page.goto("/inbox");
+    await page.getByRole("button", { name: "Start a new day" }).click();
+    const dialog = page.getByRole("dialog", { name: "Start a fresh managed session?" });
+    await dialog.getByRole("button", { name: "Start new day" }).click();
+    await expect(dialog.getByRole("alert")).toContainText("The new session could not be confirmed");
+    await dialog.getByRole("button", { name: "Start new day" }).click();
+    await expect(page.getByText(/fresh managed session is active.*safe replay/i)).toBeVisible();
+
+    expect(attempts).toHaveLength(2);
+    expect(attempts[1]).toEqual(attempts[0]);
+    expect(attempts[0].event_id).toMatch(/^session-[a-f0-9]{32}$/);
   });
 
   test("execution receipt opens the exact authenticated order", async ({ page }) => {

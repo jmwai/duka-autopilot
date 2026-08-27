@@ -61,7 +61,7 @@ def render_text(d: dict) -> str:
         lines.append(f"• Night shift: {n['exact_matched']:,} payments settled "
                      f"({n['settle_rate']:.0%} deterministic), "
                      f"{n['fuzzy_proposals']} proposal(s) need you, "
-                     f"LLM cost ${n['cost_usd']:.4f}")
+                     f"Gemini cost ${n['cost_usd']:.4f}")
     else:
         s = d["statement"]
         lines.append(f"• Statement: {s['matched_exact']:,} matched, "

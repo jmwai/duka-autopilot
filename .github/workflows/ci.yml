@@ -162,6 +162,9 @@ jobs:
       - name: Run production browser, accessibility, and mutation journeys
         run: pnpm test:e2e
 
+      - name: Verify the meaningful bilingual judging profile
+        run: pnpm test:e2e:judge
+
       - name: Upload frontend release-candidate evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

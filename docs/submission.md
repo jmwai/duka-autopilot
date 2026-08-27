@@ -100,9 +100,9 @@ customers with Kenyan names, a month of orders, and M-Pesa-statement-shaped
 rows with engineered noise (payer-name variants, partial and split
 payments, duplicate refs, unknown deposits). The release voice-note test set
 contains English and Kiswahili variants created with Google Cloud Gemini-TTS
-and ships with ground-truth transcripts and expected orders. The Loom may also
-use a purpose-recorded first-party human voice. No real customer or payment
-data is used anywhere.
+and ships with ground-truth transcripts and expected orders. The ledger set is
+generated with Google Vertex AI in the same two languages and carries reviewed
+row-level truth. No real customer or payment data is used anywhere.
 
 ## Disclosure of pre-existing work
 

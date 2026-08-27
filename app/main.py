@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 from typing import Literal
 from uuid import uuid4
 
@@ -186,6 +187,8 @@ class SaleItem(BaseModel):
 
 
 class SaleIn(BaseModel):
+    event_id: str = Field(
+        min_length=1, max_length=200, pattern=r"^[A-Za-z0-9._~-]+$")
     customer_id: str
     items: list[SaleItem]
     paid: bool = False  # walk-in cash sale vs. on-account order
@@ -206,13 +209,37 @@ def create_sale(body: SaleIn, _auth: None = Depends(require_owner)):
         return JSONResponse({"error": f"unknown sku(s): {unknown}"}, status_code=422)
     if not store.get_customer(body.customer_id):
         return JSONResponse({"error": "unknown customer"}, status_code=422)
+    if len({item.sku for item in body.items}) != len(body.items):
+        return JSONResponse({"error": "combine duplicate products"},
+                            status_code=422)
     items = [{"sku": i.sku, "name": catalog[i.sku]["name"], "qty": i.qty,
               "unit_price": catalog[i.sku]["unit_price"]} for i in body.items]
     status = "paid" if body.paid else "confirmed"
-    order_id = store.create_order(body.customer_id, items, status=status,
-                                  notes="created by owner (dashboard sale)")
-    total = sum(i["unit_price"] * i["qty"] for i in items)
-    return {"order_id": order_id, "status": status, "total": total}
+    canonical_payload = json.dumps({
+        "customer_id": body.customer_id,
+        "items": [{"sku": item.sku, "qty": item.qty}
+                  for item in body.items],
+        "paid": body.paid,
+    }, sort_keys=True, separators=(",", ":")).encode()
+    result = store.create_owner_sale_once(
+        body.event_id,
+        body.customer_id,
+        hashlib.sha256(canonical_payload).hexdigest(),
+        items,
+        status,
+    )
+    if result["status"] == "conflict":
+        return JSONResponse({
+            "error": "sale event ID was already used for another payload",
+            "event_id": body.event_id,
+        }, status_code=409)
+    if result["status"] != "completed" or not result.get("result"):
+        return JSONResponse({
+            "error": "sale event is already processing or unavailable",
+            "event_id": body.event_id,
+            "status": result["status"],
+        }, status_code=409)
+    return {**result["result"], "idempotent": result["idempotent"]}
 
 
 @app.get("/orders")
@@ -335,6 +362,8 @@ async def decide(approval_id: str, body: Decision,
 
 
 class NewSessionIn(BaseModel):
+    event_id: str = Field(
+        min_length=1, max_length=200, pattern=r"^[A-Za-z0-9._~-]+$")
     customer_id: str
 
 
@@ -344,7 +373,12 @@ async def sessions_new(body: NewSessionIn,
     """Start a fresh chat session ('new day'). Older sessions remain reachable
     only through the memory service - which is the whole demo point."""
     from app.runner import new_session
-    return {"session_id": await new_session(body.customer_id)}
+    try:
+        return await new_session(body.customer_id, body.event_id)
+    except ValueError as exc:
+        return JSONResponse({
+            "error": str(exc), "event_id": body.event_id,
+        }, status_code=409)
 
 
 # ---------- reconciliation ----------

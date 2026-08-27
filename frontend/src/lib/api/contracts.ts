@@ -138,9 +138,11 @@ export const orderSchema = z.object({
 export const ordersSchema = z.array(orderSchema);
 
 export const createOrderResponseSchema = z.object({
+  event_id: z.string(),
   order_id: z.union([z.string(), z.number()]).transform(String),
   status: z.string(),
   total: z.number().int().nonnegative(),
+  idempotent: z.boolean(),
 });
 
 export const inventoryItemSchema = productSchema.extend({
@@ -225,7 +227,11 @@ export const queuedEventSchema = z.object({
   event_id: z.string(),
 });
 
-export const newSessionSchema = z.object({ session_id: z.string() });
+export const newSessionSchema = z.object({
+  event_id: z.string(),
+  session_id: z.string(),
+  idempotent: z.boolean(),
+});
 
 export const decisionResponseSchema = z.union([
   z.object({

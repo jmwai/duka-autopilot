@@ -226,7 +226,8 @@ and must clarify missing or conflicting facts.
   change.
 - Money is integer KSh throughout domain state.
 - All demo, benchmark, payment, customer, voice, and ledger fixtures are
-  synthetic or purpose-recorded for this submission. No real financial data.
+  synthetic. Release voice and ledger media is generated only with approved
+  Google Cloud surfaces. No real financial data.
 
 ## 8. Required acceptance evidence
 

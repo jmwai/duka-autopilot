@@ -18,6 +18,7 @@
     "test": "vitest run",
     "pretest:e2e": "pnpm build",
     "test:e2e": "playwright test",
+    "test:e2e:judge": "DUKA_E2E_PROFILE=judge DUKA_E2E_ROWS=4000 playwright test --config playwright.judge.config.ts",
     "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm check:bundle"
   },
   "dependencies": {

@@ -33,15 +33,15 @@ authority.
 
 | Fixture | Required artifact | Ground truth | Status |
 |---|---|---|---|
-| English voice | Google Cloud Gemini-TTS `.wav` plus optional purpose-recorded human variant; SHA-256 and duration | “Hello, please bring me my usual order tomorrow morning.”; expected usual items and current KSh 1,035 total | Pending API activation |
-| Kiswahili voice | Google Cloud Gemini-TTS `.wav` plus optional purpose-recorded human variant; SHA-256 and duration | `Habari, niletee vitu vyangu vya kawaida kesho asubuhi.`; expected usual items and current KSh 1,035 total | Pending API activation |
+| English voice | Google Cloud Gemini-TTS `.wav`; SHA-256 and duration | “Hello, please bring me my usual order tomorrow morning.”; expected usual items and current KSh 1,035 total | Pending API activation |
+| Kiswahili voice | Google Cloud Gemini-TTS `.wav`; SHA-256 and duration | `Habari, niletee vitu vyangu vya kawaida kesho asubuhi.`; expected usual items and current KSh 1,035 total | Pending API activation |
 | English handwritten ledger | `fixtures/demo/ledger-en-v2.png`; Vertex AI synthetic PNG | Two readable rows and one unreadable amount that must gate | Pending API activation |
 | Kiswahili handwritten ledger | `fixtures/demo/ledger-sw-v2.png`; Vertex AI synthetic PNG | Equivalent two-record/one-gate truth | Pending API activation |
 
-The audio must be a real purpose-recorded human voice if the submission says
-“real human voice.” A TTS file may be used only if the transcript and demo label
-it synthetic. The ledger must contain no real name, phone, account, or payment
-reference.
+Both audio fixtures must be generated with Google Cloud Gemini-TTS and labelled
+as synthetic in the demo and manifest. Both ledger fixtures must be generated
+with the approved Google Vertex AI image model and contain no real name, phone,
+account, or payment reference.
 
 The earlier ledger and offline voice candidates do not satisfy the Google-only
 release policy and are quarantined. They must not appear in the hosted app,

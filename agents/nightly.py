@@ -115,6 +115,6 @@ async def run_nightly(fuzzy: bool = True,
                       f"deterministically ({report['settle_rate']:.1%}), "
                       f"{report['fuzzy_proposals']} fuzzy proposal(s) awaiting your "
                       f"approval, {report['residue_end']} unmatched. "
-                      f"LLM cost: ${report['cost_usd']:.4f}.{restock_line}",
+                      f"Gemini cost: ${report['cost_usd']:.4f}.{restock_line}",
                       channel="system", meta=report)
     return report

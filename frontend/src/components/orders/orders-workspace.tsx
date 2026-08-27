@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDownUp, ChevronLeft, ChevronRight, CirclePlus, LoaderCircle, PackageOpen, Plus, Search, ShoppingBag, Trash2 } from "lucide-react";
+import { AlertTriangle, ArrowDownUp, ChevronLeft, ChevronRight, CirclePlus, LoaderCircle, PackageOpen, Plus, Search, ShoppingBag, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -84,11 +84,19 @@ function ManualSaleDialog({ open, onOpenChange, data, onCreated }: { open: boole
   const [lines, setLines] = useState<SaleLine[]>([{ id: crypto.randomUUID(), sku: data.products[0]?.sku ?? "", qty: 1 }]);
   const [paid, setPaid] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [eventId, setEventId] = useState(() => `sale-${crypto.randomUUID().replaceAll("-", "")}`);
+  const [failure, setFailure] = useState<{ message: string; requestId?: string } | null>(null);
   const catalog = useMemo(() => new Map(data.products.map((product) => [product.sku, product])), [data.products]);
   const previewTotal = lines.reduce((total, line) => total + (catalog.get(line.sku)?.unit_price ?? 0) * Math.max(0, line.qty), 0);
 
   function updateLine(id: string, patch: Partial<SaleLine>) {
     setLines((current) => current.map((line) => line.id === id ? { ...line, ...patch } : line));
+    resetAttemptIdentity();
+  }
+
+  function resetAttemptIdentity() {
+    setEventId(`sale-${crypto.randomUUID().replaceAll("-", "")}`);
+    setFailure(null);
   }
 
   function addLine() {
@@ -96,6 +104,7 @@ function ManualSaleDialog({ open, onOpenChange, data, onCreated }: { open: boole
     const next = data.products.find((product) => !used.has(product.sku));
     if (!next) return toast.error("Every catalog product is already in this sale.");
     setLines((current) => [...current, { id: crypto.randomUUID(), sku: next.sku, qty: 1 }]);
+    resetAttemptIdentity();
   }
 
   async function submit() {
@@ -103,18 +112,23 @@ function ManualSaleDialog({ open, onOpenChange, data, onCreated }: { open: boole
     if (lines.some((line) => !line.sku || !Number.isInteger(line.qty) || line.qty <= 0)) return toast.error("Every item needs a positive whole-number quantity.");
     if (new Set(lines.map((line) => line.sku)).size !== lines.length) return toast.error("Combine duplicate products into one line.");
     setBusy(true);
+    setFailure(null);
     try {
       const result = await browserApi("orders", createOrderResponseSchema, {
         method: "POST",
-        body: JSON.stringify({ customer_id: customerId, items: lines.map(({ sku, qty }) => ({ sku, qty })), paid }),
+        body: JSON.stringify({ event_id: eventId, customer_id: customerId, items: lines.map(({ sku, qty }) => ({ sku, qty })), paid }),
       });
       await onCreated(result.order_id);
       onOpenChange(false);
       setPaid(false);
       setLines([{ id: crypto.randomUUID(), sku: data.products[0]?.sku ?? "", qty: 1 }]);
-      toast.success(`Order #${result.order_id} recorded from current catalog prices.`);
+      setEventId(`sale-${crypto.randomUUID().replaceAll("-", "")}`);
+      toast.success(`Order #${result.order_id} recorded exactly once from current catalog prices${result.idempotent ? " (safe replay)" : ""}.`);
     } catch (error) {
-      toast.error(error instanceof BrowserApiError ? error.message : "The sale could not be recorded.");
+      setFailure({
+        message: error instanceof BrowserApiError ? error.message : "The sale could not be recorded.",
+        requestId: error instanceof BrowserApiError ? error.requestId : undefined,
+      });
     } finally {
       setBusy(false);
     }
@@ -126,7 +140,7 @@ function ManualSaleDialog({ open, onOpenChange, data, onCreated }: { open: boole
         <DialogHeader><DialogTitle>Record a catalog-grounded sale</DialogTitle><DialogDescription>Choose SKUs and quantities only. The backend re-derives every name and integer KSh price from the current catalog.</DialogDescription></DialogHeader>
         <div className="space-y-5">
           <label className="block text-sm font-semibold">Customer
-            <select value={customerId} onChange={(event) => setCustomerId(event.target.value)} className="mt-2 h-11 w-full rounded-md border bg-background px-3 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+            <select value={customerId} onChange={(event) => { setCustomerId(event.target.value); resetAttemptIdentity(); }} className="mt-2 h-11 w-full rounded-md border bg-background px-3 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
               {data.customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}
             </select>
           </label>
@@ -144,7 +158,7 @@ function ManualSaleDialog({ open, onOpenChange, data, onCreated }: { open: boole
                   <label className="text-xs font-semibold">Quantity
                     <Input type="number" min={1} max={10000} step={1} value={line.qty} onChange={(event) => updateLine(line.id, { qty: Number(event.target.value) })} className="mt-1" />
                   </label>
-                  <Button type="button" variant="ghost" size="icon" aria-label={`Remove item ${index + 1}`} disabled={lines.length === 1} onClick={() => setLines((current) => current.filter((candidate) => candidate.id !== line.id))}><Trash2 aria-hidden="true" /></Button>
+                  <Button type="button" variant="ghost" size="icon" aria-label={`Remove item ${index + 1}`} disabled={lines.length === 1} onClick={() => { setLines((current) => current.filter((candidate) => candidate.id !== line.id)); resetAttemptIdentity(); }}><Trash2 aria-hidden="true" /></Button>
                   <p className="text-xs text-muted-foreground sm:col-span-3">{product ? `${product.stock} in stock · ${product.unit}` : "Unknown product"}</p>
                 </div>
               );
@@ -152,8 +166,15 @@ function ManualSaleDialog({ open, onOpenChange, data, onCreated }: { open: boole
             <Button type="button" variant="outline" onClick={addLine}><Plus aria-hidden="true" /> Add item</Button>
           </fieldset>
 
-          <label className="flex min-h-11 items-center gap-3 rounded-lg border bg-background px-3 text-sm"><input type="checkbox" checked={paid} onChange={(event) => setPaid(event.target.checked)} className="size-4 accent-primary" /><span><span className="font-semibold">Mark paid in the books</span><span className="block text-xs text-muted-foreground">No external payment is initiated.</span></span></label>
+          <label className="flex min-h-11 items-center gap-3 rounded-lg border bg-background px-3 text-sm"><input type="checkbox" checked={paid} onChange={(event) => { setPaid(event.target.checked); resetAttemptIdentity(); }} className="size-4 accent-primary" /><span><span className="font-semibold">Mark paid in the books</span><span className="block text-xs text-muted-foreground">No external payment is initiated.</span></span></label>
           <div className="flex items-center justify-between rounded-xl bg-sidebar p-4 text-sidebar-foreground"><span className="text-sm font-semibold">Preview total</span><KshValue value={previewTotal} className="text-xl font-bold" /></div>
+          {failure ? (
+            <div role="alert" className="flex gap-3 rounded-xl border border-conflict/35 bg-conflict/5 p-4 text-sm leading-6">
+              <AlertTriangle aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-conflict" />
+              <div><p className="font-semibold">The sale result could not be confirmed.</p><p className="text-muted-foreground">{failure.message} Retrying this unchanged draft reuses sale event {eventId.slice(0, 16)}…; the backend returns the original result instead of creating a second order.</p>{failure.requestId ? <p className="mt-1 font-mono text-[0.68rem] text-muted-foreground">Request {failure.requestId}</p> : null}</div>
+            </div>
+          ) : null}
+          <p className="font-mono text-[0.68rem] text-muted-foreground">Sale event {eventId.slice(0, 20)}…</p>
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><Button type="button" variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>Cancel</Button><Button type="button" disabled={busy || !customerId || !lines.length} onClick={() => void submit()}>{busy ? <LoaderCircle aria-hidden="true" className="animate-spin" /> : <ShoppingBag aria-hidden="true" />}{busy ? "Recording…" : "Record sale"}</Button></div>
         </div>
       </DialogContent>

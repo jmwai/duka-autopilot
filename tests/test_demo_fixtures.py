@@ -23,7 +23,6 @@ def test_demo_fixture_manifest_quarantines_legacy_media():
         "allowed": [
             "google_vertex_ai",
             "google_cloud_text_to_speech",
-            "first_party_human_recording",
         ],
     }
     assert manifest["ledgers"] == []

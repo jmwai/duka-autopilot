@@ -1,6 +1,6 @@
 # Duka Autopilot — Grand-Prize Winning Product Plan v4
 
-> Status: active execution plan
+> Status: superseded by `docs/grand-prize-release-plan-v5.md`
 > Created: August 27, 2026
 > Planning baseline: `ba19196840877ba4c3914f52576c3e9edcb74e84`
 > Baseline branch: private `origin/dev`
@@ -565,8 +565,8 @@ an artifact that is absent.
 - [ ] **A4-01** Enable only approved Vertex AI and Cloud Text-to-Speech APIs.
 - [ ] **A4-02** Generate English/Kiswahili ledger candidates with the declared
   Google Vertex image model; human-review text and layout.
-- [ ] **A4-03** Generate English/Kiswahili Google TTS fixtures and optionally
-  record consented first-party human voice fixtures.
+- [ ] **A4-03** Generate and freeze English/Kiswahili Google Cloud Gemini-TTS
+  fixtures with reviewed transcripts, translations, and expected orders.
 - [ ] **A4-04** Run all candidates through the production Gemini extraction
   path; freeze only assets with exact reviewed truth.
 - [ ] **A4-05** Record hashes, bytes, dimensions/duration, model, provider,

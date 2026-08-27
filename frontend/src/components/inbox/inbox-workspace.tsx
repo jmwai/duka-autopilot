@@ -149,9 +149,7 @@ function voiceFilename(fixture: DemoVoiceFixture) {
 }
 
 function voiceProvider(fixture: DemoVoiceFixture) {
-  return fixture.source.provider === "google_cloud_text_to_speech"
-    ? `Google Cloud TTS · ${fixture.source.model}`
-    : "First-party human recording";
+  return `Google Cloud TTS · ${fixture.source.model}`;
 }
 
 export function InboxWorkspace({ initialCustomers }: { initialCustomers: Customer[] }) {
@@ -165,6 +163,8 @@ export function InboxWorkspace({ initialCustomers }: { initialCustomers: Custome
   const [recording, setRecording] = useState(false);
   const [rotationOpen, setRotationOpen] = useState(false);
   const [rotating, setRotating] = useState(false);
+  const [rotationEventId, setRotationEventId] = useState(() => `session-${crypto.randomUUID().replaceAll("-", "")}`);
+  const [rotationFailure, setRotationFailure] = useState<{ message: string; requestId?: string } | null>(null);
   const [loadingVoiceId, setLoadingVoiceId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -391,18 +391,30 @@ export function InboxWorkspace({ initialCustomers }: { initialCustomers: Custome
   async function rotateSession() {
     if (!selectedCustomer || rotating) return;
     setRotating(true);
+    setRotationFailure(null);
     try {
-      await browserApi("sessions/new", newSessionSchema, {
+      const result = await browserApi("sessions/new", newSessionSchema, {
         method: "POST",
-        body: JSON.stringify({ customer_id: selectedCustomer.id }),
+        body: JSON.stringify({ event_id: rotationEventId, customer_id: selectedCustomer.id }),
       });
       setRotationOpen(false);
-      toast.success(`A fresh managed session is active for ${selectedCustomer.name}.`);
+      toast.success(`A fresh managed session is active for ${selectedCustomer.name}${result.idempotent ? " (safe replay)" : ""}.`);
     } catch (error) {
-      if (!handleAuthError(error)) toast.error(explainError(error));
+      if (!handleAuthError(error)) {
+        setRotationFailure({
+          message: explainError(error),
+          requestId: error instanceof BrowserApiError ? error.requestId : undefined,
+        });
+      }
     } finally {
       setRotating(false);
     }
+  }
+
+  function openRotation() {
+    setRotationEventId(`session-${crypto.randomUUID().replaceAll("-", "")}`);
+    setRotationFailure(null);
+    setRotationOpen(true);
   }
 
   return (
@@ -416,7 +428,7 @@ export function InboxWorkspace({ initialCustomers }: { initialCustomers: Custome
             type="button"
             variant="outline"
             disabled={!selectedCustomer}
-            onClick={() => setRotationOpen(true)}
+            onClick={openRotation}
           >
             <RotateCcw aria-hidden="true" />
             Start a new day
@@ -635,7 +647,7 @@ export function InboxWorkspace({ initialCustomers }: { initialCustomers: Custome
                   </div>
                 </div>
                 {fixtureManifestQuery.isError ? (
-                  <p role="alert" className="mt-2 text-xs leading-5 text-foreground">The release fixture manifest could not be verified. Record or attach owner audio instead.</p>
+                  <p role="alert" className="mt-2 text-xs leading-5 text-foreground">The release fixture manifest could not be verified. No voice file may be presented as release evidence until the approved Google fixtures pass integrity checks.</p>
                 ) : !fixtureManifest?.release_ready && fixtureManifest?.blocked_reason ? (
                   <p className="mt-2 text-xs leading-5 text-muted-foreground">{fixtureManifest.blocked_reason}</p>
                 ) : null}
@@ -730,6 +742,13 @@ export function InboxWorkspace({ initialCustomers }: { initialCustomers: Custome
               {selectedCustomer?.name} gets a clean conversational session. The audit thread stays visible, pending refund invocations remain resumable in their original session, and only allowlisted trusted usuals may return through Memory Bank—not raw chat history, prices, payment references, or authority claims.
             </DialogDescription>
           </DialogHeader>
+          {rotationFailure ? (
+            <div role="alert" className="flex gap-3 rounded-xl border border-conflict/35 bg-conflict/5 p-4 text-sm leading-6">
+              <RefreshCw aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-conflict" />
+              <div><p className="font-semibold">The new session could not be confirmed.</p><p className="text-muted-foreground">{rotationFailure.message} Retrying reuses operation {rotationEventId.slice(0, 16)}… and cannot advance the active pointer twice.</p>{rotationFailure.requestId ? <p className="mt-1 font-mono text-[0.68rem] text-muted-foreground">Request {rotationFailure.requestId}</p> : null}</div>
+            </div>
+          ) : null}
+          <p className="font-mono text-[0.68rem] text-muted-foreground">Session operation {rotationEventId.slice(0, 20)}…</p>
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <Button type="button" variant="outline" disabled={rotating} onClick={() => setRotationOpen(false)}>Keep this session</Button>
             <Button type="button" disabled={rotating} onClick={() => void rotateSession()}>

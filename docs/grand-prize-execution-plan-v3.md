@@ -277,8 +277,8 @@ Group navigation by owner intent, not by backend component.
 - Trust architecture: exact/Gemini/owner with actual tool boundaries.
 - Latest tests, Firestore parity, ADK evals, benchmark, economics, restart,
   Memory isolation, IAM denial, and rollback status.
-- Fixture provenance: Google model/provider or first-party human recording,
-  prompt/transcript hash, language, and synthetic status.
+- Fixture provenance: approved Google model/provider, prompt/transcript hash,
+  language, and synthetic status.
 - Disclosures: synthetic data, pre-existing work, no M-Pesa transfer, no
   supplier order effect.
 - Sanitized trace links only for authenticated judges; no private console data,
@@ -358,29 +358,29 @@ This policy is a P0 release gate.
 
 Google’s current Vertex AI release guidance identifies
 `gemini-2.5-flash-image` as the replacement image-generation endpoint. Do not
-use a deprecated Imagen endpoint or any non-Google image generator.
+use a deprecated endpoint or any media provider outside the locked Google
+allowlist.
 
 ### Audio
 
-- Purpose-record a first-party human English fixture and a first-party human
-  Kiswahili fixture so the core proof remains genuine human speech.
-- Store language, transcript, reviewed English translation, speaker consent,
+- Generate English and Kiswahili fixtures with Google Cloud Gemini-TTS.
+- Store language, transcript, reviewed English translation, voice, generation
   date, MIME, duration, bytes, and SHA-256.
 - The fixture contains no real customer/payment data.
 - Process both through Gemini on Vertex AI and require the same structured
   catalog-grounded outcome.
-- Google Cloud Text-to-Speech may create additional synthetic regression cases
-  only where the selected language/voice is officially supported; such files
-  must be labelled `Google Cloud TTS · synthetic` and may not be presented as
-  human audio.
-- Remove the current offline non-Google TTS submission claim.
+- Both release fixtures use Google Cloud Gemini-TTS, are labelled
+  `Google Cloud TTS · synthetic`, and carry reviewed transcripts and English
+  translations.
+- Remove the current offline media submission claim.
 
 ### Acceptance
 
 - Repository search returns zero release-facing non-Google media provenance.
 - Manifest validation fails on an unknown provider, missing language variant,
   hash mismatch, or absent ground truth.
-- Frontend fixture selectors show English/Kiswahili and human/synthetic origin.
+- Frontend fixture selectors show English/Kiswahili, Google provider/model,
+  and synthetic origin.
 - Model/eval report proves both language variants on the final release.
 
 ## 8. Delivery phases and tasks
@@ -394,9 +394,10 @@ use a deprecated Imagen endpoint or any non-Google image generator.
 - [ ] **P0-02** Update stale baseline references in deployment/evidence docs.
 - [ ] **P0-03** Add English and Kiswahili image prompts and generate both ledger
       fixtures with Vertex AI `gemini-2.5-flash-image`.
-- [ ] **P0-04** Purpose-record English and Kiswahili human voice fixtures.
-- [ ] **P0-05** Replace the manifest with an allowlisted Google/first-party
-      provenance schema and ground truth for all four fixtures.
+- [ ] **P0-04** Generate English and Kiswahili voice fixtures with Google Cloud
+      Gemini-TTS.
+- [ ] **P0-05** Replace the manifest with a strictly Google-only provenance
+      schema and ground truth for all four fixtures.
 - [ ] **P0-06** Add fixture sync, integrity, UI selection, and negative-provider
       tests; remove every non-Google media-provider release claim.
 - [ ] **P0-07** Run frontend checks, full Python suite, credential/trailer scan,
@@ -591,7 +592,7 @@ topology, deployment, and evidence-manifest changes stay serialized.
 | Time | Screen/action | Judge takeaway |
 |---|---|---|
 | 0:00–0:18 | Morning Brief hook and queue compression | A real owner outcome, immediately understandable |
-| 0:18–0:55 | Send English human voice; show `202`, then receipt | Messy input becomes a grounded asynchronous action |
+| 0:18–0:55 | Send the frozen English Google TTS voice; show `202`, then receipt | Messy input becomes a grounded asynchronous action |
 | 0:55–1:25 | Upload English ledger; two record, one gate; flash Kiswahili variants | Multimodality is operational, bilingual, and risk-aware |
 | 1:25–2:12 | Trigger real Scheduler/Cloud Run Job; show unedited logs and counts | The backend acts on Google Cloud, not in a slide |
 | 2:12–2:42 | Review morning decision and approve one safe internal proposal | Human authority is deliberate, not a fallback |

@@ -17,11 +17,11 @@ cannot be cited, remove the spoken claim and its screen beat.
 |---|---|---|---|
 | 0:00–0:13 | Start on the hosted owner dashboard with the morning digest open and the small approval queue visible. Do not begin on a title slide. | “While this Kenyan shop slept, Duka settled the routine work and compressed the night into these few decisions.” | Public `.run.app` host; digest; exact-match and queue cards |
 | 0:13–0:25 | Keep dashboard and chat visible. Briefly point at the tagline. | “Most agents expect clean text. A duka actually receives an English or Kiswahili voice note, a handwritten exercise book, and an M-Pesa export.” | Product UI, not slides |
-| 0:25–0:34 | Select `{{DEMO_CUSTOMER_NAME}}`; show that a fresh managed Session is active. Click the microphone. | “This customer is starting a new day, so only a confirmed usual order can carry across through Memory Bank.” | New-session marker; no old chat context relied upon |
+| 0:25–0:34 | Select `{{DEMO_CUSTOMER_NAME}}`; show that a fresh managed Session is active. Open the verified voice examples. | “This customer is starting a new day, so only a confirmed usual order can carry across through Memory Bank.” | New-session marker; no old chat context relied upon |
 | 0:34–0:40 | Attach the frozen English Google voice fixture; keep the Kiswahili variant selector visible. | **Voice fixture:** “Hello, please bring me my usual order tomorrow morning.” | Google provenance, English transcript, and equivalent Kiswahili variant visible |
 | 0:40–0:57 | Stop recording. Leave the `202 queued · EVENT… · N ms` status visible, then let the async reply arrive. Point to the node path and grounded total. | “The public API returns 202 immediately. Pub/Sub delivers the event; ADK screens, classifies, recalls the preference, re-reads today’s catalog, and saves exactly one grounded order.” | Visible 202/event ID/ack time; `screen › classifier › router › order_intake`; itemized current KSh total |
 | 0:57–1:08 | Show the new order row. If space permits, flash the managed Memory evidence tab for no more than three seconds. | “Memory suggests items and quantities—it never supplies authority, payment state, or price. Firestore and the catalog remain business truth.” | Current catalog price; opaque memory user scope; no raw phone in memory |
-| 1:08–1:16 | Click **Upload ledger** and choose `fixtures/demo/ledger-en-v2.png`; briefly point to the Kiswahili variant. | “Now the owner photographs yesterday’s handwritten ledger. The same test is frozen in English and Kiswahili.” | Owner-authenticated ledger control; Google provenance and final manifest hash |
+| 1:08–1:16 | Click **Upload ledger** and choose `fixtures/demo/ledger-sw-v2.png`; keep the English equivalent visible with its reviewed translation/truth. | “Now the owner photographs yesterday’s Kiswahili ledger. The same reviewed test is frozen in English for the judges.” | Owner-authenticated ledger control; Google provenance, English equivalent, and final manifest hash |
 | 1:16–1:34 | Let the ledger result render. Point to committed rows and one `ledger row` approval. | “Gemini reads the messy page, but deterministic code decides row by row: two clear entries reach the books; this smudged amount stops for review.” | `screen › classifier › router › ledger_reader`; `2` recorded; `1` gated; no guessed amount |
 | 1:34–1:46 | In the GCP tab, show Cloud Scheduler and click **Force run** on `{{NIGHTLY_SCHEDULER_NAME}}`. Keep this action uncut. | “At two each morning, Cloud Scheduler starts the real Cloud Run night-shift Job. I’ll trigger that same schedule now.” | Scheduler name, `europe-west1`, successful trigger; no terminal simulation |
 | 1:46–2:13 | Show the Job execution transition to success, then switch to the dashboard and refresh. | “The exact indexed pass handles routine evidence first. Only bounded residue reaches Gemini: twenty-five rows per batch, forty batches maximum, and it stops when progress stops.” | Job execution ID `{{JOB_EXECUTION_ID}}`; success; bounded configuration evidence |
@@ -61,8 +61,8 @@ Fallbacks preserve truthful narration; they do not permit faking a live result.
 ## Claims checklist before recording
 
 - [ ] Every placeholder is replaced from `docs/evidence-ledger.md`.
-- [ ] The voice is purpose-recorded/synthetic and contains no real customer data.
-- [ ] The ledger is synthetic and its ground truth is recorded.
+- [ ] Both frozen voices were generated through approved Google Cloud Text-to-Speech and contain no real customer data.
+- [ ] Both frozen ledgers were generated through approved Google Vertex AI and their ground truth is recorded.
 - [ ] The Job measurement is cloud evidence from the final SHA, not the local baseline.
 - [ ] The ADK eval count is from `adk eval`, not pytest.
 - [ ] The diagram contains only provisioned and proven services.

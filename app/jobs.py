@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 
 from app.observability import (
     bind_context,
@@ -13,15 +14,27 @@ from app.observability import (
 )
 
 
-async def run(action: str, fuzzy: bool) -> dict:
+async def run(action: str, fuzzy: bool, *, seed_profile: str = "base",
+              seed_rows: int = 4_000) -> dict:
     from agents.store import get_store
 
     store = get_store()
     store.init()
     if action == "seed":
-        from agents.seed import DEMO_MEMORY_CUSTOMER_ID, seed
+        from agents.seed import DEMO_MEMORY_CUSTOMER_ID
         from app.runner import _ingest_order_summary
-        result = seed(force=False)
+        if seed_profile == "judge":
+            from agents.demo_state import prepare_judge_state
+            result = await prepare_judge_state(
+                force=False,
+                rows=seed_rows,
+                execution_surface="cloud_run_seed_job",
+            )
+        elif seed_profile == "base":
+            from agents.seed import seed
+            result = seed(force=False)
+        else:
+            raise ValueError(f"unknown seed profile: {seed_profile}")
         memory_prepared = await _ingest_order_summary(DEMO_MEMORY_CUSTOMER_ID)
         if not memory_prepared:
             raise RuntimeError("demo memory source order is unavailable")
@@ -58,6 +71,16 @@ def main() -> None:
         "action", choices=("nightly", "memory", "digest", "seed"),
         nargs="?", default="nightly")
     parser.add_argument("--no-fuzzy", action="store_true")
+    parser.add_argument(
+        "--seed-profile",
+        choices=("base", "judge"),
+        default=os.environ.get("DUKA_SEED_PROFILE", "base"),
+    )
+    parser.add_argument(
+        "--seed-rows",
+        type=int,
+        default=int(os.environ.get("DUKA_SEED_ROWS", "4000")),
+    )
     args = parser.parse_args()
     configure_observability("job")
     try:
@@ -65,7 +88,12 @@ def main() -> None:
             with tracer().start_as_current_span(
                     f"duka.job.{args.action}") as span:
                 span.set_attribute("duka.job.action", args.action)
-                result = asyncio.run(run(args.action, not args.no_fuzzy))
+                result = asyncio.run(run(
+                    args.action,
+                    not args.no_fuzzy,
+                    seed_profile=args.seed_profile,
+                    seed_rows=args.seed_rows,
+                ))
         print(json.dumps(result, sort_keys=True, default=str))
     finally:
         shutdown_observability()

@@ -255,6 +255,65 @@ class SqliteStore:
                 [(oid, i.get("sku"), i["name"], int(i["qty"]), int(i["unit_price"])) for i in items])
         return oid
 
+    def create_owner_sale_once(self, event_id: str, customer_id: str,
+                               payload_hash: str, items: list[dict],
+                               status: str) -> dict:
+        """Atomically persist a manual sale and its completed event receipt."""
+        total = sum(int(i["unit_price"]) * int(i["qty"]) for i in items)
+        with self._conn() as c:
+            c.execute("BEGIN IMMEDIATE")
+            receipt_row = c.execute(
+                "SELECT * FROM event_receipts WHERE event_id=?", (event_id,)
+            ).fetchone()
+            if receipt_row is not None:
+                receipt = dict(receipt_row)
+                result = json.loads(receipt["result"]) if receipt["result"] else None
+                if (receipt["payload_hash"] != payload_hash
+                        or receipt["customer_id"] != customer_id):
+                    return {"status": "conflict", "idempotent": False,
+                            "result": result}
+                if receipt["status"] == "completed" and result:
+                    return {"status": "completed", "idempotent": True,
+                            "result": result}
+                return {"status": receipt["status"], "idempotent": False,
+                        "result": result}
+
+            now = int(time.time())
+            c.execute(
+                "INSERT INTO event_receipts "
+                "(event_id,customer_id,payload_hash,status,attempts,lease_expires_at) "
+                "VALUES (?,?,?,?,1,?)",
+                (event_id, customer_id, payload_hash, "processing", now + 120),
+            )
+            cursor = c.execute(
+                "INSERT INTO orders "
+                "(customer_id,status,total,needs_review,notes,source_event_id) "
+                "VALUES (?,?,?,?,?,?)",
+                (customer_id, status, total, 0,
+                 "created by owner (dashboard sale)", event_id),
+            )
+            order_id = cursor.lastrowid
+            c.executemany(
+                "INSERT INTO order_items "
+                "(order_id,sku,name,qty,unit_price) VALUES (?,?,?,?,?)",
+                [(order_id, item.get("sku"), item["name"], int(item["qty"]),
+                  int(item["unit_price"])) for item in items],
+            )
+            result = {
+                "event_id": event_id,
+                "order_id": order_id,
+                "status": status,
+                "total": total,
+            }
+            c.execute(
+                "UPDATE event_receipts SET status='completed', result=?, "
+                "last_error=NULL, lease_expires_at=0, updated_at=datetime('now') "
+                "WHERE event_id=?",
+                (json.dumps(result), event_id),
+            )
+            return {"status": "completed", "idempotent": False,
+                    "result": result}
+
     def get_order(self, order_id) -> dict | None:
         rows = self._rows(
             "SELECT id, customer_id, status, total, needs_review, notes, source_event_id, created_at "
@@ -624,6 +683,56 @@ class SqliteStore:
                 "generation=excluded.generation,updated_at=datetime('now')",
                 (customer_id, user_id, pointer["session_id"], generation))
             return pointer
+
+    def rotate_active_session_once(self, event_id: str, customer_id: str,
+                                   user_id: str) -> dict:
+        """Atomically rotate the pointer once for one owner operation ID."""
+        with self._conn() as c:
+            c.execute("BEGIN IMMEDIATE")
+            receipt_row = c.execute(
+                "SELECT * FROM event_receipts WHERE event_id=?", (event_id,)
+            ).fetchone()
+            if receipt_row is not None:
+                receipt = dict(receipt_row)
+                result = json.loads(receipt["result"]) if receipt["result"] else None
+                if (receipt["customer_id"] != customer_id
+                        or receipt["payload_hash"] != user_id):
+                    return {"status": "conflict", "idempotent": False,
+                            "pointer": result}
+                if receipt["status"] == "completed" and result:
+                    return {"status": "completed", "idempotent": True,
+                            "pointer": result}
+                return {"status": receipt["status"], "idempotent": False,
+                        "pointer": result}
+
+            row = c.execute(
+                "SELECT user_id,generation FROM session_pointers WHERE customer_id=?",
+                (customer_id,),
+            ).fetchone()
+            if row is None:
+                generation = 1
+            else:
+                if row["user_id"] != user_id:
+                    raise ValueError("stored user-key algorithm does not match runtime")
+                generation = int(row["generation"]) + 1
+            pointer = self._session_pointer(customer_id, user_id, generation)
+            c.execute(
+                "INSERT INTO session_pointers "
+                "(customer_id,user_id,session_id,generation) VALUES (?,?,?,?) "
+                "ON CONFLICT(customer_id) DO UPDATE SET "
+                "user_id=excluded.user_id,session_id=excluded.session_id,"
+                "generation=excluded.generation,updated_at=datetime('now')",
+                (customer_id, user_id, pointer["session_id"], generation),
+            )
+            c.execute(
+                "INSERT INTO event_receipts "
+                "(event_id,customer_id,payload_hash,status,attempts,"
+                "lease_expires_at,result) VALUES (?,?,?,?,1,0,?)",
+                (event_id, customer_id, user_id, "completed",
+                 json.dumps(pointer)),
+            )
+            return {"status": "completed", "idempotent": False,
+                    "pointer": pointer}
 
     # ---- per-customer turn serialization ---------------------------------
     def claim_customer_turn(self, customer_id: str, owner: str,

@@ -15,7 +15,7 @@ const pendingManifest = {
   synthetic_only: true,
   provider_policy: {
     generated_media: "google_only",
-    allowed: ["google_vertex_ai", "google_cloud_text_to_speech", "first_party_human_recording"],
+    allowed: ["google_vertex_ai", "google_cloud_text_to_speech"],
   },
   ledgers: [],
   voices: [],
@@ -127,6 +127,16 @@ describe("Google-only demo fixture boundary", () => {
   it("rejects a source provider omitted from the declared allowlist", () => {
     const manifest = readyManifest();
     manifest.provider_policy.allowed = ["google_vertex_ai"];
+    expect(demoFixtureManifestSchema.safeParse(manifest).success).toBe(false);
+  });
+
+  it("rejects a broadened or duplicated provider allowlist", () => {
+    const manifest = readyManifest();
+    manifest.provider_policy.allowed = [
+      "google_vertex_ai",
+      "google_cloud_text_to_speech",
+      "google_cloud_text_to_speech",
+    ];
     expect(demoFixtureManifestSchema.safeParse(manifest).success).toBe(false);
   });
 

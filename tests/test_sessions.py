@@ -41,15 +41,29 @@ async def test_session_rotation_persists_pointer_and_preserves_old_session():
     await _ensure_session(
         initial["user_id"], initial["session_id"],
         {"customer_id": customer_id, "user_key": initial["user_id"]})
-    rotated_id = await new_session(customer_id)
+    rotated = await new_session(customer_id, "session-test-rotation-1")
+    rotated_id = rotated["session_id"]
     pointer = get_store().get_active_session(customer_id)
     assert pointer["generation"] == 1 and pointer["session_id"] == rotated_id
+    replay = await new_session(customer_id, "session-test-rotation-1")
+    assert replay["session_id"] == rotated_id and replay["idempotent"] is True
+    assert get_store().get_active_session(customer_id)["generation"] == 1
     old = await runner.session_service.get_session(
         app_name=APP_NAME, user_id=initial["user_id"],
         session_id=initial["session_id"])
     new = await runner.session_service.get_session(
         app_name=APP_NAME, user_id=pointer["user_id"], session_id=rotated_id)
     assert old is not None and new is not None
+
+
+def test_session_rotation_operation_conflicts_across_customers():
+    store = get_store()
+    first = store.rotate_active_session_once(
+        "session-shared-operation", "254711000001", "u_one")
+    conflict = store.rotate_active_session_once(
+        "session-shared-operation", "254711000002", "u_two")
+    assert first["status"] == "completed"
+    assert conflict["status"] == "conflict"
 
 
 @pytest.mark.asyncio

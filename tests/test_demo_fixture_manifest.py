@@ -99,6 +99,10 @@ def _manifest(root: Path) -> dict:
         "schema_version": 2,
         "release_ready": True,
         "synthetic_only": True,
+        "provider_policy": {
+            "generated_media": "google_only",
+            "allowed": ["google_vertex_ai", "google_cloud_text_to_speech"],
+        },
         "ledgers": ledgers,
         "voices": voices,
     }
@@ -137,7 +141,15 @@ def test_non_google_generated_provider_fails_closed(frozen_manifest: tuple[Path,
     path, manifest = frozen_manifest
     manifest["ledgers"][0]["source"]["provider"] = "unapproved_image_generator"
     path.write_text(json.dumps(manifest), encoding="utf-8")
-    with pytest.raises(ValueError, match="disallowed provider"):
+    with pytest.raises(ValueError, match="provider is absent from the manifest allowlist"):
+        verifier.verify(path)
+
+
+def test_broadened_provider_policy_fails_closed(frozen_manifest: tuple[Path, dict]) -> None:
+    path, manifest = frozen_manifest
+    manifest["provider_policy"]["allowed"].append("unapproved_media_surface")
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(ValueError, match="only approved Google surfaces"):
         verifier.verify(path)
 
 

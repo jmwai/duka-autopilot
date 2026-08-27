@@ -722,7 +722,8 @@ Exit: no spoken claim lacks a raw release-tied artifact.
 
 Goal: a 3:45–3:55 proof-first story.
 
-- [ ] Purpose-record the frozen human Swahili voice file; hash and validate it.
+- [ ] Generate the frozen English and Kiswahili Google Cloud Gemini-TTS voice
+  files; hash and validate them.
 - [ ] Replace every transcript/guide placeholder from final evidence.
 - [ ] Rehearse three times with timings and a second operator.
 - [ ] Record one visibly unedited live cloud segment in Loom.

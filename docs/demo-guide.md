@@ -47,9 +47,9 @@ Record these values in the fixture manifest before the first timed rehearsal:
 | Nightly dataset | 50,000 generated rows plus the six-row demo statement; final cloud counts come from the release report |
 | Demo Memory scope | `duka-autopilot` + opaque `{{MEMORY_USER_KEY}}` |
 
-The voice may be recorded live or attached from the frozen purpose-recorded
-fixture. The ledger may be purpose-created or generated, but must be synthetic,
-stable, disclosed, and have known row-level ground truth.
+Use only the frozen Google Cloud Gemini-TTS voice and Google Vertex AI ledger
+fixtures. They must be synthetic, stable, disclosed, integrity-verified, and
+carry reviewed transcript or row-level ground truth.
 
 ## 3. Seed and rehearsal-state procedure
 
@@ -64,14 +64,17 @@ judge-facing take.
    durable fingerprint `{{TOPOLOGY_FINGERPRINT}}`.
 3. Verify the production Firestore database is the intended empty synthetic
    environment, then run the approved idempotent Job `duka-prod-seed` once.
-4. Require the Job result to report 12 products, 8 synthetic customers, 10
-   orders, 6 statement rows, and `memory_prepared=true`.
+4. Require the Job result to report `prepared=true`, 50,000 generated rows,
+   49,750 unique statement rows plus the six-row base statement, 250 duplicate
+   references dropped, 48,402 exact matches, 1,354 residue rows, the reviewed
+   three-kind owner queue, and `memory_prepared=true`.
 5. Verify the customer has one confirmed historical usual order and one
    pre-generated Memory Bank preference, with no price/payment/phone facts.
 6. Rotate the customer to a fresh managed Session.
 7. Confirm the production environment has not been used for rehearsal traffic.
    Do not clear or rewrite durable state to rescue a take.
-8. Ensure one known ledger ambiguity and one bounded approval scenario will be visible.
+8. Ensure the reviewed queue contains exactly one ledger row, one
+   low-confidence order, and one restock proposal before live demo mutations.
 9. In development, execute the same seed Job twice and verify the second run
    reports `seeded=false` without changing counts. Do not run a production dry
    rehearsal after the final production baseline is frozen.
@@ -123,10 +126,13 @@ Follow `docs/demo-transcript.md` exactly:
 
 1. Start on outcome: digest and compressed approval queue.
 2. Select `{{DEMO_CUSTOMER_NAME}}` and confirm the fresh-session marker.
-3. Attach the frozen English voice note for judge comprehension; keep the equivalent Kiswahili fixture visible as verified evidence.
+3. Attach the frozen English Google TTS voice note for judge comprehension;
+   keep the equivalent Kiswahili Google TTS fixture visible as verified evidence.
 4. Hold on the visible `202 queued`, event prefix, and acknowledgement time.
 5. Hold on the final node path, itemized order, current KSh total, and order row.
-6. Upload `fixtures/demo/ledger-en-v2.png` through **Upload ledger**, then show the equivalent Kiswahili fixture selector.
+6. Upload `fixtures/demo/ledger-sw-v2.png` through **Upload ledger**, while the
+   English Google-generated equivalent remains visible with the same reviewed
+   two-record/one-gate truth.
 7. Show the recorded/gated result and the one doubtful row in the queue.
 8. In Cloud Scheduler, force-run `{{NIGHTLY_SCHEDULER_NAME}}` without a cut.
 9. Show execution `{{JOB_EXECUTION_ID}}` succeed; return to the dashboard and refresh.
@@ -175,7 +181,8 @@ proof beat before attempting to speak faster.
 - A pre-recorded execution is acceptable only when labeled as such and tied to
   the exact release; never narrate it as the action just triggered.
 - If a model response, count, cost, or route differs, stop and investigate.
-- If the voice microphone fails, attach only the frozen English Google fixture; never substitute an unmanifested file.
+- Use only the frozen English Google TTS fixture for the recorded voice beat;
+  never substitute an unmanifested recording or another provider.
 - If eventual Memory generation is incomplete, do not wait live; use the
   pre-verified memory specified by the fixture manifest.
 - If the app, Scheduler, Job, or console is unavailable, abandon the take. A

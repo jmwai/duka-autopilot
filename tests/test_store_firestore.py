@@ -74,6 +74,27 @@ def test_generator_and_engine_at_small_scale():
     assert stats["settle_rate"] > 0.9
 
 
+@pytest.mark.asyncio
+async def test_judging_profile_has_firestore_parity():
+    from agents.demo_state import prepare_judge_state
+
+    result = await prepare_judge_state(
+        force=True,
+        rows=1_000,
+        synthetic_seed=31,
+        execution_surface="firestore_emulator",
+    )
+    assert result["prepared"] is True
+    assert result["nightly"]["exact_matched"] == (
+        result["synthetic_month"]["clean"] + 2)
+    assert result["nightly"]["settle_rate"] > 0.95
+    assert result["approvals"] == {
+        "ledger_row": 1,
+        "low_confidence_order": 1,
+        "restock_proposal": 1,
+    }
+
+
 def test_approvals_and_fuzzy_flow():
     from agents.store import get_store
     store = get_store()
@@ -120,6 +141,33 @@ def test_event_receipt_claim_retry_complete_and_conflict():
     assert conflict["status"] == "conflict"
 
 
+def test_owner_sale_and_receipt_commit_exactly_once():
+    from agents.store import get_store
+
+    store = get_store()
+    items = [{
+        "sku": "UNGA-2KG",
+        "name": "Unga wa Dola 2kg",
+        "qty": 2,
+        "unit_price": 195,
+    }]
+    first = store.create_owner_sale_once(
+        "sale-firestore-1", "254711000001", "hash-a", items, "paid")
+    replay = store.create_owner_sale_once(
+        "sale-firestore-1", "254711000001", "hash-a", items, "paid")
+    conflict = store.create_owner_sale_once(
+        "sale-firestore-1", "254711000001", "hash-b", items, "paid")
+
+    assert first["status"] == "completed" and first["idempotent"] is False
+    assert replay["status"] == "completed" and replay["idempotent"] is True
+    assert replay["result"]["order_id"] == first["result"]["order_id"]
+    assert conflict["status"] == "conflict"
+    assert len([
+        order for order in store.orders_for_customer("254711000001", limit=20)
+        if order.get("source_event_id") == "sale-firestore-1"
+    ]) == 1
+
+
 def test_message_dedupe_key_is_idempotent():
     from agents.store import get_store
     store = get_store()
@@ -141,6 +189,22 @@ def test_active_session_pointer_rotation_is_transactional():
     rotated = store.rotate_active_session("254711000001", "u_testkey")
     assert rotated["generation"] == 1
     assert store.get_active_session("254711000001")["session_id"] == rotated["session_id"]
+
+
+def test_active_session_rotation_operation_is_exactly_once():
+    from agents.store import get_store
+    store = get_store()
+    first = store.rotate_active_session_once(
+        "session-firestore-1", "254711000001", "u_testkey")
+    replay = store.rotate_active_session_once(
+        "session-firestore-1", "254711000001", "u_testkey")
+    conflict = store.rotate_active_session_once(
+        "session-firestore-1", "254711000002", "u_other")
+    assert first["status"] == "completed" and first["idempotent"] is False
+    assert replay["status"] == "completed" and replay["idempotent"] is True
+    assert replay["pointer"] == first["pointer"]
+    assert conflict["status"] == "conflict"
+    assert store.get_active_session("254711000001")["generation"] == 1
 
 
 def test_customer_turn_lease_serializes_instances():

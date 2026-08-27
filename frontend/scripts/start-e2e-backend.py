@@ -20,9 +20,23 @@ os.environ["RELEASE_SHA"] = "playwright-local"
 os.chdir(REPO_ROOT)
 sys.path.insert(0, str(REPO_ROOT))
 
-from agents.seed import seed  # noqa: E402
+profile = os.environ.get("DUKA_E2E_PROFILE", "base").lower()
+if profile == "judge":
+    import asyncio
 
-seed(force=True)
+    from agents.demo_state import prepare_judge_state  # noqa: E402
+
+    asyncio.run(prepare_judge_state(
+        force=True,
+        rows=int(os.environ.get("DUKA_E2E_ROWS", "4000")),
+        execution_surface="local_judge_rehearsal",
+    ))
+elif profile == "base":
+    from agents.seed import seed  # noqa: E402
+
+    seed(force=True)
+else:
+    raise RuntimeError(f"unknown DUKA_E2E_PROFILE: {profile}")
 
 import uvicorn  # noqa: E402
 

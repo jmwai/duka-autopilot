@@ -40,6 +40,47 @@ def test_owner_login_cookie_protects_dashboard_and_logout():
         assert client.get("/approvals").status_code == 401
 
 
+def test_owner_manual_sale_is_atomic_idempotent_and_conflict_safe():
+    from fastapi.testclient import TestClient
+
+    from agents.store import get_store
+    from app.main import app
+
+    store = get_store()
+    before = len(store.list_orders(limit=200))
+    request = {
+        "event_id": "sale-auth-test-1",
+        "customer_id": "254711000001",
+        "items": [{"sku": "UNGA-2KG", "qty": 2}],
+        "paid": True,
+    }
+    with TestClient(app, base_url="https://testserver") as client:
+        assert client.post("/auth/login", json={
+            "password": "correct-horse-battery-staple",
+        }).status_code == 200
+        created = client.post("/orders", json=request)
+        replay = client.post("/orders", json=request)
+        conflict = client.post("/orders", json={
+            **request,
+            "items": [{"sku": "UNGA-2KG", "qty": 3}],
+        })
+
+    assert created.status_code == 200
+    assert created.json() == {
+        "event_id": request["event_id"],
+        "order_id": created.json()["order_id"],
+        "status": "paid",
+        "total": 390,
+        "idempotent": False,
+    }
+    assert replay.status_code == 200
+    assert replay.json()["order_id"] == created.json()["order_id"]
+    assert replay.json()["idempotent"] is True
+    assert conflict.status_code == 409
+    assert conflict.json()["event_id"] == request["event_id"]
+    assert len(store.list_orders(limit=200)) == before + 1
+
+
 def test_inbound_requires_trusted_channel_key(monkeypatch):
     from fastapi.testclient import TestClient
 

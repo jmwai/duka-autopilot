@@ -106,8 +106,9 @@ customer (text / voice note / order photo)        owner (ledger photo)
       /recon/nightly + measure_nightly.py
 - [x] Day 4: deterministic inbound screening (injection + money-path
       social engineering -> owner's queue, optional Model Armor on top);
-      Swahili voice-note transport and multimodal runner coverage; the frozen
-      human audio fixture and live model proof remain release gates
+      Swahili voice-note transport and multimodal runner coverage; frozen
+      bilingual Google Cloud Gemini-TTS fixtures and live model proof remain
+      release gates
 - [x] Day 5: ledger-photo digitization with per-row gating, deterministic
       morning digest (/digest/morning), and Memory Bank service seam
 - [x] Day 7: owner console UI (async multimodal chat, digest card, shelf

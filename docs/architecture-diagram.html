@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Duka Autopilot — System Architecture</title>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #f8f9fa;
+    --ink: #202124;
+    --muted: #5f6368;
+    --soft: #80868b;
+    --rule: rgba(32,33,36,0.12);
+    --accent: #e8710a;
+    --link: #1a73e8;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'Geist', sans-serif;
+    padding: 2.5rem 2rem 2rem;
+  }
+  .page { max-width: 1280px; margin: 0 auto; }
+  .eyebrow {
+    font-family: 'Geist Mono', monospace;
+    font-size: 11px; font-weight: 500;
+    letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--soft); margin-bottom: 0.5rem;
+  }
+  h1 {
+    font-family: 'Instrument Serif', serif;
+    font-size: 1.75rem; font-weight: 400; margin-bottom: 0.25rem;
+  }
+  .subtitle {
+    font-family: 'Instrument Serif', serif; font-style: italic;
+    font-size: 1rem; color: var(--muted); margin-bottom: 1.5rem;
+  }
+  .diagram { overflow-x: auto; }
+  svg { display: block; width: 100%; height: auto; }
+  footer {
+    margin-top: 1.5rem; padding-top: 0.75rem;
+    border-top: 1px solid var(--rule);
+    font-family: 'Geist Mono', monospace;
+    font-size: 10px; color: var(--soft); letter-spacing: 0.06em;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="diagram">
+  <svg viewBox="0 0 1280 720" role="img" aria-labelledby="duka-arch-title duka-arch-desc" xmlns="http://www.w3.org/2000/svg">
+    <title id="duka-arch-title">Duka Autopilot system architecture</title>
+    <desc id="duka-arch-desc">Architecture showing messy customer inputs entering Cloud Run services, flowing through Pub/Sub into an ADK workflow on a private worker where deterministic code routes work, Gemini handles ambiguous content behind a deterministic tool boundary, and a refund gate suspends for a human decision; Firestore holds business truth and Vertex AI provides Gemini, resumable Sessions, and an advisory Memory Bank.</desc>
+
+    <defs>
+      <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+        <polygon points="0 0, 8 3, 0 6" fill="#5f6368"/>
+      </marker>
+      <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+        <polygon points="0 0, 8 3, 0 6" fill="#e8710a"/>
+      </marker>
+      <marker id="arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+        <polygon points="0 0, 8 3, 0 6" fill="#1a73e8"/>
+      </marker>
+    </defs>
+
+    <!-- background -->
+    <rect width="100%" height="100%" fill="#f8f9fa"/>
+
+    <!-- ============ title strip ============ -->
+    <text x="40" y="44" fill="#80868b" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.18em">GOOGLE CLOUD · ADK · GEMINI 3.7 FLASH — THE TASKMASTER</text>
+    <text x="40" y="76" fill="#202124" font-size="28" font-family="'Instrument Serif', serif">Duka Autopilot — the autonomous night shift</text>
+    <text x="1240" y="76" fill="#5f6368" font-size="14" font-style="italic" font-family="'Instrument Serif', serif" text-anchor="end">Autonomy where evidence is exact. Gemini where reality is messy. A human where consequences matter.</text>
+
+    <!-- ============ zones (painted first) ============ -->
+    <!-- Z1 clients -->
+    <rect x="40" y="104" width="176" height="352" rx="8" fill="rgba(32,33,36,0.02)" stroke="rgba(32,33,36,0.10)" stroke-width="0.8"/>
+    <rect x="52" y="108" width="152" height="12" rx="2" fill="#f8f9fa"/>
+    <text x="128" y="117" fill="rgba(32,33,36,0.40)" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.14em">CLIENTS · MESSY REALITY</text>
+
+    <!-- Z2 google cloud -->
+    <rect x="248" y="104" width="768" height="536" rx="8" fill="rgba(32,33,36,0.02)" stroke="rgba(32,33,36,0.10)" stroke-width="0.8"/>
+    <rect x="536" y="108" width="192" height="12" rx="2" fill="#f8f9fa"/>
+    <text x="632" y="117" fill="rgba(32,33,36,0.40)" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.14em">GOOGLE CLOUD · EUROPE-WEST1</text>
+
+    <!-- Z3 vertex -->
+    <rect x="1056" y="104" width="184" height="440" rx="8" fill="rgba(32,33,36,0.02)" stroke="rgba(32,33,36,0.10)" stroke-width="0.8"/>
+    <rect x="1088" y="108" width="120" height="12" rx="2" fill="#f8f9fa"/>
+    <text x="1148" y="117" fill="rgba(32,33,36,0.40)" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.14em">VERTEX AI · GLOBAL</text>
+
+    <!-- worker container -->
+    <rect x="464" y="136" width="528" height="376" rx="8" fill="#f8f9fa" stroke="rgba(32,33,36,0.28)" stroke-width="1"/>
+    <rect x="480" y="140" width="392" height="12" rx="2" fill="#f8f9fa"/>
+    <text x="484" y="149" fill="rgba(32,33,36,0.55)" font-size="7" font-family="'Geist Mono', monospace" letter-spacing="0.14em">DUKA-WORKER · CLOUD RUN PUSH · PRIVATE — ADK WORKFLOW duka_autopilot</text>
+
+    <!-- ============ arrows (before nodes) ============ -->
+
+    <!-- customer -> web -->
+    <path d="M 200,188 H 224 Q 232,188 232,180 V 164 Q 232,156 240,156 H 280" fill="none" stroke="#1a73e8" stroke-width="1.2" marker-end="url(#arrow-link)"/>
+    <!-- owner -> web -->
+    <path d="M 200,364 H 236 Q 244,364 244,356 V 184 Q 244,176 252,176 H 280" fill="none" stroke="#1a73e8" stroke-width="1.2" marker-end="url(#arrow-link)"/>
+    <!-- web -> api -->
+    <line x1="352" y1="192" x2="352" y2="240" stroke="#5f6368" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <!-- api -> pubsub -->
+    <line x1="352" y1="304" x2="352" y2="352" stroke="#5f6368" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <rect x="260" y="316" width="84" height="12" rx="2" fill="#f8f9fa"/>
+    <text x="302" y="325" fill="#80868b" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">PUBLISH · 202</text>
+    <!-- pubsub -> screen -->
+    <path d="M 424,380 H 432 Q 440,380 440,372 V 220 Q 440,212 448,212 H 480" fill="none" stroke="#5f6368" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <rect x="384" y="320" width="48" height="12" rx="2" fill="#f8f9fa"/>
+    <text x="408" y="329" fill="#80868b" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">PUSH</text>
+    <!-- nightly -> workflow container -->
+    <path d="M 352,536 V 552 Q 352,560 360,560 H 472 Q 480,560 480,552 V 512" fill="none" stroke="#5f6368" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <rect x="364" y="542" width="104" height="12" rx="2" fill="#f8f9fa"/>
+    <text x="416" y="551" fill="#80868b" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">SAME GRAPH</text>
+
+    <!-- workflow internals -->
+    <!-- screen -> classifier -->
+    <line x1="576" y1="212" x2="616" y2="212" stroke="#5f6368" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <!-- classifier -> router -->
+    <line x1="720" y1="212" x2="760" y2="212" stroke="#5f6368" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <!-- screen -> blocked stop -->
+    <line x1="520" y1="236" x2="520" y2="252" stroke="#5f6368" stroke-width="1"/>
+    <circle cx="520" cy="260" r="8" fill="#f8f9fa" stroke="#5f6368" stroke-width="1.2"/>
+    <line x1="514.5" y1="265.5" x2="525.5" y2="254.5" stroke="#5f6368" stroke-width="1.2"/>
+    <text x="536" y="263" fill="#80868b" font-size="7" font-family="'Geist Mono', monospace" letter-spacing="0.08em">BLOCKED</text>
+    <!-- router fan -->
+    <path d="M 776,236 V 240 Q 776,248 768,248 H 540 Q 532,248 532,256 V 280" fill="none" stroke="#5f6368" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <path d="M 800,236 V 248 Q 800,256 792,256 H 676 Q 668,256 668,264 V 280" fill="none" stroke="#5f6368" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <path d="M 824,236 V 250 Q 824,258 816,258 H 808 Q 800,258 800,266 V 280" fill="none" stroke="#5f6368" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <path d="M 848,236 V 244 Q 848,252 856,252 H 916 Q 924,252 924,260 V 280" fill="none" stroke="#5f6368" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <!-- support -> refund gate -->
+    <line x1="668" y1="328" x2="668" y2="368" stroke="#5f6368" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <!-- exact -> fuzzy -->
+    <line x1="924" y1="328" x2="924" y2="368" stroke="#5f6368" stroke-width="1.2" marker-end="url(#arrow)"/>
+
+    <!-- workflow -> gemini -->
+    <line x1="992" y1="200" x2="1080" y2="200" stroke="#1a73e8" stroke-width="1.2" marker-end="url(#arrow-link)"/>
+    <rect x="996" y="180" width="80" height="12" rx="2" fill="#f8f9fa"/>
+    <text x="1036" y="189" fill="#1a73e8" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.04em">BOUNDED PROMPTS</text>
+    <!-- workflow -> sessions -->
+    <line x1="992" y1="328" x2="1080" y2="328" stroke="#5f6368" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <rect x="996" y="308" width="80" height="12" rx="2" fill="#f8f9fa"/>
+    <text x="1036" y="317" fill="#80868b" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.04em">INVOCATION STATE</text>
+
+    <!-- tools bar -> firestore -->
+    <line x1="720" y1="496" x2="720" y2="572" stroke="#5f6368" stroke-width="1.2" marker-end="url(#arrow)"/>
+    <rect x="596" y="532" width="114" height="12" rx="2" fill="#f8f9fa"/>
+    <text x="653" y="541" fill="#80868b" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">VALIDATED WRITES</text>
+
+    <!-- amber HITL thread -->
+    <!-- refund gate -> tools bar -->
+    <line x1="668" y1="424" x2="668" y2="456" stroke="#e8710a" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+    <rect x="608" y="432" width="52" height="12" rx="2" fill="#f8f9fa"/>
+    <text x="634" y="441" fill="#e8710a" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">APPROVAL</text>
+    <!-- firestore -> owner (morning digest / decision) -->
+    <path d="M 600,600 H 136 Q 128,600 128,592 V 400" fill="none" stroke="#e8710a" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#arrow-accent)"/>
+    <rect x="312" y="582" width="160" height="12" rx="2" fill="#f8f9fa"/>
+    <text x="392" y="591" fill="#e8710a" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">MORNING DIGEST · ONE DECISION</text>
+    <!-- api -> workflow (resume), hop over pubsub push line -->
+    <path d="M 424,272 H 432 a 8,8 0 0 1 16,0 H 464" fill="none" stroke="#e8710a" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#arrow-accent)"/>
+    <rect x="448" y="252" width="40" height="12" rx="2" fill="#f8f9fa"/>
+    <text x="468" y="261" fill="#e8710a" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">RESUME</text>
+
+    <!-- firestore -> memory bank (outbox) -->
+    <path d="M 840,600 H 1032 Q 1040,600 1040,592 V 456 Q 1040,448 1048,448 H 1080" fill="none" stroke="#5f6368" stroke-width="1" stroke-dasharray="5,4" marker-end="url(#arrow)"/>
+    <rect x="884" y="582" width="104" height="12" rx="2" fill="#f8f9fa"/>
+    <text x="936" y="591" fill="#80868b" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">ALLOWLISTED OUTBOX</text>
+
+    <!-- ============ nodes ============ -->
+
+    <!-- customer -->
+    <rect x="56" y="152" width="144" height="72" rx="6" fill="#f8f9fa"/>
+    <rect x="56" y="152" width="144" height="72" rx="6" fill="rgba(95,99,104,0.10)" stroke="#80868b" stroke-width="1"/>
+    <text x="128" y="178" fill="#202124" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Customer</text>
+    <text x="128" y="196" fill="#5f6368" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">voice · text · photo</text>
+    <text x="128" y="210" fill="#5f6368" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">M-Pesa rows · synthetic</text>
+
+    <!-- owner -->
+    <rect x="56" y="328" width="144" height="72" rx="6" fill="#f8f9fa"/>
+    <rect x="56" y="328" width="144" height="72" rx="6" fill="rgba(95,99,104,0.10)" stroke="#80868b" stroke-width="1"/>
+    <text x="128" y="354" fill="#202124" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Shop owner</text>
+    <text x="128" y="372" fill="#5f6368" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">Control Room UI</text>
+    <text x="128" y="386" fill="#5f6368" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">approvals · digest</text>
+
+    <!-- duka-web -->
+    <rect x="280" y="136" width="144" height="56" rx="6" fill="#f8f9fa"/>
+    <rect x="280" y="136" width="144" height="56" rx="6" fill="#ffffff" stroke="#202124" stroke-width="1"/>
+    <rect x="288" y="142" width="40" height="12" rx="2" fill="transparent" stroke="rgba(32,33,36,0.40)" stroke-width="0.8"/>
+    <text x="308" y="151" fill="rgba(32,33,36,0.80)" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">PUBLIC</text>
+    <text x="352" y="168" fill="#202124" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">duka-web</text>
+    <text x="352" y="184" fill="#5f6368" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">Cloud Run · Next.js BFF</text>
+
+    <!-- duka-api -->
+    <rect x="280" y="240" width="144" height="64" rx="6" fill="#f8f9fa"/>
+    <rect x="280" y="240" width="144" height="64" rx="6" fill="#ffffff" stroke="#202124" stroke-width="1"/>
+    <rect x="288" y="246" width="48" height="12" rx="2" fill="transparent" stroke="rgba(32,33,36,0.40)" stroke-width="0.8"/>
+    <text x="312" y="255" fill="rgba(32,33,36,0.80)" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">PRIVATE</text>
+    <text x="352" y="272" fill="#202124" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">duka-api</text>
+    <text x="352" y="286" fill="#5f6368" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">Cloud Run · owner ops</text>
+    <text x="352" y="298" fill="#5f6368" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">agents never run inline</text>
+
+    <!-- pubsub -->
+    <rect x="280" y="352" width="144" height="56" rx="6" fill="#f8f9fa"/>
+    <rect x="280" y="352" width="144" height="56" rx="6" fill="rgba(32,33,36,0.02)" stroke="rgba(32,33,36,0.30)" stroke-width="1" stroke-dasharray="4,3"/>
+    <text x="352" y="376" fill="#202124" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Pub/Sub</text>
+    <text x="352" y="392" fill="#5f6368" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">events topic · DLQ</text>
+
+    <!-- nightly -->
+    <rect x="280" y="472" width="144" height="64" rx="6" fill="#f8f9fa"/>
+    <rect x="280" y="472" width="144" height="64" rx="6" fill="#ffffff" stroke="#202124" stroke-width="1"/>
+    <rect x="288" y="478" width="28" height="12" rx="2" fill="transparent" stroke="rgba(32,33,36,0.40)" stroke-width="0.8"/>
+    <text x="302" y="487" fill="rgba(32,33,36,0.80)" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">JOB</text>
+    <text x="352" y="504" fill="#202124" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">duka-nightly</text>
+    <text x="352" y="518" fill="#5f6368" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">Scheduler 02:00 · exact ≈97%</text>
+    <text x="352" y="530" fill="#5f6368" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">fuzzy residue ≤40 batches</text>
+
+    <!-- workflow row 1 -->
+    <!-- screen -->
+    <rect x="480" y="188" width="96" height="48" rx="6" fill="#f8f9fa"/>
+    <rect x="480" y="188" width="96" height="48" rx="6" fill="#ffffff" stroke="#202124" stroke-width="1"/>
+    <rect x="540" y="192" width="32" height="10" rx="2" fill="transparent" stroke="rgba(32,33,36,0.40)" stroke-width="0.8"/>
+    <text x="556" y="200" fill="rgba(32,33,36,0.80)" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">CODE</text>
+    <text x="488" y="212" fill="#202124" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="start">screen</text>
+    <text x="528" y="228" fill="#5f6368" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">pre-LLM rules</text>
+
+    <!-- classifier -->
+    <rect x="616" y="188" width="104" height="48" rx="6" fill="#f8f9fa"/>
+    <rect x="616" y="188" width="104" height="48" rx="6" fill="#ffffff" stroke="#202124" stroke-width="1"/>
+    <rect x="688" y="192" width="28" height="10" rx="2" fill="transparent" stroke="#1a73e8" stroke-width="0.8"/>
+    <text x="702" y="200" fill="#1a73e8" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">LLM</text>
+    <text x="624" y="212" fill="#202124" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="start">classifier</text>
+    <text x="668" y="228" fill="#5f6368" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">intent · language</text>
+
+    <!-- router -->
+    <rect x="760" y="188" width="96" height="48" rx="6" fill="#f8f9fa"/>
+    <rect x="760" y="188" width="96" height="48" rx="6" fill="#ffffff" stroke="#202124" stroke-width="1"/>
+    <rect x="820" y="192" width="32" height="10" rx="2" fill="transparent" stroke="rgba(32,33,36,0.40)" stroke-width="0.8"/>
+    <text x="836" y="200" fill="rgba(32,33,36,0.80)" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">CODE</text>
+    <text x="768" y="212" fill="#202124" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="start">router</text>
+    <text x="808" y="228" fill="#5f6368" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">code decides</text>
+
+    <!-- workflow row 2 -->
+    <!-- intake -->
+    <rect x="480" y="280" width="104" height="48" rx="6" fill="#f8f9fa"/>
+    <rect x="480" y="280" width="104" height="48" rx="6" fill="#ffffff" stroke="#202124" stroke-width="1"/>
+    <rect x="552" y="284" width="28" height="10" rx="2" fill="transparent" stroke="#1a73e8" stroke-width="0.8"/>
+    <text x="566" y="292" fill="#1a73e8" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">LLM</text>
+    <text x="488" y="304" fill="#202124" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="start">intake</text>
+    <text x="532" y="320" fill="#5f6368" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">orders</text>
+
+    <!-- support -->
+    <rect x="616" y="280" width="104" height="48" rx="6" fill="#f8f9fa"/>
+    <rect x="616" y="280" width="104" height="48" rx="6" fill="#ffffff" stroke="#202124" stroke-width="1"/>
+    <rect x="688" y="284" width="28" height="10" rx="2" fill="transparent" stroke="#1a73e8" stroke-width="0.8"/>
+    <text x="702" y="292" fill="#1a73e8" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">LLM</text>
+    <text x="624" y="304" fill="#202124" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="start">support</text>
+    <text x="668" y="320" fill="#5f6368" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">refund requests</text>
+
+    <!-- ledger -->
+    <rect x="752" y="280" width="96" height="48" rx="6" fill="#f8f9fa"/>
+    <rect x="752" y="280" width="96" height="48" rx="6" fill="#ffffff" stroke="#202124" stroke-width="1"/>
+    <rect x="812" y="284" width="28" height="10" rx="2" fill="transparent" stroke="#1a73e8" stroke-width="0.8"/>
+    <text x="826" y="292" fill="#1a73e8" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">LLM</text>
+    <text x="760" y="304" fill="#202124" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="start">ledger</text>
+    <text x="800" y="320" fill="#5f6368" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">vision rows</text>
+
+    <!-- exact recon -->
+    <rect x="880" y="280" width="88" height="48" rx="6" fill="#f8f9fa"/>
+    <rect x="880" y="280" width="88" height="48" rx="6" fill="#ffffff" stroke="#202124" stroke-width="1"/>
+    <rect x="932" y="284" width="32" height="10" rx="2" fill="transparent" stroke="rgba(32,33,36,0.40)" stroke-width="0.8"/>
+    <text x="948" y="292" fill="rgba(32,33,36,0.80)" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">CODE</text>
+    <text x="888" y="304" fill="#202124" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="start">exact</text>
+    <text x="924" y="320" fill="#5f6368" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">recon · idempotent</text>
+
+    <!-- refund gate (FOCAL) -->
+    <rect x="616" y="368" width="104" height="56" rx="6" fill="#f8f9fa"/>
+    <rect x="616" y="368" width="104" height="56" rx="6" fill="rgba(232,113,10,0.08)" stroke="#e8710a" stroke-width="1.2"/>
+    <rect x="684" y="372" width="28" height="10" rx="2" fill="transparent" stroke="#e8710a" stroke-width="0.8"/>
+    <text x="698" y="380" fill="#e8710a" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">HITL</text>
+    <text x="624" y="392" fill="#202124" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="start">refund gate ⏸</text>
+    <text x="668" y="410" fill="#5f6368" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">suspends invocation</text>
+
+    <!-- fuzzy recon -->
+    <rect x="880" y="368" width="88" height="48" rx="6" fill="#f8f9fa"/>
+    <rect x="880" y="368" width="88" height="48" rx="6" fill="#ffffff" stroke="#202124" stroke-width="1"/>
+    <rect x="932" y="372" width="28" height="10" rx="2" fill="transparent" stroke="#1a73e8" stroke-width="0.8"/>
+    <text x="946" y="380" fill="#1a73e8" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">LLM</text>
+    <text x="888" y="392" fill="#202124" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="start">fuzzy</text>
+    <text x="924" y="408" fill="#5f6368" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">residue only</text>
+
+    <!-- deterministic tool boundary bar -->
+    <rect x="480" y="456" width="488" height="40" rx="6" fill="#f8f9fa"/>
+    <rect x="480" y="456" width="488" height="40" rx="6" fill="rgba(32,33,36,0.05)" stroke="#202124" stroke-width="1.2"/>
+    <text x="724" y="472" fill="#202124" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">deterministic tool boundary</text>
+    <text x="724" y="488" fill="#5f6368" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">save_order · catalog prices win · scope from session, never from model args</text>
+
+    <!-- firestore -->
+    <rect x="600" y="572" width="240" height="56" rx="6" fill="#f8f9fa"/>
+    <rect x="600" y="572" width="240" height="56" rx="6" fill="rgba(32,33,36,0.05)" stroke="#5f6368" stroke-width="1"/>
+    <rect x="608" y="578" width="24" height="12" rx="2" fill="transparent" stroke="rgba(32,33,36,0.40)" stroke-width="0.8"/>
+    <text x="620" y="587" fill="rgba(32,33,36,0.80)" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">DB</text>
+    <text x="720" y="594" fill="#202124" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Firestore</text>
+    <text x="720" y="612" fill="#5f6368" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">business + control truth · approvals · outbox</text>
+
+    <!-- gemini -->
+    <rect x="1080" y="168" width="136" height="64" rx="6" fill="#f8f9fa"/>
+    <rect x="1080" y="168" width="136" height="64" rx="6" fill="rgba(26,115,232,0.05)" stroke="#1a73e8" stroke-width="1.2"/>
+    <rect x="1088" y="174" width="40" height="12" rx="2" fill="transparent" stroke="#1a73e8" stroke-width="0.8"/>
+    <text x="1108" y="183" fill="#1a73e8" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">MODEL</text>
+    <text x="1148" y="204" fill="#202124" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Gemini 3.7 Flash</text>
+    <text x="1148" y="220" fill="#5f6368" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">voice · vision · text</text>
+
+    <!-- sessions -->
+    <rect x="1080" y="296" width="136" height="64" rx="6" fill="#f8f9fa"/>
+    <rect x="1080" y="296" width="136" height="64" rx="6" fill="rgba(32,33,36,0.05)" stroke="#5f6368" stroke-width="1"/>
+    <text x="1148" y="322" fill="#202124" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Sessions</text>
+    <text x="1148" y="338" fill="#5f6368" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">Agent Platform</text>
+    <text x="1148" y="350" fill="#5f6368" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">suspend / resume handles</text>
+
+    <!-- memory bank -->
+    <rect x="1080" y="416" width="136" height="64" rx="6" fill="#f8f9fa"/>
+    <rect x="1080" y="416" width="136" height="64" rx="6" fill="rgba(32,33,36,0.02)" stroke="rgba(32,33,36,0.30)" stroke-width="1" stroke-dasharray="4,3"/>
+    <text x="1148" y="442" fill="#202124" font-size="12" font-weight="600" font-family="'Geist', sans-serif" text-anchor="middle">Memory Bank</text>
+    <text x="1148" y="458" fill="#5f6368" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">advisory only</text>
+    <text x="1148" y="470" fill="#5f6368" font-size="9" font-family="'Geist Mono', monospace" text-anchor="middle">never authorization</text>
+
+    <!-- ============ callout ============ -->
+    <text x="1052" y="576" fill="#e8710a" font-size="14" font-style="italic" font-family="'Instrument Serif', serif">one owner decision resumes the</text>
+    <text x="1052" y="596" fill="#e8710a" font-size="14" font-style="italic" font-family="'Instrument Serif', serif">exact suspended invocation —</text>
+    <text x="1052" y="616" fill="#e8710a" font-size="14" font-style="italic" font-family="'Instrument Serif', serif">across restarts and revisions</text>
+    <path d="M 1228,564 Q 1236,460 1222,368" fill="none" stroke="rgba(232,113,10,0.50)" stroke-width="1" stroke-dasharray="4,3"/>
+    <circle cx="1221" cy="364" r="2" fill="#e8710a"/>
+
+    <!-- ============ legend ============ -->
+    <line x1="40" y1="652" x2="1240" y2="652" stroke="rgba(32,33,36,0.10)" stroke-width="0.8"/>
+    <text x="40" y="678" fill="#5f6368" font-size="8" font-family="'Geist Mono', monospace" letter-spacing="0.14em">LEGEND</text>
+
+    <rect x="120" y="668" width="16" height="12" rx="2" fill="#ffffff" stroke="#202124" stroke-width="1"/>
+    <text x="144" y="678" fill="#5f6368" font-size="8" font-family="'Geist Mono', monospace">deterministic code</text>
+
+    <rect x="288" y="668" width="28" height="12" rx="2" fill="transparent" stroke="#1a73e8" stroke-width="0.8"/>
+    <text x="302" y="677" fill="#1a73e8" font-size="7" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.08em">LLM</text>
+    <text x="324" y="678" fill="#5f6368" font-size="8" font-family="'Geist Mono', monospace">calls Gemini 3.7</text>
+
+    <rect x="460" y="668" width="16" height="12" rx="2" fill="rgba(232,113,10,0.08)" stroke="#e8710a" stroke-width="1"/>
+    <text x="484" y="678" fill="#5f6368" font-size="8" font-family="'Geist Mono', monospace">human decision gate</text>
+
+    <rect x="648" y="668" width="16" height="12" rx="2" fill="rgba(32,33,36,0.05)" stroke="#5f6368" stroke-width="1"/>
+    <text x="672" y="678" fill="#5f6368" font-size="8" font-family="'Geist Mono', monospace">managed state</text>
+
+    <line x1="792" y1="674" x2="824" y2="674" stroke="#5f6368" stroke-width="1" stroke-dasharray="5,4"/>
+    <text x="832" y="678" fill="#5f6368" font-size="8" font-family="'Geist Mono', monospace">async · advisory</text>
+
+    <circle cx="964" cy="674" r="6" fill="transparent" stroke="#5f6368" stroke-width="1"/>
+    <line x1="960" y1="678" x2="968" y2="670" stroke="#5f6368" stroke-width="1"/>
+    <text x="980" y="678" fill="#5f6368" font-size="8" font-family="'Geist Mono', monospace">blocked at boundary</text>
+
+    <text x="1240" y="708" fill="#80868b" font-size="7" font-family="'Geist Mono', monospace" text-anchor="end" letter-spacing="0.06em">deploy: GitHub Actions → WIF keyless → immutable digests · dev auto · prod manual gate</text>
+  </svg>
+  </div>
+
+  <footer>duka-autopilot · gcp: my-duka-autopilot · europe-west1 + vertex global · gemini-3.7-flash · drawn 2026-08-27</footer>
+</div>
+</body>
+</html>

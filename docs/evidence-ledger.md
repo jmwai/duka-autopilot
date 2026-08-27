@@ -65,7 +65,7 @@
 | A23 | Stale catalog | `LOCAL-PROVEN` | catalog-derived order tests | managed-memory tool trace |
 | A24 | Negative memory | `IMPLEMENTED` | negative examples and allowlist tests | Memory Bank inspection |
 | A25 | Memory outage | `LOCAL-PROVEN` | durable outbox retry test | cloud degraded/retry trace |
-| A26 | Real voice | `CONTENT-PENDING` | byte-pipeline stub coverage only | human Swahili audio eval/video |
+| A26 | Bilingual voice | `CONTENT-PENDING` | Google-only English/Kiswahili schema, transcripts, translations, generator, and verifier implemented | English/Kiswahili Google TTS fixtures, production-path eval, and Loom proof |
 | A27 | Bilingual ledger images | `CONTENT-PENDING` | Google-only schema, prompts, generator, and verifier implemented; APIs disabled | English/Kiswahili Vertex-generated fixtures, Gemini extraction results, and Loom proof |
 | A28 | Scheduled night shift | `IMPLEMENTED` | Job/Scheduler Terraform and local nightly tests | Scheduler execution ID/report |
 | A29 | Authorization | `IMPLEMENTED` | local BFF/route auth tests and IAM config | incognito/IAM denial matrix |
@@ -79,7 +79,8 @@
 | `docs/evidence/prepush-audit.json` | Candidate and branch/tag history credential/trailer scan | Preliminary; rerun immediately before each push |
 | `fixtures/demo/manifest.json` | Google-only bilingual fixture allowlist and freeze contract | Schema v2 implemented; release-ready false until four generated assets are frozen |
 | `docs/evidence/benchmark-local.json` | Raw 50,000-row local no-fuzzy baseline | Current local candidate |
-| `docs/evidence/frontend-product-qa-2026-08-27.md` | 115-test backend and 18-journey Next.js product QA, axe, print, correlation, and bundle budgets | Current local candidate |
+| `docs/evidence/frontend-product-qa-2026-08-27.md` | 121-test backend, 23 base journeys, isolated judge journey, axe, print, correlation, and bundle budgets | Current local candidate |
+| `docs/evidence/judge-profile-local-2026-08-27.md` | 50,000-row meaningful judge seed, bilingual history, three decisions, and claim boundaries | Current local candidate; bind to final SHA later |
 | `docs/economics.md` | Interpreted local baseline and claim limits | Current local candidate |
 | `deployment/compatibility.json` | Durable topology fingerprint | Enforced locally and in deploy workflows |
 

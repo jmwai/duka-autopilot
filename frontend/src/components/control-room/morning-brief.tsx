@@ -8,12 +8,14 @@ import {
   PackageSearch,
   ShieldCheck,
   ShoppingBag,
+  TriangleAlert,
 } from "lucide-react";
 import Link from "next/link";
 
 import { AuthorityRail } from "@/components/control-room/authority-rail";
 import { KshValue, Metric } from "@/components/control-room/metric";
 import { PageHeader } from "@/components/control-room/page-header";
+import { DegradedBanner } from "@/components/control-room/product-states";
 import { ProofSheet } from "@/components/control-room/proof-sheet";
 import { TrustBadge } from "@/components/control-room/trust-badge";
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +24,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Separator } from "@/components/ui/separator";
 import type { MorningBriefData } from "@/lib/api/morning-brief";
 import { decisionPresentation } from "@/lib/decisions/decision";
+import { nightlyFreshness } from "@/lib/morning-brief/presentation";
 
 function approvalLabel(kind: string) {
   return kind.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
@@ -48,7 +51,14 @@ export function MorningBrief({ data }: { data: MorningBriefData }) {
   const environment = version.environment || "unknown";
   const releaseProven = Boolean(version.release_sha && version.release_sha !== "unknown");
   const nightlyObserved = Boolean(nightly?.finished_at || nightly?.run_id);
+  const freshness = nightlyFreshness(nightly?.finished_at);
+  const nightlyStale = freshness.state === "stale" || freshness.state === "invalid";
   const firstDecisions = approvals.slice(0, 3).map((approval) => ({ approval, view: decisionPresentation(approval) }));
+  const primaryAction = approvals.length
+    ? { href: "/approvals", label: `Review ${approvals.length} decision${approvals.length === 1 ? "" : "s"}` }
+    : nightlyObserved
+      ? { href: "/inbox", label: "Open customer inbox" }
+      : { href: "/night-shift", label: "Open night shift" };
 
   return (
     <>
@@ -56,43 +66,43 @@ export function MorningBrief({ data }: { data: MorningBriefData }) {
         eyebrow={`Morning brief · ${digest.digest.date}`}
         title="Your shop is ready for the day."
         description="Routine evidence was handled overnight. What remains is small, explicit, and yours to decide."
-        action={
-          <Button asChild size="lg">
-            <Link href="/approvals">
-              {approvals.length ? `Review ${approvals.length} decision${approvals.length === 1 ? "" : "s"}` : "View decisions"}
-              <ArrowRight aria-hidden="true" />
-            </Link>
-          </Button>
-        }
       />
 
-      <section className="paper-noise relative mb-5 overflow-hidden rounded-2xl bg-sidebar px-5 py-6 text-sidebar-foreground shadow-sm sm:px-7 sm:py-7">
+      {nightlyStale ? (
+        <DegradedBanner
+          className="mb-5"
+          title="The latest night-shift report is stale"
+          description="These books remain visible, but Duka is not presenting an old run as today’s completed work. Open Night Shift to inspect or run the next approved check."
+        />
+      ) : null}
+
+      <section className="paper-noise relative mb-5 overflow-hidden rounded-2xl bg-sidebar px-4 py-5 text-sidebar-foreground shadow-sm sm:px-7 sm:py-7">
         <div className="relative z-10 grid gap-7 lg:grid-cols-[minmax(0,1fr)_minmax(19rem,0.48fr)] lg:items-end">
           <div>
             <div className="mb-4 flex flex-wrap items-center gap-2">
               <Badge className="border-white/15 bg-white/10 text-white">
-                <CheckCircle2 aria-hidden="true" className="size-3.5" />
-                {nightlyObserved ? "Night shift complete" : "Brief assembled"}
+                {nightlyStale ? <TriangleAlert aria-hidden="true" className="size-3.5" /> : <CheckCircle2 aria-hidden="true" className="size-3.5" />}
+                {nightlyStale ? "Night shift report stale" : nightlyObserved ? "Night shift complete" : "Brief assembled"}
               </Badge>
               <Badge className="border-white/15 bg-transparent font-mono text-sidebar-muted">{environment}</Badge>
             </div>
-            <p className="text-xs font-semibold text-sidebar-muted">{nightlyObserved ? `Finished ${finishLabel(nightly?.finished_at)}` : "No observed run finish time is available"}</p>
-            <h2 className="numeric mt-2 text-4xl font-bold tracking-[-0.045em] sm:text-5xl">
+            <p className="text-xs font-semibold text-sidebar-muted">{nightlyObserved ? `Finished ${finishLabel(nightly?.finished_at)} · Next scheduled 02:00 EAT` : "No observed run finish time is available"}</p>
+            <h2 className="numeric mt-2 text-3xl font-bold tracking-[-0.045em] sm:text-5xl">
               {statement.matched_exact.toLocaleString()}
               <span className="ml-2 text-lg font-semibold tracking-normal text-sidebar-muted sm:text-xl">settled exactly</span>
             </h2>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-sidebar-muted">
-              {settledPercent} of {statement.total.toLocaleString()} statement rows cleared without model judgment. Gemini saw only bounded residue; consequential ambiguity stopped for you.
+              {settledPercent} of {statement.total.toLocaleString()} statement rows cleared without model judgment. Gemini is limited to bounded residue; consequential ambiguity stopped for you.
             </p>
           </div>
 
-          <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-            <p className="text-[0.68rem] font-bold uppercase tracking-[0.16em] text-sidebar-muted">Your morning action</p>
-            <p className="numeric mt-2 text-3xl font-bold">{approvals.length}</p>
-            <p className="mt-1 text-sm text-sidebar-muted">decision{approvals.length === 1 ? "" : "s"} need owner authority</p>
+          <div className="rounded-xl border border-white/10 bg-white/5 p-3.5 sm:p-4">
+            <p className="text-[0.68rem] font-bold uppercase tracking-[0.16em] text-sidebar-muted">{approvals.length ? "Your morning action" : "Morning queue"}</p>
+            <p className="numeric mt-2 text-2xl font-bold sm:text-3xl">{approvals.length || "Clear"}</p>
+            <p className="mt-1 text-sm text-sidebar-muted">{approvals.length ? `decision${approvals.length === 1 ? "" : "s"} need owner authority` : "No consequential decisions are waiting."}</p>
             <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
               <Button asChild className="bg-white text-sidebar hover:bg-white/90">
-                <Link href="/approvals">Review queue <ArrowRight aria-hidden="true" /></Link>
+                <Link href={primaryAction.href}>{primaryAction.label} <ArrowRight aria-hidden="true" /></Link>
               </Button>
               <ProofSheet
                 title="Morning brief proof"
@@ -125,6 +135,7 @@ export function MorningBrief({ data }: { data: MorningBriefData }) {
 
       <AuthorityRail
         className="mb-5"
+        compactOnMobile
         steps={[
           { lane: "exact", title: "Routine evidence settled", detail: "Reference, amount, and chronology satisfied deterministic invariants.", value: statement.matched_exact.toLocaleString() },
           { lane: "gemini", title: "Ambiguity stayed bounded", detail: "The model may extract or propose; it cannot declare uncertain money paid.", value: residue.toLocaleString() },
@@ -132,11 +143,11 @@ export function MorningBrief({ data }: { data: MorningBriefData }) {
         ]}
       />
 
-      <section aria-label="Morning outcomes" className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Metric label="Settled exactly" value={statement.matched_exact.toLocaleString()} detail={`${settledPercent} of statement rows`} icon={CheckCircle2} tone="exact" />
-        <Metric label="Needs your decision" value={digest.digest.approvals_pending.toLocaleString()} detail={approvals.length ? `${approvalLabel(approvals[0].kind)} is first` : "Queue is clear"} icon={ShieldCheck} tone="owner" />
-        <Metric label="Paid orders · 24h" value={digest.digest.paid_last_24h.toLocaleString()} detail={`${digest.digest.orders_last_24h.toLocaleString()} total orders`} icon={ShoppingBag} />
-        <Metric label="Paid revenue · 24h" value={<KshValue value={digest.digest.revenue_paid_last_24h} />} detail="Integer KSh from the books" icon={Coins} />
+      <section aria-label="Morning outcomes" className="mb-6 grid grid-cols-2 gap-3 xl:grid-cols-4">
+        <Metric className="p-3 sm:p-5" label="Settled exactly" value={statement.matched_exact.toLocaleString()} detail={`${settledPercent} of statement rows`} icon={CheckCircle2} tone="exact" />
+        <Metric className="p-3 sm:p-5" label="Needs your decision" value={digest.digest.approvals_pending.toLocaleString()} detail={approvals.length ? `${approvalLabel(approvals[0].kind)} is first` : "Queue is clear"} icon={ShieldCheck} tone="owner" />
+        <Metric className="p-3 sm:p-5" label="Paid orders · 24h" value={digest.digest.paid_last_24h.toLocaleString()} detail={`${digest.digest.orders_last_24h.toLocaleString()} total orders`} icon={ShoppingBag} />
+        <Metric className="p-3 sm:p-5" label="Paid revenue · 24h" value={<KshValue value={digest.digest.revenue_paid_last_24h} />} detail="Integer KSh from the books" icon={Coins} />
       </section>
 
       <div className="grid items-start gap-6 xl:grid-cols-[1.05fr_0.95fr]">

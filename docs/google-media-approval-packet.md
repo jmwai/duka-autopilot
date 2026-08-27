@@ -71,8 +71,8 @@ approval packet.
 - Prompts and transcripts are checked into `fixtures/demo/prompts/` and
   `scripts/generate_google_demo_assets.py`.
 - All people, orders, ledger rows, and M-Pesa-like references are synthetic.
-- No real phone, payment reference, shop record, customer image, or human voice
-  is sent.
+- No real phone, payment reference, shop record, customer image, or recording
+  of a person is sent.
 - Authentication is Application Default Credentials. No API key or service-
   account JSON file is created.
 - Generated media is written only to `fixtures/demo/` in this workspace.

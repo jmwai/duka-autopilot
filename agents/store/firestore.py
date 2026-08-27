@@ -131,6 +131,69 @@ class FirestoreStore:
             source_event_id=source_event_id))
         return ref.id
 
+    def create_owner_sale_once(self, event_id: str, customer_id: str,
+                               payload_hash: str, items: list[dict],
+                               status: str) -> dict:
+        """Atomically persist a manual sale and its completed event receipt."""
+        from google.cloud import firestore
+
+        event_doc_id = self._event_doc_id(event_id)
+        receipt_ref = self._col("event_receipts").document(event_doc_id)
+        order_ref = self._col("orders").document(f"owner-sale-{event_doc_id}")
+        customer = self.get_customer(customer_id) or {}
+        total = sum(int(i["unit_price"]) * int(i["qty"]) for i in items)
+        transaction = self.db.transaction()
+
+        @firestore.transactional
+        def create(txn):
+            snapshot = receipt_ref.get(transaction=txn)
+            if snapshot.exists:
+                receipt = snapshot.to_dict() or {}
+                result = receipt.get("result")
+                if (receipt.get("payload_hash") != payload_hash
+                        or receipt.get("customer_id") != customer_id):
+                    return {"status": "conflict", "idempotent": False,
+                            "result": result}
+                if receipt.get("status") == "completed" and result:
+                    return {"status": "completed", "idempotent": True,
+                            "result": result}
+                return {"status": receipt.get("status", "unavailable"),
+                        "idempotent": False, "result": result}
+
+            result = {
+                "event_id": event_id,
+                "order_id": order_ref.id,
+                "status": status,
+                "total": total,
+            }
+            txn.set(order_ref, self._order_doc(
+                customer_id,
+                items,
+                status,
+                False,
+                "created by owner (dashboard sale)",
+                None,
+                total=total,
+                customer_name=customer.get("name"),
+                source_event_id=event_id,
+            ))
+            txn.set(receipt_ref, {
+                "event_id": event_id,
+                "customer_id": customer_id,
+                "payload_hash": payload_hash,
+                "status": "completed",
+                "attempts": 1,
+                "lease_expires_at": 0,
+                "result": result,
+                "last_error": None,
+                "created_at": _now(),
+                "updated_at": _now(),
+            })
+            return {"status": "completed", "idempotent": False,
+                    "result": result}
+
+        return create(transaction)
+
     def get_order(self, order_id) -> dict | None:
         snap = self._col("orders").document(str(order_id)).get()
         return self._doc(snap) if snap.exists else None
@@ -565,6 +628,57 @@ class FirestoreStore:
             pointer = self._session_pointer(customer_id, user_id, generation)
             txn.set(ref, pointer)
             return pointer
+
+        return rotate(transaction)
+
+    def rotate_active_session_once(self, event_id: str, customer_id: str,
+                                   user_id: str) -> dict:
+        """Atomically rotate the pointer once for one owner operation ID."""
+        from google.cloud import firestore
+
+        pointer_ref = self._col("session_pointers").document(
+            self._customer_doc_id(customer_id))
+        receipt_ref = self._col("event_receipts").document(
+            self._event_doc_id(event_id))
+        transaction = self.db.transaction()
+
+        @firestore.transactional
+        def rotate(txn):
+            receipt_snapshot = receipt_ref.get(transaction=txn)
+            if receipt_snapshot.exists:
+                receipt = receipt_snapshot.to_dict() or {}
+                result = receipt.get("result")
+                if (receipt.get("customer_id") != customer_id
+                        or receipt.get("payload_hash") != user_id):
+                    return {"status": "conflict", "idempotent": False,
+                            "pointer": result}
+                if receipt.get("status") == "completed" and result:
+                    return {"status": "completed", "idempotent": True,
+                            "pointer": result}
+                return {"status": receipt.get("status", "unavailable"),
+                        "idempotent": False, "pointer": result}
+
+            pointer_snapshot = pointer_ref.get(transaction=txn)
+            current = pointer_snapshot.to_dict() if pointer_snapshot.exists else None
+            if current and current.get("user_id") != user_id:
+                raise ValueError("stored user-key algorithm does not match runtime")
+            generation = int((current or {}).get("generation", 0)) + 1
+            pointer = self._session_pointer(customer_id, user_id, generation)
+            txn.set(pointer_ref, pointer)
+            txn.set(receipt_ref, {
+                "event_id": event_id,
+                "customer_id": customer_id,
+                "payload_hash": user_id,
+                "status": "completed",
+                "attempts": 1,
+                "lease_expires_at": 0,
+                "result": pointer,
+                "last_error": None,
+                "created_at": _now(),
+                "updated_at": _now(),
+            })
+            return {"status": "completed", "idempotent": False,
+                    "pointer": pointer}
 
         return rotate(transaction)
 

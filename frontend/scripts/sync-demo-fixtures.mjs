@@ -20,6 +20,15 @@ function requireReleaseManifest() {
   if (manifest.provider_policy?.generated_media !== "google_only") {
     throw new Error("generated demo media must be Google-only");
   }
+  const allowedProviders = new Set(manifest.provider_policy?.allowed);
+  if (
+    manifest.provider_policy.allowed.length !== 2
+    || allowedProviders.size !== 2
+    || !allowedProviders.has("google_vertex_ai")
+    || !allowedProviders.has("google_cloud_text_to_speech")
+  ) {
+    throw new Error("provider allowlist must contain exactly the approved Google image and voice surfaces");
+  }
   const requiredLanguages = new Set(["en-KE", "sw-KE"]);
   for (const [kind, fixtures] of [["ledger", manifest.ledgers], ["voice", manifest.voices]]) {
     if (!Array.isArray(fixtures) || fixtures.length !== 2) {
@@ -46,7 +55,7 @@ function requireReleaseManifest() {
     const providerAllowed = manifest.provider_policy.allowed?.includes(provider);
     const kindAllowed = manifest.ledgers.includes(fixture)
       ? provider === "google_vertex_ai"
-      : provider === "google_cloud_text_to_speech" || provider === "first_party_human_recording";
+      : provider === "google_cloud_text_to_speech";
     if (!providerAllowed || !kindAllowed) throw new Error(`${fixture.id} uses a disallowed provider`);
     const destination = path.basename(fixture.path);
     if (!/^[a-z0-9-]+\.(png|wav)$/.test(destination) || destinations.has(destination)) {

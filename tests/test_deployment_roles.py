@@ -129,7 +129,9 @@ def test_seed_job_is_never_scheduled_and_is_promoted_with_release():
     release_prod = (root / ".github/workflows/release-prod.yml").read_text()
 
     assert 'resource "google_cloud_run_v2_job" "seed"' in run_tf
-    assert 'args    = ["seed"]' in run_tf
+    assert 'args    = ["seed", "--seed-profile", "judge", "--seed-rows", "50000"]' in run_tf
+    assert 'timeout         = "3600s"' in run_tf
+    assert 'limits = { cpu = "2", memory = "2Gi" }' in run_tf
     assert 'AGENT_CONTEXT_ID = google_vertex_ai_reasoning_engine.context.name' in run_tf
     assert "google_cloud_run_v2_job.seed" not in scheduler_tf
     assert "gcloud run jobs update duka-dev-seed" in deploy_dev

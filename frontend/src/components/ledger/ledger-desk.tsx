@@ -82,7 +82,7 @@ function ExpectedTruth({ fixture, blockedReason }: {
   blockedReason?: string;
 }) {
   if (!fixture) {
-    return <PendingState title="Verified bilingual fixtures are pending" description={blockedReason ?? "Choose an owner photograph, or wait until both Google-generated English and Kiswahili release fixtures pass integrity checks."} />;
+    return <PendingState title="Verified bilingual fixtures are pending" description={blockedReason ?? "Wait until both Google-generated English and Kiswahili release fixtures pass integrity checks before presenting a frozen expected result."} />;
   }
   return (
     <Card>

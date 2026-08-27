@@ -2,6 +2,7 @@ import { Braces, ChevronDown, CirclePause, Route, Timer, WalletCards } from "luc
 import Link from "next/link";
 
 import { TrustBadge } from "@/components/control-room/trust-badge";
+import { Badge } from "@/components/ui/badge";
 
 function numberMeta(meta: Record<string, unknown>, key: string) {
   const value = meta[key];
@@ -34,6 +35,7 @@ export function ExecutionReceipt({ meta }: { meta: Record<string, unknown> }) {
     ? numberMeta(tokenMeta as Record<string, unknown>, "output")
     : null;
   const suspended = meta.suspended === true;
+  const syntheticSeed = meta.synthetic_seed === true;
   const order = orderReceipt(meta);
   if (!eventId && !nodePath.length && wallMs === null && costUsd === null
       && inputTokens === null && outputTokens === null && !order) return null;
@@ -41,14 +43,15 @@ export function ExecutionReceipt({ meta }: { meta: Record<string, unknown> }) {
   return (
     <details className="group mt-2 rounded-lg border bg-background/60 text-xs text-muted-foreground">
       <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-3 px-3 font-semibold text-foreground">
-        <span className="flex items-center gap-2"><Route aria-hidden="true" className="size-3.5" />Execution receipt</span>
+        <span className="flex items-center gap-2"><Route aria-hidden="true" className="size-3.5" />{syntheticSeed ? "Rehearsal receipt" : "Execution receipt"}</span>
         <ChevronDown aria-hidden="true" className="size-3.5 transition-transform group-open:rotate-180" />
       </summary>
       <div className="space-y-3 border-t px-3 py-3">
         <div className="flex flex-wrap gap-2">
-          <TrustBadge lane="gemini" />
+          {syntheticSeed ? <Badge variant="outline">Synthetic deterministic seed</Badge> : <TrustBadge lane="gemini" />}
           {suspended ? <span className="inline-flex items-center gap-1"><CirclePause aria-hidden="true" className="size-3" />Suspended for owner</span> : null}
         </div>
+        {syntheticSeed ? <p>This history was prepared for a reproducible judging rehearsal. It is not presented as a live model invocation.</p> : null}
         {nodePath.length ? (
           <div><p className="font-semibold text-foreground">Node path</p><p className="mt-1 break-words font-mono">{nodePath.join(" → ")}</p></div>
         ) : null}

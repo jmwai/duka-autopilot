@@ -5,6 +5,7 @@ const e2ePython = resolve("../.venv/bin/python");
 
 export default defineConfig({
   testDir: "./e2e",
+  testIgnore: "judge-state.spec.ts",
   timeout: 45_000,
   expect: { timeout: 10_000 },
   fullyParallel: false,

@@ -133,11 +133,17 @@ def _customer_turn_lease(customer_id: str):
         store.release_customer_turn(customer_id, owner)
 
 
-async def new_session(customer_id: str) -> str:
+async def new_session(customer_id: str, event_id: str) -> dict:
     """Create and activate a fresh managed session, preserving the old one."""
     with _customer_turn_lease(customer_id):
         user_id = _user_id(customer_id)
-        pointer = get_store().rotate_active_session(customer_id, user_id)
+        rotation = get_store().rotate_active_session_once(
+            event_id, customer_id, user_id)
+        if rotation["status"] == "conflict":
+            raise ValueError("session event ID was already used for another customer")
+        if rotation["status"] != "completed" or not rotation.get("pointer"):
+            raise RuntimeError("session rotation is already processing or unavailable")
+        pointer = rotation["pointer"]
         with bind_context(
                 customer_key=user_id, session_id=pointer["session_id"]):
             with tracer().start_as_current_span("duka.session.rotate") as span:
@@ -146,7 +152,11 @@ async def new_session(customer_id: str) -> str:
                     user_id, pointer["session_id"],
                     state={"customer_id": customer_id, "user_key": user_id,
                            "actor_role": "customer"})
-        return pointer["session_id"]
+        return {
+            "event_id": event_id,
+            "session_id": pointer["session_id"],
+            "idempotent": rotation["idempotent"],
+        }
 
 
 async def _ensure_session(user_id: str, session_id: str, state: dict) -> None:

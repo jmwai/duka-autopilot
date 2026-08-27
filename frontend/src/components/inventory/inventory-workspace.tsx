@@ -3,7 +3,6 @@
 import { ArrowRight, Boxes, ClipboardCheck, LoaderCircle, PackageCheck, RefreshCw, Search, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { toast } from "sonner";
 
 import { KshValue, Metric } from "@/components/control-room/metric";
 import { PageHeader } from "@/components/control-room/page-header";
@@ -57,6 +56,7 @@ export function InventoryWorkspace({ data }: { data: InventoryData }) {
   const [query, setQuery] = useState("");
   const [scanning, setScanning] = useState(false);
   const [outcome, setOutcome] = useState<string | null>(null);
+  const [failure, setFailure] = useState<{ message: string; requestId?: string } | null>(null);
   const low = inventory.filter((item) => item.low).sort((a, b) => a.stock - b.stock);
   const pendingRestock = approvals.find((approval) => approval.kind === "restock_proposal") ?? null;
   const visible = useMemo(() => {
@@ -75,6 +75,7 @@ export function InventoryWorkspace({ data }: { data: InventoryData }) {
     if (scanning) return;
     setScanning(true);
     setOutcome(null);
+    setFailure(null);
     try {
       const result = await browserApi("restock/check", restockCheckSchema, { method: "POST", body: "{}" });
       await refresh();
@@ -84,7 +85,10 @@ export function InventoryWorkspace({ data }: { data: InventoryData }) {
           ? "A restock draft is already pending. The scan created no duplicate and placed no supplier order."
           : "No catalog item crossed the deterministic reorder point. No draft was created.");
     } catch (error) {
-      toast.error(error instanceof BrowserApiError ? error.message : "The shelf scan did not complete.");
+      setFailure({
+        message: error instanceof BrowserApiError ? error.message : "The shelf scan did not complete.",
+        requestId: error instanceof BrowserApiError ? error.requestId : undefined,
+      });
     } finally {
       setScanning(false);
     }
@@ -95,6 +99,7 @@ export function InventoryWorkspace({ data }: { data: InventoryData }) {
       <PageHeader eyebrow="Shelf signal" title="Stock" description="Actionable low-stock evidence first, with deterministic quantities that remain owner-reviewed internal drafts." action={<Button onClick={() => void runScan()} disabled={scanning}>{scanning ? <LoaderCircle aria-hidden="true" className="animate-spin" /> : <RefreshCw aria-hidden="true" />}{scanning ? "Scanning shelves…" : "Run shelf scan"}</Button>} />
 
       {outcome ? <div role="status" className="mb-5 flex gap-3 rounded-xl border border-exact/30 bg-exact/10 p-4 text-sm leading-6"><PackageCheck aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-exact" /><p>{outcome}</p></div> : null}
+      {failure ? <div role="alert" className="mb-5 flex flex-col gap-3 rounded-xl border border-conflict/35 bg-conflict/5 p-4 text-sm leading-6 sm:flex-row sm:items-center"><TriangleAlert aria-hidden="true" className="size-4 shrink-0 text-conflict" /><div className="min-w-0 flex-1"><p className="font-semibold">The shelf scan did not complete.</p><p className="text-muted-foreground">{failure.message} The scan is idempotent: retrying cannot create a second pending restock draft or contact a supplier.</p>{failure.requestId ? <p className="mt-1 font-mono text-[0.68rem] text-muted-foreground">Request {failure.requestId}</p> : null}</div><Button type="button" variant="outline" onClick={() => void runScan()} disabled={scanning}><RefreshCw aria-hidden="true" /> Retry scan</Button></div> : null}
 
       <section className="mb-5 grid gap-3 sm:grid-cols-3">
         <Metric label="Low-stock items" value={low.length.toLocaleString()} detail={`At or below the backend policy threshold`} icon={TriangleAlert} tone="owner" />

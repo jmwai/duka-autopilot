@@ -689,7 +689,7 @@ Confirmed inputs:
       her exact usual-order ground truth, catalog total, event-ID strategy,
       benchmark seed, and ledger bitmap/hash/ground truth are frozen in
       `docs/demo-fixtures.md` and `fixtures/demo/manifest.json`; only the
-      purpose-recorded human audio file/hash remains.
+      bilingual Google Cloud Gemini-TTS audio files/hashes remain.
 - [ ] **CFG-07** Configure budget alert, labels, max-instance ceiling, and a
       judging-window cost envelope.
 - [ ] **CFG-08** Lock the narrative, honest-claims table, P0/P1/P2 cut line, and
@@ -948,8 +948,8 @@ Exit:
 Timebox: August 29–30.
 
 - [ ] **DEM-01** Seed and freeze the dedicated production demo dataset.
-- [ ] **DEM-02** Validate one real human Swahili audio fixture and one stable
-      handwritten ledger image.
+- [ ] **DEM-02** Validate the English/Kiswahili Google Cloud Gemini-TTS audio
+      fixtures and English/Kiswahili Google Vertex AI ledger images.
 - [ ] **DEM-03** Pre-generate and verify only the memory needed for the demo;
       keep the runtime execution genuine. The one-shot seed Job now prepares
       the deterministic allowlisted summary and fails if that source is absent;
@@ -1051,7 +1051,7 @@ Timebox: August 31 through winner announcement.
 | A23 | Stale catalog | Memory item may help; current catalog price always wins | Tool trace |
 | A24 | Negative memory | Payment/refund/phone/owner-instruction content is not persisted | Memory inspection |
 | A25 | Memory outage | Business action succeeds; memory write becomes degraded/retryable | Injected-failure test |
-| A26 | Real voice | Human Swahili audio produces expected structured order | Video and eval |
+| A26 | Bilingual voice | Google-generated English and Kiswahili audio produce the expected structured order | Video and eval |
 | A27 | Ledger image | Clear rows commit; unclear row is gated | Video and eval |
 | A28 | Scheduled night shift | Scheduler runs Job; report, restock, and digest persist | Job execution |
 | A29 | Authorization | Anonymous owner/API/worker/Job mutation denied | HTTP/IAM checks |
@@ -1116,7 +1116,7 @@ release SHA and must be updated if the final edit changes timing or proof.
      the night to these decisions.”
 
 2. **0:12–0:55 — Live Swahili event**
-   - Send the real human voice note.
+   - Send the frozen Kiswahili Google Cloud Gemini-TTS voice note.
    - Show immediate 202 acknowledgement.
    - Show Pub/Sub delivery, ADK path, catalog-derived order, and Firestore
      mutation.

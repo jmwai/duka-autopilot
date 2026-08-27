@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  AlertTriangle,
   CheckCircle2,
   CloudCog,
   Coins,
@@ -44,8 +45,9 @@ function duration(value: number) {
   return value < 1_000 ? `${value.toLocaleString()} ms` : `${(value / 1_000).toFixed(2)} s`;
 }
 
-function RunConfirmation({ busy, onCancel, onConfirm }: {
+function RunConfirmation({ busy, failure, onCancel, onConfirm }: {
   busy: boolean;
+  failure: { message: string; requestId?: string } | null;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
@@ -59,6 +61,7 @@ function RunConfirmation({ busy, onCancel, onConfirm }: {
         </AlertDialogDescription>
       </AlertDialogHeader>
       <div className="rounded-lg border border-owner/40 bg-owner/10 p-3 text-xs leading-5"><span className="font-semibold">Evidence boundary:</span> this is not Gemini evidence, Cloud Run Job evidence, or proof that Cloud Scheduler fired. Re-running an already-settled dataset is not a comparable benchmark.</div>
+      {failure ? <div role="alert" className="flex gap-3 rounded-lg border border-conflict/35 bg-conflict/5 p-3 text-xs leading-5"><AlertTriangle aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-conflict" /><div><p className="font-semibold">The exact pass result could not be confirmed.</p><p className="text-muted-foreground">{failure.message} Review the persisted report after retry; no Scheduler or Gemini success is inferred from this error.</p>{failure.requestId ? <p className="mt-1 font-mono text-[0.68rem] text-muted-foreground">Request {failure.requestId}</p> : null}</div></div> : null}
       <AlertDialogFooter>
         <AlertDialogCancel onClick={onCancel} disabled={busy}>Cancel</AlertDialogCancel>
         <AlertDialogAction onClick={(event) => { event.preventDefault(); onConfirm(); }} disabled={busy}>{busy ? <LoaderCircle aria-hidden="true" className="animate-spin" /> : <Play aria-hidden="true" />}{busy ? "Running exact pass…" : "Run exact pass"}</AlertDialogAction>
@@ -174,19 +177,24 @@ export function NightShiftWorkspace({ data }: { data: NightShiftData }) {
   const [report, setReport] = useState(data.digest.digest.nightly);
   const [confirming, setConfirming] = useState(false);
   const [running, setRunning] = useState(false);
+  const [failure, setFailure] = useState<{ message: string; requestId?: string } | null>(null);
   const local = data.version.environment === "local";
   const releaseState = report ? reportReleaseState(report, data.version) : "unattributed";
 
   async function runExact() {
     if (!local || running) return;
     setRunning(true);
+    setFailure(null);
     try {
       const result = await browserApi("recon/nightly?fuzzy=false", nightlyReportSchema, { method: "POST", body: "{}" });
       setReport(result);
       setConfirming(false);
       toast.success("Local exact report persisted. This is not Scheduler proof.");
     } catch (error) {
-      toast.error(error instanceof BrowserApiError ? error.message : "The local exact pass did not complete.");
+      setFailure({
+        message: error instanceof BrowserApiError ? error.message : "The local exact pass did not complete.",
+        requestId: error instanceof BrowserApiError ? error.requestId : undefined,
+      });
     } finally {
       setRunning(false);
     }
@@ -243,7 +251,7 @@ export function NightShiftWorkspace({ data }: { data: NightShiftData }) {
       <Baseline />
       <p className="mt-7 text-center text-xs text-muted-foreground">The Loom must show Cloud Scheduler or the reviewed proof workflow starting the real Cloud Run Job. This page alone is not scheduler evidence.</p>
       <AlertDialog open={confirming} onOpenChange={(open) => { if (!running) setConfirming(open); }}>
-        {confirming ? <RunConfirmation busy={running} onCancel={() => { if (!running) setConfirming(false); }} onConfirm={() => void runExact()} /> : null}
+        {confirming ? <RunConfirmation busy={running} failure={failure} onCancel={() => { if (!running) setConfirming(false); }} onConfirm={() => void runExact()} /> : null}
       </AlertDialog>
     </>
   );

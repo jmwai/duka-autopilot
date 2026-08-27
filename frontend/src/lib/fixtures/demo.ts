@@ -24,13 +24,6 @@ const googleVoiceSourceSchema = z.object({
   synthetic: z.literal(true),
 }).strict();
 
-const firstPartyVoiceSourceSchema = z.object({
-  provider: z.literal("first_party_human_recording"),
-  recorded_utc: z.string().min(1),
-  consent: z.literal(true),
-  synthetic: z.literal(true),
-}).strict();
-
 const ledgerTruthRowSchema = z.object({
   date: z.string().min(1),
   description: z.string().min(1),
@@ -81,7 +74,7 @@ export const demoVoiceFixtureSchema = z.object({
   english_translation: z.string().min(1),
   expected_intent: z.literal("usual_order"),
   synthetic: z.literal(true),
-  source: z.discriminatedUnion("provider", [googleVoiceSourceSchema, firstPartyVoiceSourceSchema]),
+  source: googleVoiceSourceSchema,
 }).strict().superRefine((fixture, context) => {
   const suffix = fixture.language === "en-KE" ? "en" : "sw";
   if (!fixture.id.startsWith(`voice-${suffix}-`)) {
@@ -101,13 +94,25 @@ export const demoFixtureManifestSchema = z.object({
     allowed: z.array(z.enum([
       "google_vertex_ai",
       "google_cloud_text_to_speech",
-      "first_party_human_recording",
     ])).min(1),
   }).strict(),
   ledgers: z.array(demoLedgerFixtureSchema),
   voices: z.array(demoVoiceFixtureSchema),
   blocked_reason: z.string().min(1).optional(),
 }).strict().superRefine((manifest, context) => {
+  const allowedProviders = new Set(manifest.provider_policy.allowed);
+  if (
+    manifest.provider_policy.allowed.length !== 2
+    || allowedProviders.size !== 2
+    || !allowedProviders.has("google_vertex_ai")
+    || !allowedProviders.has("google_cloud_text_to_speech")
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["provider_policy", "allowed"],
+      message: "provider allowlist must contain exactly the approved Google image and voice surfaces",
+    });
+  }
   if (!manifest.release_ready && !manifest.blocked_reason) {
     context.addIssue({
       code: "custom",
@@ -131,7 +136,7 @@ export const demoFixtureManifestSchema = z.object({
   if (new Set(paths).size !== paths.length) {
     context.addIssue({ code: "custom", path: ["ledgers"], message: "fixture paths must be unique" });
   }
-  const declaredProviders = new Set(manifest.provider_policy.allowed);
+  const declaredProviders = allowedProviders;
   for (const [index, fixture] of fixtures.entries()) {
     if (!declaredProviders.has(fixture.source.provider)) {
       context.addIssue({
