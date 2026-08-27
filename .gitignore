@@ -33,6 +33,8 @@ crash.log
 crash.*.log
 gha-creds-*.json
 backend.hcl
+backend.*.hcl
+!backend.hcl.example
 *.tfplan
 docs/*.md
 docs/evidence/
