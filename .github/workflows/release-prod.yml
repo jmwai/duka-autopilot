@@ -89,7 +89,7 @@ jobs:
             "${REGION}-docker.pkg.dev/${PROJECT_ID}/${IMAGE_REPOSITORY}/duka-backend@${BACKEND_DIGEST}"
           test "$(jq -r '.images.frontend' promoted-development/release-manifest-dev.json)" = \
             "${REGION}-docker.pkg.dev/${PROJECT_ID}/${IMAGE_REPOSITORY}/duka-frontend@${FRONTEND_DIGEST}"
-          jq -e '.version.durable_topology.compatible == true' \
+          jq -e '.api_version.durable_topology.compatible == true' \
             promoted-development/development-smoke.json >/dev/null
 
       - name: Authenticate to Google Cloud through WIF
