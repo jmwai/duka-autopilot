@@ -117,7 +117,10 @@ export const productSchema = z.object({
 export const productsSchema = z.array(productSchema);
 
 export const orderItemSchema = z.object({
-  sku: z.string().optional(),
+  // Ledger-derived orders record a free-text line and an amount with no catalog
+  // match, so the API returns sku: null for them. `.optional()` alone rejects
+  // null and fails the whole order list.
+  sku: z.string().nullable().optional(),
   name: z.string(),
   qty: z.number().int().positive(),
   unit_price: z.number().int().nonnegative(),
