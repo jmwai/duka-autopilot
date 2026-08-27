@@ -219,6 +219,10 @@ resource "google_cloud_run_v2_service" "web" {
         name  = "DUKA_TRACE_SAMPLE_RATE"
         value = "1.0"
       }
+      env {
+        name  = "DUKA_DEMO_OPEN_ACCESS"
+        value = var.demo_open_access ? "true" : "false"
+      }
 
       startup_probe {
         initial_delay_seconds = 1

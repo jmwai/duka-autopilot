@@ -205,6 +205,33 @@ def test_owner_ledger_endpoint_sets_trusted_owner_role(monkeypatch):
     assert conflict.json()["event_id"] == request["event_id"]
 
 
+def test_demo_open_access_is_off_unless_explicitly_enabled(monkeypatch):
+    from app.auth import demo_open_access
+
+    monkeypatch.delenv("DUKA_DEMO_OPEN_ACCESS", raising=False)
+    assert demo_open_access() is False
+    for value in ("false", "", "1", "yes", "TRUE-ish"):
+        monkeypatch.setenv("DUKA_DEMO_OPEN_ACCESS", value)
+        assert demo_open_access() is False
+    monkeypatch.setenv("DUKA_DEMO_OPEN_ACCESS", "  TRUE  ")
+    assert demo_open_access() is True
+
+
+def test_demo_open_access_grants_owner_session_without_password(monkeypatch):
+    """Judges reach owner surfaces without logging in; scoping is unchanged."""
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    monkeypatch.setenv("DUKA_DEMO_OPEN_ACCESS", "true")
+    with TestClient(app, base_url="https://testserver") as client:
+        assert client.get("/approvals").status_code == 200
+        # A wrong password still fails: the credential check itself is intact,
+        # it is simply no longer the only way to hold an owner session.
+        assert client.post(
+            "/auth/login", json={"password": "wrong"}).status_code == 401
+
+
 def test_owner_approval_queue_hides_durable_resume_handles():
     from fastapi.testclient import TestClient
 

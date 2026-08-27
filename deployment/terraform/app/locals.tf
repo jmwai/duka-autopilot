@@ -63,6 +63,7 @@ locals {
     RELEASE_SHA               = var.release_sha
     DUKA_TRACE_ENABLED        = "true"
     DUKA_TRACE_SAMPLE_RATE    = "1.0"
+    DUKA_DEMO_OPEN_ACCESS     = var.demo_open_access ? "true" : "false"
   }
   labels = {
     app          = "duka-autopilot"

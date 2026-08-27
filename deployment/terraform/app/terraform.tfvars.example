@@ -12,6 +12,11 @@ backend_image  = "europe-west1-docker.pkg.dev/agent-platform-503913/duka-images/
 frontend_image = "europe-west1-docker.pkg.dev/agent-platform-503913/duka-images/duka-frontend@sha256:0000000000000000000000000000000000000000000000000000000000000000"
 release_sha    = "0000000000000000000000000000000000000000"
 
+# Judge-facing demo: grant the owner session on arrival instead of behind a
+# password. Owner routes still require an owner session and customer scoping is
+# unchanged; only the credential prompt is waived. Synthetic data only.
+demo_open_access = true
+
 protect_durable_resources = true
 web_min_instances         = 0
 web_max_instances         = 2

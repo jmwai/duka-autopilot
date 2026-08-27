@@ -21,6 +21,9 @@ function isProtectedPath(pathname: string) {
 
 export function proxy(request: NextRequest) {
   const cloud = ["dev", "prod"].includes((process.env.DUKA_ENV ?? "local").toLowerCase());
+  // Judge-facing demo: the API grants the owner session on arrival, so sending
+  // a visitor to /login would strand them on a form no one can complete.
+  const openAccess = (process.env.DUKA_DEMO_OPEN_ACCESS ?? "").trim().toLowerCase() === "true";
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const policy = contentSecurityPolicy(nonce, {
     development: process.env.NODE_ENV === "development",
@@ -31,7 +34,7 @@ export function proxy(request: NextRequest) {
   requestHeaders.set("x-nonce", nonce);
 
   let response: NextResponse;
-  if (cloud && isProtectedPath(request.nextUrl.pathname) && !request.cookies.has(OWNER_COOKIE)) {
+  if (cloud && !openAccess && isProtectedPath(request.nextUrl.pathname) && !request.cookies.has(OWNER_COOKIE)) {
     const login = new URL("/login", request.url);
     login.searchParams.set("next", request.nextUrl.pathname);
     response = NextResponse.redirect(login);

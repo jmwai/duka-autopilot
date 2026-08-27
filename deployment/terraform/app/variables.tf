@@ -68,6 +68,17 @@ variable "protect_durable_resources" {
   default = true
 }
 
+variable "demo_open_access" {
+  description = <<-EOT
+    Grant the judge-facing owner session on arrival instead of behind a
+    password. Owner routes still require an owner session and customer scoping
+    is unchanged; only the credential prompt is waived. Sound only because all
+    demo data is synthetic. Set false to restore the password gate.
+  EOT
+  type        = bool
+  default     = false
+}
+
 variable "web_min_instances" {
   type    = number
   default = 0

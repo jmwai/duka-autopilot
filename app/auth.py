@@ -18,6 +18,22 @@ def cloud_mode() -> bool:
     return os.environ.get("DUKA_ENV", "local").lower() in ("dev", "prod")
 
 
+def demo_open_access() -> bool:
+    """Judge-facing demo: grant the owner session on arrival, no password.
+
+    The authorization boundary is unchanged - owner routes still require an
+    owner session, customer scope is still derived from trusted context, and
+    the deterministic tool boundary still holds. Only the credential check that
+    gates *obtaining* an owner session is waived, so a judge can open the URL
+    and act as the shop owner immediately.
+
+    Defaults off, so the enforced path stays the code default. It is turned on
+    per environment by deployment configuration, and is only sound because
+    every record in the demo is synthetic.
+    """
+    return os.environ.get("DUKA_DEMO_OPEN_ACCESS", "").strip().lower() == "true"
+
+
 def _b64encode(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).decode().rstrip("=")
 
@@ -77,7 +93,9 @@ def owner_authenticated(request: Request) -> bool:
     if not cloud_mode():
         return True
     token = request.cookies.get(OWNER_COOKIE, "")
-    return bool(token and verify_owner_token(token))
+    if token and verify_owner_token(token):
+        return True
+    return demo_open_access()
 
 
 def require_owner(request: Request) -> None:
