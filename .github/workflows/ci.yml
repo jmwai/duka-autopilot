@@ -54,7 +54,7 @@ jobs:
             --host-port=127.0.0.1:8085 \
             --project=demo-duka \
             --quiet >"${RUNNER_TEMP}/firestore-emulator.log" 2>&1 &
-          for attempt in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             if python3 -c "import socket; socket.create_connection(('127.0.0.1', 8085), 1).close()"; then
               exit 0
             fi

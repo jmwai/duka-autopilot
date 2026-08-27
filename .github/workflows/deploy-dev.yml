@@ -78,10 +78,12 @@ jobs:
             "${FRONTEND_IMAGE}:${GITHUB_SHA}" --format='value(image_summary.digest)')
           test "${BACKEND_DIGEST}" != ""
           test "${FRONTEND_DIGEST}" != ""
-          echo "BACKEND_REF=${BACKEND_IMAGE}@${BACKEND_DIGEST}" >>"${GITHUB_ENV}"
-          echo "FRONTEND_REF=${FRONTEND_IMAGE}@${FRONTEND_DIGEST}" >>"${GITHUB_ENV}"
-          echo "BACKEND_DIGEST=${BACKEND_DIGEST}" >>"${GITHUB_ENV}"
-          echo "FRONTEND_DIGEST=${FRONTEND_DIGEST}" >>"${GITHUB_ENV}"
+          {
+            echo "BACKEND_REF=${BACKEND_IMAGE}@${BACKEND_DIGEST}"
+            echo "FRONTEND_REF=${FRONTEND_IMAGE}@${FRONTEND_DIGEST}"
+            echo "BACKEND_DIGEST=${BACKEND_DIGEST}"
+            echo "FRONTEND_DIGEST=${FRONTEND_DIGEST}"
+          } >>"${GITHUB_ENV}"
 
       - name: Require reviewed development infrastructure
         run: |

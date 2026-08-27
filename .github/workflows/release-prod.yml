@@ -130,13 +130,15 @@ jobs:
           PREVIOUS_RELEASE_SHA=$(gcloud run services describe duka-prod-api \
             --project "${PROJECT_ID}" --region "${REGION}" --format=json \
             | jq -er '.metadata.labels.release_sha')
-          echo "api_image=${API_IMAGE}" >>"${GITHUB_OUTPUT}"
-          echo "worker_image=${WORKER_IMAGE}" >>"${GITHUB_OUTPUT}"
-          echo "web_image=${WEB_IMAGE}" >>"${GITHUB_OUTPUT}"
-          echo "nightly_image=${NIGHTLY_IMAGE}" >>"${GITHUB_OUTPUT}"
-          echo "digest_image=${DIGEST_IMAGE}" >>"${GITHUB_OUTPUT}"
-          echo "seed_image=${SEED_IMAGE}" >>"${GITHUB_OUTPUT}"
-          echo "release_sha=${PREVIOUS_RELEASE_SHA}" >>"${GITHUB_OUTPUT}"
+          {
+            echo "api_image=${API_IMAGE}"
+            echo "worker_image=${WORKER_IMAGE}"
+            echo "web_image=${WEB_IMAGE}"
+            echo "nightly_image=${NIGHTLY_IMAGE}"
+            echo "digest_image=${DIGEST_IMAGE}"
+            echo "seed_image=${SEED_IMAGE}"
+            echo "release_sha=${PREVIOUS_RELEASE_SHA}"
+          } >>"${GITHUB_OUTPUT}"
 
       - name: Promote the exact tested digests
         run: |
