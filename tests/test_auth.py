@@ -116,10 +116,16 @@ def test_owner_ledger_endpoint_sets_trusted_owner_role(monkeypatch):
     captured = {}
 
     async def fake_turn(customer_id, text, **kwargs):
+        captured["calls"] = captured.get("calls", 0) + 1
         captured.update({"customer_id": customer_id, "text": text, **kwargs})
         return type("Result", (), {
             "reply": "2 rows recorded; 1 held for review.",
             "node_path": ["classifier", "router", "ledger_reader"],
+            "ledger_result": {
+                "status": "success", "recorded": 2, "gated": 1,
+                "order_ids": ["order-1", "order-2"],
+                "approval_ids": ["approval-1"], "rows": [],
+            },
             "input_tokens": 10, "output_tokens": 5,
             "cost_usd": 0.0001, "wall_ms": 42,
         })()
@@ -129,17 +135,62 @@ def test_owner_ledger_endpoint_sets_trusted_owner_role(monkeypatch):
             "run_turn": staticmethod(fake_turn),
         })())
     payload = base64.b64encode(b"synthetic-ledger-image").decode()
+    request = {
+        "event_id": "ledger-auth-test-1",
+        "image_b64": payload, "image_mime": "image/jpeg",
+    }
     with TestClient(app, base_url="https://testserver") as client:
-        assert client.post("/ledger", json={
-            "image_b64": payload, "image_mime": "image/jpeg",
-        }).status_code == 401
+        assert client.post("/ledger", json=request).status_code == 401
         assert client.post("/auth/login", json={
             "password": "correct-horse-battery-staple",
         }).status_code == 200
-        response = client.post("/ledger", json={
-            "image_b64": payload, "image_mime": "image/jpeg",
+        response = client.post("/ledger", json=request)
+        replay = client.post("/ledger", json=request)
+        conflict = client.post("/ledger", json={
+            **request,
+            "image_b64": base64.b64encode(
+                b"different-synthetic-ledger-image").decode(),
         })
     assert response.status_code == 200
     assert captured["customer_id"] == "owner"
     assert captured["actor_role"] == "owner"
     assert captured["image_bytes"] == b"synthetic-ledger-image"
+    assert captured["calls"] == 1
+    assert response.json()["ledger"]["recorded"] == 2
+    assert response.json()["ledger"]["gated"] == 1
+    assert response.json()["idempotent"] is False
+    assert replay.json()["idempotent"] is True
+    assert conflict.status_code == 409
+    assert conflict.json()["event_id"] == request["event_id"]
+
+
+def test_owner_approval_queue_hides_durable_resume_handles():
+    from fastapi.testclient import TestClient
+
+    from agents.store import get_store
+    from app.main import app
+
+    store = get_store()
+    payload = {
+        "customer_id": "254711000006",
+        "order_id": "6",
+        "reason": "broken",
+        "session_id": "managed-session-secret-handle",
+        "interrupt_id": "interrupt-secret-handle",
+    }
+    approval_id = store.add_approval("refund", payload)
+    store.stamp_approval(approval_id, "invocation-secret-handle", payload)
+
+    with TestClient(app, base_url="https://testserver") as client:
+        assert client.post("/auth/login", json={
+            "password": "correct-horse-battery-staple",
+        }).status_code == 200
+        response = client.get("/approvals")
+
+    assert response.status_code == 200
+    approval = next(
+        row for row in response.json() if str(row["id"]) == str(approval_id))
+    assert approval["payload"]["order_id"] == "6"
+    assert "session_id" not in approval["payload"]
+    assert "interrupt_id" not in approval["payload"]
+    assert "invocation_id" not in approval

@@ -2,7 +2,7 @@
 
 > Scope: local Phase F1 release candidate
 > Cloud claim: none
-> Push state: unpushed worktree candidate
+> Push state: private `dev` commit `903f06c5af77175cc9e6d12060c87d2ed7bd0536`
 
 ## Locked runtime and dependencies
 
@@ -90,3 +90,11 @@ The production container was inspected in the in-app browser at desktop and a
 
 This is local implementation evidence only. It does not prove Cloud Run,
 managed Sessions, Memory Bank, IAM, WIF, or a hosted judging URL.
+
+## GitHub confirmation
+
+GitHub Actions run `32985154437` completed successfully for the exact commit
+above. Its Next quality, full Firestore parity, Terraform validation,
+reproducible image build, paired non-root container smoke, and repository audit
+jobs all passed. The development deploy gate remained disabled; this is CI
+evidence and not a cloud-deployment claim.

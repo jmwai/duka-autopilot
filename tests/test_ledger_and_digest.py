@@ -46,6 +46,10 @@ def test_ledger_rows_gate_per_row():
         ROWS, page_note="Aug 21, page total 1070",
         tool_context=_owner_tool_context())
     assert out["recorded"] == 2 and out["gated"] == 2
+    assert [row["outcome"] for row in out["rows"]] == [
+        "recorded", "recorded", "gated", "gated"]
+    assert out["rows"][2]["amount"] is None
+    assert out["rows"][2]["reason"].startswith("amount unreadable")
     store = get_store()
     gates = [a for a in store.pending_approvals() if a["kind"] == "ledger_row"]
     assert len(gates) == 2
@@ -130,6 +134,21 @@ def test_ledger_tool_rejects_customer_authority():
     assert result["status"] == "error"
     assert result["error"] == "owner authority required"
     assert len(get_store().list_orders()) == before
+
+
+def test_ledger_tool_gates_negative_amount_and_invalid_confidence_per_row():
+    from agents.tools.ledger import record_ledger_rows
+
+    before = len(get_store().list_orders())
+    result = record_ledger_rows([
+        {**ROWS[0], "amount": -710},
+        {**ROWS[1], "confidence": "not-a-number"},
+    ], page_note="malformed rows", tool_context=_owner_tool_context())
+
+    assert result["recorded"] == 0 and result["gated"] == 2
+    assert len(get_store().list_orders()) == before
+    assert "positive integer" in result["rows"][0]["reason"]
+    assert "confidence invalid" in result["rows"][1]["reason"]
 
 
 async def test_digest_includes_nightly_report_when_present():

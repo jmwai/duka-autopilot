@@ -1,4 +1,4 @@
-import { ChevronDown, CirclePause, Route, Timer, WalletCards } from "lucide-react";
+import { Braces, ChevronDown, CirclePause, Route, Timer, WalletCards } from "lucide-react";
 
 import { TrustBadge } from "@/components/control-room/trust-badge";
 
@@ -14,8 +14,16 @@ export function ExecutionReceipt({ meta }: { meta: Record<string, unknown> }) {
     : [];
   const wallMs = numberMeta(meta, "wall_ms");
   const costUsd = numberMeta(meta, "cost_usd");
+  const tokenMeta = meta.tokens;
+  const inputTokens = tokenMeta && typeof tokenMeta === "object"
+    ? numberMeta(tokenMeta as Record<string, unknown>, "input")
+    : null;
+  const outputTokens = tokenMeta && typeof tokenMeta === "object"
+    ? numberMeta(tokenMeta as Record<string, unknown>, "output")
+    : null;
   const suspended = meta.suspended === true;
-  if (!eventId && !nodePath.length && wallMs === null && costUsd === null) return null;
+  if (!eventId && !nodePath.length && wallMs === null && costUsd === null
+      && inputTokens === null && outputTokens === null) return null;
 
   return (
     <details className="group mt-2 rounded-lg border bg-background/60 text-xs text-muted-foreground">
@@ -34,6 +42,9 @@ export function ExecutionReceipt({ meta }: { meta: Record<string, unknown> }) {
         <div className="flex flex-wrap gap-x-5 gap-y-2 font-mono">
           {wallMs !== null ? <span className="inline-flex items-center gap-1"><Timer aria-hidden="true" className="size-3" />{wallMs.toLocaleString()} ms</span> : null}
           {costUsd !== null ? <span className="inline-flex items-center gap-1"><WalletCards aria-hidden="true" className="size-3" />${costUsd.toFixed(6)}</span> : null}
+          {inputTokens !== null || outputTokens !== null ? (
+            <span className="inline-flex items-center gap-1"><Braces aria-hidden="true" className="size-3" />{(inputTokens ?? 0).toLocaleString()} in · {(outputTokens ?? 0).toLocaleString()} out</span>
+          ) : null}
           {eventId ? <span className="break-all">event {eventId}</span> : null}
         </div>
       </div>

@@ -87,10 +87,32 @@ Non-negotiables:
 - The current private remote head `e8418d0` also has green standalone CI and a
   green development verification workflow; its actual deploy job was skipped
   because the cloud gate remains disabled.
-- Phase F1 now exists locally as an unpushed release candidate: Next.js 16.3.3,
+- Phase F1 is committed and pushed at `903f06c`: Next.js 16.3.3,
   React 19.2.8, Node 24.12.0, pnpm 11.9.0, Tailwind 4.3.3, shadcn-compatible
   owned components, strict Zod boundaries, and a pinned standalone container.
-  Its evidence is recorded in `docs/evidence/frontend-foundation-2026-08-26.md`.
+  GitHub run `32985154437` is green across Next quality, all Firestore parity
+  tests, Terraform validation, both image builds, paired smoke, and the trailer/
+  credential audit. Its evidence is recorded in
+  `docs/evidence/frontend-foundation-2026-08-26.md`.
+- Phase F2 Inbox is the current local candidate: async text/photo/voice intake,
+  stable event receipts, adaptive polling, same-ID retry, execution receipts,
+  media limits, recording, and managed-session rotation are implemented and
+  recorded in `docs/evidence/inbox-2026-08-26.md`.
+- Phase F2 Ledger is also implemented locally: the standalone image verifies
+  and packages the frozen synthetic page, the owner upload is idempotent, and
+  structured per-row tool outcomes keep observed results separate from model
+  prose and expected fixture truth. Evidence is recorded in
+  `docs/evidence/ledger-desk-2026-08-26.md`.
+- Phase F2 Decisions is implemented locally across refund, fuzzy match,
+  low-confidence order, ledger row, security flag, and restock proposal kinds.
+  Exact internal effects, fail-closed cases, retry/conflict language, sanitized
+  resume handles, and responsive confirmations are recorded in
+  `docs/evidence/decisions-2026-08-26.md`.
+- Phase F2 Night shift is implemented locally with release-attributed persisted
+  reports, per-run model usage, observed/live versus historical-baseline
+  separation, exact/Gemini/owner lanes, hard bounds, and a guarded local-only
+  deterministic control. Evidence is recorded in
+  `docs/evidence/night-shift-2026-08-26.md`.
 - No GCP APIs or resources have yet been mutated by this plan.
 - `aiplatform.googleapis.com` remains disabled until explicit bootstrap approval.
 
@@ -619,11 +641,11 @@ Goal: a tested standalone shell running locally in a production container.
 Exit: local Next container proxies `/api/version`, denies an unknown path, and
 passes auth/cookie, health, and non-root smoke tests.
 
-Exit evidence: passed locally on August 26. The container runs as
+Exit evidence: passed locally and in GitHub on August 26. The container runs as
 `10001:10001`, the paired release smoke validates both revisions and topology,
 the forbidden worker route returns 404, and login/logout preserve and clear the
-backend-signed HttpOnly cookie. GitHub proof for this unpushed candidate remains
-the next commit gate.
+backend-signed HttpOnly cookie. GitHub run `32985154437` is green for exact SHA
+`903f06c5af77175cc9e6d12060c87d2ed7bd0536`.
 
 ### Phase F2 — demo-critical product experience
 
@@ -631,12 +653,12 @@ Goal: every action in the four-minute Loom is polished and truthful.
 
 - [x] Morning brief with outcome cards, digest, decisions preview, and trust
       timeline.
-- [ ] Decisions page with kind-specific evidence, exact-effect confirmation,
+- [x] Decisions page with kind-specific evidence, exact-effect confirmation,
       idempotent/conflict states, and responsive layout.
-- [ ] Inbox with adaptive polling, audio recording, attachments, `202` receipt,
+- [x] Inbox with adaptive polling, audio recording, attachments, `202` receipt,
       node-path disclosure, and new-day Memory explanation.
-- [ ] Ledger desk with frozen fixture preview and two-record/one-gate result.
-- [ ] Night-shift view with exact/Gemini/human lanes and measured report.
+- [x] Ledger desk with frozen fixture preview and two-record/one-gate result.
+- [x] Night-shift view with exact/Gemini/human lanes and measured report.
 - [ ] Evidence view with release, topology, benchmark labels, disclosures, and
       known limitations.
 - [ ] Orders table and catalog-derived manual sale.
@@ -785,10 +807,10 @@ The goal is not complete until all are true:
 
 ## 16. Immediate next actions
 
-1. Implement Inbox next: async `202` receipt, bounded polling, attachments,
-   execution receipt, and new-day Memory explanation.
-2. Implement Ledger immediately after Inbox, using the frozen two-record/
-   one-gate fixture contract.
+1. Implement the Evidence view next so every visible
+   metric resolves to a release-tied artifact or an explicit pending label.
+2. Implement Orders and manual sale immediately after Evidence, retaining
+   catalog-derived prices and integer KSh at the browser/API boundary.
 3. Keep the development deployment gate disabled until WIF and infrastructure
    exist; a skipped deploy is not cloud evidence.
 4. Obtain explicit cloud bootstrap/API enablement approval before any GCP

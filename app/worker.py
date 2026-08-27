@@ -122,6 +122,7 @@ async def handle_inbound(payload: dict) -> dict:
         "reply": result.reply,
         "suspended": result.suspended,
         "node_path": result.node_path,
+        "tokens": {"input": result.input_tokens, "output": result.output_tokens},
         "duplicate": False,
     }
     store.add_message(
@@ -132,6 +133,7 @@ async def handle_inbound(payload: dict) -> dict:
             "suspended": result.suspended,
             "cost_usd": round(result.cost_usd, 6),
             "wall_ms": result.wall_ms,
+            "tokens": {"input": result.input_tokens, "output": result.output_tokens},
         },
         dedupe_key=f"{event_id}:out",
     )

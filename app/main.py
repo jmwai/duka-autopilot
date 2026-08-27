@@ -8,7 +8,9 @@ UI:   http://localhost:8000
 from __future__ import annotations
 
 import base64
+import hashlib
 from typing import Literal
+from uuid import uuid4
 
 from dotenv import load_dotenv
 
@@ -92,7 +94,6 @@ async def inbound(body: InboundIn, _auth: None = Depends(require_channel)):
     asynchronously; the conversation lives in /messages/{customer_id}."""
     from app.bus import get_bus
     from app.worker import INBOUND_TOPIC
-    from uuid import uuid4
 
     payload = body.model_dump(exclude_none=True)
     payload["event_id"] = body.event_id or uuid4().hex
@@ -199,7 +200,24 @@ def orders(_auth: None = Depends(require_owner)):
 
 @app.get("/approvals")
 def approvals(_auth: None = Depends(require_owner)):
-    return get_store().pending_approvals()
+    public = []
+    for approval in get_store().pending_approvals():
+        payload = dict(approval.get("payload") or {})
+        # Durable ADK resume handles stay behind the private API boundary. The
+        # owner UI needs business evidence, never session or interrupt IDs.
+        payload.pop("session_id", None)
+        payload.pop("interrupt_id", None)
+        public.append({
+            "id": approval["id"],
+            "kind": approval["kind"],
+            "status": approval["status"],
+            "payload": payload,
+            "created_at": approval.get("created_at"),
+            "requested_decision": approval.get("requested_decision"),
+            "resume_attempts": int(approval.get("resume_attempts") or 0),
+            "retryable": approval.get("status") == "resume_failed",
+        })
+    return public
 
 
 class Decision(BaseModel):
@@ -316,6 +334,9 @@ async def recon_run(_auth: None = Depends(require_owner)):
 
 
 class LedgerUploadIn(BaseModel):
+    event_id: str | None = Field(
+        default=None, min_length=1, max_length=200,
+        pattern=r"^[A-Za-z0-9._~-]+$")
     image_b64: str = Field(min_length=1, max_length=8_000_000)
     image_mime: Literal["image/jpeg", "image/png", "image/webp"] = "image/jpeg"
 
@@ -334,16 +355,45 @@ async def ledger_upload(body: LedgerUploadIn,
     if len(image) > MAX_MEDIA_BYTES:
         return JSONResponse({"error": "image exceeds 6 MB decoded limit"},
                             status_code=413)
-    result = await run_turn(
-        "owner", "Digitize this handwritten ledger page.",
-        image_bytes=image, image_mime=body.image_mime, actor_role="owner")
-    return {
+    event_id = body.event_id or f"ledger-{uuid4().hex}"
+    payload_hash = hashlib.sha256(
+        body.image_mime.encode() + b"\0" + image).hexdigest()
+    store = get_store()
+    claim = store.claim_event(event_id, "owner-ledger", payload_hash)
+    if not claim["claimed"]:
+        if claim["status"] == "completed" and claim.get("result"):
+            return {**claim["result"], "idempotent": True}
+        if claim["status"] == "conflict":
+            return JSONResponse({
+                "error": "ledger event ID was already used for another image",
+                "event_id": event_id,
+            }, status_code=409)
+        return JSONResponse({
+            "error": "ledger event is already processing or unavailable",
+            "event_id": event_id, "status": claim["status"],
+        }, status_code=409)
+    try:
+        result = await run_turn(
+            "owner", "Digitize this handwritten ledger page.",
+            image_bytes=image, image_mime=body.image_mime, actor_role="owner")
+    except Exception as exc:
+        from app.worker import _retryable
+        store.fail_event(
+            event_id, f"{exc.__class__.__name__}: {str(exc)[:300]}",
+            retryable=_retryable(exc))
+        raise
+    response = {
+        "event_id": event_id,
+        "idempotent": False,
         "reply": result.reply,
         "node_path": result.node_path,
+        "ledger": getattr(result, "ledger_result", None),
         "tokens": {"input": result.input_tokens, "output": result.output_tokens},
         "cost_usd": round(result.cost_usd, 6),
         "wall_ms": result.wall_ms,
     }
+    store.complete_event(event_id, response)
+    return response
 
 
 @app.post("/recon/exact")
@@ -363,7 +413,7 @@ async def recon_nightly(fuzzy: bool = True,
     exact pass + batched fuzzy passes + persisted report. fuzzy=false keeps
     it keyless (deterministic pass and report only)."""
     from agents.nightly import run_nightly
-    return await run_nightly(fuzzy=fuzzy)
+    return await run_nightly(fuzzy=fuzzy, execution_surface="api")
 
 
 @app.get("/recon/report")
@@ -468,6 +518,8 @@ def version():
     return {
         "app": "duka-autopilot",
         "release_sha": os.environ.get("RELEASE_SHA", "local"),
+        "environment": os.environ.get("DUKA_ENV", "local"),
+        "backend_image_digest": os.environ.get("BACKEND_IMAGE_DIGEST"),
         "model": os.environ.get("GEMINI_MODEL", "gemini-3.7-flash"),
         "model_location": os.environ.get("GOOGLE_CLOUD_LOCATION", "global"),
         "durable_topology": manifest_status(),

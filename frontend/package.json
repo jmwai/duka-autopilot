@@ -7,7 +7,9 @@
   },
   "packageManager": "pnpm@11.9.0",
   "scripts": {
+    "predev": "node scripts/sync-demo-fixtures.mjs",
     "dev": "next dev",
+    "prebuild": "node scripts/sync-demo-fixtures.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "eslint . --max-warnings=0",

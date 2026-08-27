@@ -7,6 +7,7 @@ data/*.db
 .pytest_cache/
 .adk/
 .DS_Store
+.pnpm-store/
 
 # Standalone Next.js frontend build and dependency artifacts.
 frontend/node_modules/
@@ -15,6 +16,7 @@ frontend/coverage/
 frontend/*.tsbuildinfo
 frontend/.eslintcache
 frontend/pnpm-debug.log*
+frontend/public/demo/ledger-page-v1.png
 
 # Terraform working data and local state; provider lock files stay tracked.
 **/.terraform/

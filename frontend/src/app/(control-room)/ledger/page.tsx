@@ -1,5 +1,5 @@
-import { PlannedScreen } from "@/components/control-room/placeholder";
+import { LedgerDesk } from "@/components/ledger/ledger-desk";
 
 export default function LedgerPage() {
-  return <PlannedScreen eyebrow="Multimodal desk" title="Ledger desk" description="Turn a handwritten page into recorded rows without inventing unreadable values." />;
+  return <LedgerDesk />;
 }

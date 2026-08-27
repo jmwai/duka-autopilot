@@ -38,7 +38,8 @@ async def run(action: str, fuzzy: bool) -> dict:
     if action == "nightly":
         from agents.nightly import run_nightly
         from agents.restock import check_restock
-        report = await run_nightly(fuzzy=fuzzy)
+        report = await run_nightly(
+            fuzzy=fuzzy, execution_surface="cloud_run_job")
         memory = {"completed": 0, "failed": 0}
         try:
             from app.runner import drain_memory_outbox
