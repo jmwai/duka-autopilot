@@ -16,7 +16,7 @@ frontend/coverage/
 frontend/*.tsbuildinfo
 frontend/.eslintcache
 frontend/pnpm-debug.log*
-frontend/public/demo/ledger-page-v1.png
+frontend/public/demo/
 
 # Terraform working data and local state; provider lock files stay tracked.
 **/.terraform/

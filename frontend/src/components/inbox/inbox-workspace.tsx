@@ -44,6 +44,12 @@ import {
   queuedEventSchema,
 } from "@/lib/api/contracts";
 import {
+  fixturePublicUrl,
+  loadDemoFixtureManifest,
+  verifyFixturePayload,
+  type DemoVoiceFixture,
+} from "@/lib/fixtures/demo";
+import {
   hasCompletedReply,
   hasInboundReceipt,
   inboxPollInterval,
@@ -72,6 +78,7 @@ type MediaAttachment = AcceptedMedia & {
   id: string;
   blob: Blob;
   name: string;
+  fixture: DemoVoiceFixture | null;
 };
 
 type InboundPayload = {
@@ -135,6 +142,16 @@ function explainError(error: unknown) {
   return error instanceof Error ? error.message : "The event could not be queued.";
 }
 
+function voiceFilename(fixture: DemoVoiceFixture) {
+  return fixture.path.split("/").at(-1) ?? `${fixture.id}.wav`;
+}
+
+function voiceProvider(fixture: DemoVoiceFixture) {
+  return fixture.source.provider === "google_cloud_text_to_speech"
+    ? `Google Cloud TTS · ${fixture.source.model}`
+    : "First-party human recording";
+}
+
 export function InboxWorkspace({ initialCustomers }: { initialCustomers: Customer[] }) {
   const router = useRouter();
   const [selectedCustomerId, setSelectedCustomerId] = useState(initialCustomers[0]?.id ?? "");
@@ -146,11 +163,22 @@ export function InboxWorkspace({ initialCustomers }: { initialCustomers: Custome
   const [recording, setRecording] = useState(false);
   const [rotationOpen, setRotationOpen] = useState(false);
   const [rotating, setRotating] = useState(false);
+  const [loadingVoiceId, setLoadingVoiceId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const fixtureManifestQuery = useQuery({
+    queryKey: ["demo-fixture-manifest"],
+    queryFn: loadDemoFixtureManifest,
+    retry: false,
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+  const fixtureManifest = fixtureManifestQuery.data;
+  const releaseVoices = fixtureManifest?.release_ready ? fixtureManifest.voices : [];
+  const englishVoice = releaseVoices.find((fixture) => fixture.language === "en-KE") ?? null;
+  const swahiliVoice = releaseVoices.find((fixture) => fixture.language === "sw-KE") ?? null;
 
   const selectedCustomer = initialCustomers.find((customer) => customer.id === selectedCustomerId);
   const filteredCustomers = useMemo(() => {
@@ -206,14 +234,33 @@ export function InboxWorkspace({ initialCustomers }: { initialCustomers: Custome
     setAttachment(null);
   }
 
-  function chooseAttachment(blob: Blob, name: string) {
+  function chooseAttachment(blob: Blob, name: string, fixture: DemoVoiceFixture | null = null) {
     const media = acceptedMedia(blob.type);
     const error = validateMedia(blob.type, blob.size);
     if (!media || error) {
       toast.error(error ?? "That media type is not supported.");
       return;
     }
-    setAttachment({ ...media, id: crypto.randomUUID(), blob, name });
+    setAttachment({ ...media, id: crypto.randomUUID(), blob, name, fixture });
+  }
+
+  async function loadFrozenVoice(fixture: DemoVoiceFixture) {
+    if (loadingVoiceId || encoding || recording) return;
+    setLoadingVoiceId(fixture.id);
+    try {
+      const fixtureResponse = await fetch(fixturePublicUrl(fixture.path), { cache: "force-cache" });
+      const payload = await verifyFixturePayload(fixtureResponse, fixture);
+      chooseAttachment(
+        new File([payload], voiceFilename(fixture), { type: fixture.mime_type }),
+        voiceFilename(fixture),
+        fixture,
+      );
+      toast.success(`${fixture.label} verified and attached.`);
+    } catch (fixtureError) {
+      toast.error(fixtureError instanceof Error ? fixtureError.message : "The voice fixture could not be loaded.");
+    } finally {
+      setLoadingVoiceId(null);
+    }
   }
 
   async function dispatchEvent(event: PendingEvent) {
@@ -459,7 +506,7 @@ export function InboxWorkspace({ initialCustomers }: { initialCustomers: Custome
                     <Mic2 aria-hidden="true" className="size-5" />
                   </span>
                   <p className="mt-4 font-semibold">The counter is quiet.</p>
-                  <p className="mt-1 max-w-sm text-sm leading-6 text-muted-foreground">Send a Swahili text, a purpose-recorded voice note, or a synthetic ledger photo.</p>
+                  <p className="mt-1 max-w-sm text-sm leading-6 text-muted-foreground">Send English or Kiswahili text, a voice note, or a ledger photograph.</p>
                 </div>
               </div>
             ) : null}
@@ -516,11 +563,51 @@ export function InboxWorkspace({ initialCustomers }: { initialCustomers: Custome
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold">{attachment.name}</p>
                     <p className="text-xs text-muted-foreground">{attachment.mime} · {formatMediaBytes(attachment.blob.size)}</p>
+                    {attachment.fixture ? (
+                      <div className="mt-2 space-y-1 text-xs leading-5 text-muted-foreground">
+                        <p><span className="font-semibold text-foreground">Transcript:</span> {attachment.fixture.transcript}</p>
+                        {attachment.fixture.language === "sw-KE" ? <p><span className="font-semibold text-foreground">English:</span> {attachment.fixture.english_translation}</p> : null}
+                        <p className="font-mono text-[0.65rem]">{voiceProvider(attachment.fixture)} · {attachment.fixture.duration_seconds.toFixed(1)}s · {attachment.fixture.sha256.slice(0, 16)}…</p>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
                 <Button type="button" size="icon" variant="ghost" aria-label="Remove attachment" onClick={() => setAttachment(null)}>
                   <X aria-hidden="true" />
                 </Button>
+              </div>
+            ) : null}
+            {!attachment ? (
+              <div className="mb-3 rounded-lg border bg-card p-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-xs font-semibold">Try a verified voice example</p>
+                    <p className="mt-0.5 text-xs leading-5 text-muted-foreground">Release audio · provider and integrity checked before attachment</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {([
+                      ["English", englishVoice],
+                      ["Kiswahili", swahiliVoice],
+                    ] as const).map(([language, fixture]) => (
+                      <Button
+                        key={language}
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => fixture && void loadFrozenVoice(fixture)}
+                        disabled={!fixture || Boolean(loadingVoiceId) || encoding || recording}
+                      >
+                        {loadingVoiceId === fixture?.id ? <LoaderCircle aria-hidden="true" className="animate-spin" /> : <Mic2 aria-hidden="true" />}
+                        {loadingVoiceId === fixture?.id ? "Verifying…" : `${language}${fixture ? "" : " pending"}`}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+                {fixtureManifestQuery.isError ? (
+                  <p role="alert" className="mt-2 text-xs leading-5 text-foreground">The release fixture manifest could not be verified. Record or attach owner audio instead.</p>
+                ) : !fixtureManifest?.release_ready && fixtureManifest?.blocked_reason ? (
+                  <p className="mt-2 text-xs leading-5 text-muted-foreground">{fixtureManifest.blocked_reason}</p>
+                ) : null}
               </div>
             ) : null}
             <label htmlFor="inbox-message" className="sr-only">Message text</label>
@@ -579,8 +666,23 @@ export function InboxWorkspace({ initialCustomers }: { initialCustomers: Custome
           <Card>
             <CardHeader><CardTitle>Try the counter</CardTitle></CardHeader>
             <CardContent className="space-y-3 text-sm text-muted-foreground">
-              <p className="flex gap-2"><Mic2 aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-gemini" /> “Niletee unga mbili na mafuta moja.”</p>
-              <p className="flex gap-2"><ImageIcon aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-gemini" /> A synthetic handwritten ledger photo.</p>
+              {fixtureManifest?.release_ready ? (
+                releaseVoices.map((fixture) => (
+                  <button
+                    key={fixture.id}
+                    type="button"
+                    className="flex w-full gap-2 rounded-lg p-2 text-left transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50"
+                    disabled={Boolean(loadingVoiceId) || encoding || recording}
+                    onClick={() => void loadFrozenVoice(fixture)}
+                  >
+                    <Mic2 aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-gemini" />
+                    <span><span className="font-semibold text-foreground">{fixture.language === "en-KE" ? "English" : "Kiswahili"}</span><span className="block">“{fixture.transcript}”</span></span>
+                  </button>
+                ))
+              ) : (
+                <p className="flex gap-2"><Mic2 aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-muted-foreground" /> Verified English and Kiswahili Google voice fixtures are pending.</p>
+              )}
+              <p className="flex gap-2"><ImageIcon aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-gemini" /> English and Kiswahili ledger fixtures live in Ledger Desk.</p>
               <p className="flex gap-2"><ShieldCheck aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-attention" /> A refund request that must stop for the owner.</p>
             </CardContent>
           </Card>

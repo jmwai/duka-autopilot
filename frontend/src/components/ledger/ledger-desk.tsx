@@ -1,5 +1,6 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
   ArrowRight,
@@ -28,75 +29,101 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { BrowserApiError, browserApi } from "@/lib/api/browser-client";
 import { ledgerUploadResponseSchema, type LedgerResult, type LedgerUploadResponse } from "@/lib/api/contracts";
+import {
+  fixturePublicUrl,
+  loadDemoFixtureManifest,
+  verifyFixturePayload,
+  type DemoLedgerFixture,
+} from "@/lib/fixtures/demo";
 import { formatKsh } from "@/lib/format/money";
 import { blobToBase64, formatMediaBytes, normalizeMime } from "@/lib/inbox/media";
-import { LEDGER_FIXTURE, resultMatchesFrozenTruth, validateLedgerImage } from "@/lib/ledger/ledger";
+import { resultMatchesFrozenTruth, validateLedgerImage } from "@/lib/ledger/ledger";
 import { cn } from "@/lib/utils";
 
 type SelectedLedger = {
   id: string;
   eventId: string;
   file: File;
-  frozen: boolean;
+  fixture: DemoLedgerFixture | null;
 };
 
-function bytesToHex(buffer: ArrayBuffer) {
-  return Array.from(new Uint8Array(buffer), (byte) => byte.toString(16).padStart(2, "0")).join("");
+function fixtureFilename(fixture: DemoLedgerFixture) {
+  return fixture.path.split("/").at(-1) ?? `${fixture.id}.png`;
 }
 
 function Preview({ selected }: { selected: SelectedLedger }) {
   const [url] = useState(() => URL.createObjectURL(selected.file));
   useEffect(() => () => URL.revokeObjectURL(url), [url]);
+  const width = selected.fixture?.width ?? 1024;
+  const height = selected.fixture?.height ?? 1536;
   return (
     <div className="relative overflow-hidden rounded-xl border bg-muted">
       <Image
         unoptimized
         src={url}
-        width={LEDGER_FIXTURE.width}
-        height={LEDGER_FIXTURE.height}
+        width={width}
+        height={height}
         alt="Selected handwritten ledger page"
         className="max-h-[34rem] w-full object-contain"
       />
-      {selected.frozen ? (
+      {selected.fixture ? (
         <Badge variant="exact" className="absolute left-3 top-3 shadow-sm">
-          <FileCheck2 aria-hidden="true" className="size-3.5" /> Build-verified fixture
+          <FileCheck2 aria-hidden="true" className="size-3.5" /> Google fixture verified
         </Badge>
       ) : null}
     </div>
   );
 }
 
-function ExpectedTruth() {
-  const rows = [
-    { description: "Unga Dola 2kg · qty 2", amount: 390, action: "Record" },
-    { description: "Mafuta 1L · qty 1", amount: 320, action: "Record" },
-    { description: "Sukari 1kg · qty 1", amount: null, action: "Gate" },
-  ];
+function ExpectedTruth({ fixture, blockedReason }: {
+  fixture: DemoLedgerFixture | null;
+  blockedReason?: string;
+}) {
+  if (!fixture) {
+    return (
+      <Card className="border-dashed">
+        <CardContent className="grid min-h-64 place-items-center p-8 text-center">
+          <div>
+            <span className="mx-auto grid size-12 place-items-center rounded-xl bg-muted text-muted-foreground">
+              <FileCheck2 aria-hidden="true" className="size-5" />
+            </span>
+            <p className="mt-4 font-semibold">Verified bilingual fixtures are pending</p>
+            <p className="mt-1 max-w-lg text-sm leading-6 text-muted-foreground">
+              {blockedReason ?? "Choose an owner photograph, or wait until both Google-generated English and Kiswahili release fixtures pass integrity checks."}
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
   return (
     <Card>
       <CardHeader>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <CardTitle>Frozen ground truth</CardTitle>
-            <CardDescription>Expected outcome—not a model result.</CardDescription>
+            <CardDescription>{fixture.label} · expected outcome, not a model result.</CardDescription>
           </div>
-          <Badge variant="outline">Synthetic</Badge>
+          <div className="flex gap-2">
+            <Badge variant="outline">{fixture.language === "en-KE" ? "English" : "Kiswahili"}</Badge>
+            <Badge variant="outline">Google · synthetic</Badge>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-2">
-        {rows.map((row) => (
+        {fixture.ground_truth.rows.map((row) => (
           <div key={row.description} className="flex items-center justify-between gap-3 rounded-lg border bg-background p-3 text-sm">
             <div>
-              <p className="font-semibold">{row.description}</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">{row.action === "Record" ? "Legible, positive amount" : "Amount unreadable · no value may be guessed"}</p>
+              <p className="font-semibold">{row.description} · qty {row.quantity}</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">{row.expected_action === "record" ? "Legible, positive amount" : row.issue ?? "Amount unreadable · no value may be guessed"}</p>
             </div>
             <div className="shrink-0 text-right">
-              <Badge variant={row.action === "Record" ? "exact" : "attention"}>{row.action}</Badge>
-              <p className="numeric mt-1 text-xs font-semibold">{row.amount === null ? "—" : formatKsh(row.amount)}</p>
+              <Badge variant={row.expected_action === "record" ? "exact" : "attention"}>{row.expected_action === "record" ? "Record" : "Gate"}</Badge>
+              <p className="numeric mt-1 text-xs font-semibold">{row.amount_ksh === null ? "—" : formatKsh(row.amount_ksh)}</p>
             </div>
           </div>
         ))}
-        <p className="pt-1 font-mono text-[0.66rem] leading-5 text-muted-foreground">SHA-256 {LEDGER_FIXTURE.sha256.slice(0, 16)}… · {LEDGER_FIXTURE.width}×{LEDGER_FIXTURE.height} · {formatMediaBytes(LEDGER_FIXTURE.bytes)}</p>
+        <p className="pt-1 font-mono text-[0.66rem] leading-5 text-muted-foreground">SHA-256 {fixture.sha256.slice(0, 16)}… · {fixture.width}×{fixture.height} · {formatMediaBytes(fixture.bytes)} · {fixture.source.model} · {fixture.source.location}</p>
       </CardContent>
     </Card>
   );
@@ -140,7 +167,10 @@ function OutcomeRows({ ledger }: { ledger: LedgerResult }) {
   );
 }
 
-function ObservedResult({ response, frozen }: { response: LedgerUploadResponse; frozen: boolean }) {
+function ObservedResult({ response, fixture }: {
+  response: LedgerUploadResponse;
+  fixture: DemoLedgerFixture | null;
+}) {
   if (!response.ledger) {
     return (
       <Card className="border-destructive/40">
@@ -153,7 +183,7 @@ function ObservedResult({ response, frozen }: { response: LedgerUploadResponse; 
     );
   }
   const ledger = response.ledger;
-  const matches = frozen ? resultMatchesFrozenTruth(ledger) : null;
+  const matches = fixture ? resultMatchesFrozenTruth(ledger, fixture) : null;
   return (
     <Card className="overflow-hidden">
       <CardHeader className="border-b bg-muted/25">
@@ -196,43 +226,44 @@ export function LedgerDesk() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selected, setSelected] = useState<SelectedLedger | null>(null);
   const [dragActive, setDragActive] = useState(false);
-  const [loadingFixture, setLoadingFixture] = useState(false);
+  const [loadingFixtureId, setLoadingFixtureId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [response, setResponse] = useState<LedgerUploadResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const fixtureManifestQuery = useQuery({
+    queryKey: ["demo-fixture-manifest"],
+    queryFn: loadDemoFixtureManifest,
+    retry: false,
+    staleTime: Number.POSITIVE_INFINITY,
+  });
+  const manifest = fixtureManifestQuery.data;
+  const releaseFixtures = manifest?.release_ready ? manifest.ledgers : [];
+  const englishFixture = releaseFixtures.find((fixture) => fixture.language === "en-KE") ?? null;
+  const swahiliFixture = releaseFixtures.find((fixture) => fixture.language === "sw-KE") ?? null;
 
-  function chooseFile(file: File, frozen = false) {
+  function chooseFile(file: File, fixture: DemoLedgerFixture | null = null) {
     const validation = validateLedgerImage(file.type, file.size);
     if (validation) {
       toast.error(validation);
       return;
     }
-    setSelected({ id: crypto.randomUUID(), eventId: `ledger-${crypto.randomUUID().replaceAll("-", "")}`, file, frozen });
+    setSelected({ id: crypto.randomUUID(), eventId: `ledger-${crypto.randomUUID().replaceAll("-", "")}`, file, fixture });
     setResponse(null);
     setError(null);
   }
 
-  async function loadFrozenFixture() {
-    if (loadingFixture) return;
-    if (!LEDGER_FIXTURE.releaseEligible) {
-      toast.error("The legacy fixture is quarantined. Generate the Google bilingual release fixtures first.");
-      return;
-    }
-    setLoadingFixture(true);
+  async function loadFrozenFixture(fixture: DemoLedgerFixture) {
+    if (loadingFixtureId) return;
+    setLoadingFixtureId(fixture.id);
     try {
-      const fixtureResponse = await fetch(LEDGER_FIXTURE.url, { cache: "force-cache" });
-      if (!fixtureResponse.ok) throw new Error("The frozen fixture is unavailable in this release.");
-      const payload = await fixtureResponse.arrayBuffer();
-      const digest = bytesToHex(await crypto.subtle.digest("SHA-256", payload));
-      if (digest !== LEDGER_FIXTURE.sha256 || payload.byteLength !== LEDGER_FIXTURE.bytes) {
-        throw new Error("The frozen fixture failed its release integrity check.");
-      }
-      chooseFile(new File([payload], LEDGER_FIXTURE.filename, { type: LEDGER_FIXTURE.mime }), true);
-      toast.success("Frozen synthetic ledger verified and loaded.");
+      const fixtureResponse = await fetch(fixturePublicUrl(fixture.path), { cache: "force-cache" });
+      const payload = await verifyFixturePayload(fixtureResponse, fixture);
+      chooseFile(new File([payload], fixtureFilename(fixture), { type: fixture.mime_type }), fixture);
+      toast.success(`${fixture.label} verified and loaded.`);
     } catch (fixtureError) {
       toast.error(fixtureError instanceof Error ? fixtureError.message : "The fixture could not be loaded.");
     } finally {
-      setLoadingFixture(false);
+      setLoadingFixtureId(null);
     }
   }
 
@@ -319,9 +350,28 @@ export function LedgerDesk() {
                 )}
                 {error ? <div role="alert" className="flex gap-3 rounded-lg border border-destructive/35 bg-destructive/5 p-3 text-sm text-destructive"><AlertTriangle aria-hidden="true" className="mt-0.5 size-4 shrink-0" /><p>{error}</p></div> : null}
                 <div className="grid gap-2 sm:grid-cols-2">
-                  <Button type="button" variant="outline" onClick={() => void loadFrozenFixture()} disabled={!LEDGER_FIXTURE.releaseEligible || loadingFixture || submitting}>{loadingFixture ? <LoaderCircle aria-hidden="true" className="animate-spin" /> : <FileCheck2 aria-hidden="true" />}{loadingFixture ? "Verifying…" : "Google fixture pending"}</Button>
-                  <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()} disabled={submitting}><ImageIcon aria-hidden="true" /> Choose another photo</Button>
+                  {([
+                    ["English", englishFixture],
+                    ["Kiswahili", swahiliFixture],
+                  ] as const).map(([language, fixture]) => (
+                    <Button
+                      key={language}
+                      type="button"
+                      variant="outline"
+                      onClick={() => fixture && void loadFrozenFixture(fixture)}
+                      disabled={!fixture || Boolean(loadingFixtureId) || submitting}
+                    >
+                      {loadingFixtureId === fixture?.id ? <LoaderCircle aria-hidden="true" className="animate-spin" /> : <FileCheck2 aria-hidden="true" />}
+                      {loadingFixtureId === fixture?.id ? "Verifying…" : `${language} fixture${fixture ? "" : " pending"}`}
+                    </Button>
+                  ))}
+                  <Button type="button" variant="outline" className="sm:col-span-2" onClick={() => fileInputRef.current?.click()} disabled={submitting}><ImageIcon aria-hidden="true" /> Choose owner photo</Button>
                 </div>
+                {fixtureManifestQuery.isError ? (
+                  <div role="alert" className="rounded-lg border border-attention/40 bg-attention/10 p-3 text-xs leading-5">
+                    The release fixture manifest could not be verified. Owner upload remains available, but no frozen fixture may be presented as evidence.
+                  </div>
+                ) : null}
                 <Button type="submit" size="lg" className="w-full" disabled={!selected || submitting}>{submitting ? <LoaderCircle aria-hidden="true" className="animate-spin" /> : <Sparkles aria-hidden="true" />}{submitting ? "Reading and gating rows…" : "Read this ledger page"}</Button>
                 <p className="flex gap-2 text-xs leading-5 text-muted-foreground"><LockKeyhole aria-hidden="true" className="mt-0.5 size-3.5 shrink-0" />This synchronous owner action is idempotent by event ID. A replay cannot record the page twice.</p>
               </form>
@@ -332,11 +382,28 @@ export function LedgerDesk() {
         <div className="space-y-5">
           {submitting ? (
             <Card><CardContent className="grid min-h-64 place-items-center p-8 text-center"><div><span className="mx-auto grid size-12 place-items-center rounded-xl bg-gemini/10 text-gemini"><LoaderCircle aria-hidden="true" className="size-5 animate-spin" /></span><p className="mt-4 font-semibold">Reading every handwritten row</p><p className="mt-1 max-w-md text-sm leading-6 text-muted-foreground">Gemini extracts proposals first. The deterministic tool then commits clear positive amounts and gates each doubtful row independently.</p></div></CardContent></Card>
-          ) : response ? <ObservedResult response={response} frozen={selected?.frozen === true} /> : <ExpectedTruth />}
+          ) : response ? <ObservedResult response={response} fixture={selected?.fixture ?? null} /> : (
+            <ExpectedTruth
+              fixture={selected ? selected.fixture : englishFixture}
+              blockedReason={selected && !selected.fixture
+                ? "This is an owner upload, so it has no frozen expected truth. Only the observed tool receipt may describe its outcome."
+                : manifest?.blocked_reason}
+            />
+          )}
           <Card>
             <CardHeader><CardTitle>Release integrity</CardTitle><CardDescription>The demo image is copied into the standalone image only after its source hash and byte count match the frozen manifest.</CardDescription></CardHeader>
             <CardContent className="grid gap-3 sm:grid-cols-2">
-              <div className="rounded-lg bg-muted p-3"><p className="text-xs text-muted-foreground">Release fixture</p><p className="mt-1 text-sm font-semibold">Quarantined · Google bilingual replacement required</p></div>
+              <div className="rounded-lg bg-muted p-3">
+                <p className="text-xs text-muted-foreground">Release fixture</p>
+                <p className="mt-1 text-sm font-semibold">
+                  {selected?.fixture
+                    ? `${selected.fixture.language === "en-KE" ? "English" : "Kiswahili"} · Google Vertex AI · verified`
+                    : manifest?.release_ready
+                      ? "English and Kiswahili · ready"
+                      : "English and Kiswahili · pending Google generation"}
+                </p>
+                {selected?.fixture ? <p className="mt-1 font-mono text-[0.66rem] text-muted-foreground">{selected.fixture.source.model} · {selected.fixture.source.location} · {selected.fixture.sha256.slice(0, 16)}…</p> : null}
+              </div>
               <div className="rounded-lg bg-muted p-3"><p className="text-xs text-muted-foreground">External financial effect</p><p className="mt-1 text-sm font-semibold">None · internal books and proposals only</p></div>
             </CardContent>
           </Card>

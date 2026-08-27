@@ -1,6 +1,6 @@
 # Duka Autopilot — Grand-Prize Execution Plan v3
 
-> Status: active successor plan
+> Status: superseded by `docs/grand-prize-winning-product-plan-v4.md`
 > Created: August 27, 2026
 > Baseline commit: `267440e820e018314c7227e2dcf0ff9799f88a41`
 > Baseline branch: private `origin/dev`

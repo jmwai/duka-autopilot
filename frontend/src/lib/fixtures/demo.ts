@@ -58,7 +58,15 @@ export const demoLedgerFixtureSchema = z.object({
     gated_rows: z.literal(1),
     rows: z.array(ledgerTruthRowSchema).length(3),
   }).strict(),
-}).strict();
+}).strict().superRefine((fixture, context) => {
+  const suffix = fixture.language === "en-KE" ? "en" : "sw";
+  if (!fixture.id.startsWith(`ledger-${suffix}-`)) {
+    context.addIssue({ code: "custom", path: ["id"], message: "ledger ID does not match its language" });
+  }
+  if (!fixture.path.includes(`/ledger-${suffix}-`)) {
+    context.addIssue({ code: "custom", path: ["path"], message: "ledger path does not match its language" });
+  }
+});
 
 export const demoVoiceFixtureSchema = z.object({
   id: z.string().regex(/^voice-(en|sw)-v\d+$/),
@@ -74,7 +82,15 @@ export const demoVoiceFixtureSchema = z.object({
   expected_intent: z.literal("usual_order"),
   synthetic: z.literal(true),
   source: z.discriminatedUnion("provider", [googleVoiceSourceSchema, firstPartyVoiceSourceSchema]),
-}).strict();
+}).strict().superRefine((fixture, context) => {
+  const suffix = fixture.language === "en-KE" ? "en" : "sw";
+  if (!fixture.id.startsWith(`voice-${suffix}-`)) {
+    context.addIssue({ code: "custom", path: ["id"], message: "voice ID does not match its language" });
+  }
+  if (!fixture.path.includes(`/voice-${suffix}-`)) {
+    context.addIssue({ code: "custom", path: ["path"], message: "voice path does not match its language" });
+  }
+});
 
 export const demoFixtureManifestSchema = z.object({
   schema_version: z.literal(2),
@@ -92,6 +108,39 @@ export const demoFixtureManifestSchema = z.object({
   voices: z.array(demoVoiceFixtureSchema),
   blocked_reason: z.string().min(1).optional(),
 }).strict().superRefine((manifest, context) => {
+  if (!manifest.release_ready && !manifest.blocked_reason) {
+    context.addIssue({
+      code: "custom",
+      path: ["blocked_reason"],
+      message: "a pending fixture manifest must explain why release assets are blocked",
+    });
+  }
+  if (manifest.release_ready && manifest.blocked_reason) {
+    context.addIssue({
+      code: "custom",
+      path: ["blocked_reason"],
+      message: "a release-ready fixture manifest cannot remain blocked",
+    });
+  }
+  const fixtures = [...manifest.ledgers, ...manifest.voices];
+  const ids = fixtures.map((fixture) => fixture.id);
+  const paths = fixtures.map((fixture) => fixture.path);
+  if (new Set(ids).size !== ids.length) {
+    context.addIssue({ code: "custom", path: ["ledgers"], message: "fixture IDs must be unique" });
+  }
+  if (new Set(paths).size !== paths.length) {
+    context.addIssue({ code: "custom", path: ["ledgers"], message: "fixture paths must be unique" });
+  }
+  const declaredProviders = new Set(manifest.provider_policy.allowed);
+  for (const [index, fixture] of fixtures.entries()) {
+    if (!declaredProviders.has(fixture.source.provider)) {
+      context.addIssue({
+        code: "custom",
+        path: [index < manifest.ledgers.length ? "ledgers" : "voices"],
+        message: `${fixture.id} source provider is not declared by provider_policy`,
+      });
+    }
+  }
   if (!manifest.release_ready) return;
   for (const [kind, fixtures] of [["ledger", manifest.ledgers], ["voice", manifest.voices]] as const) {
     const languages = new Set(fixtures.map((fixture) => fixture.language));
