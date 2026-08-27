@@ -46,9 +46,11 @@ resource "google_pubsub_subscription" "inbound_push" {
     max_delivery_attempts = 5
   }
 
+  # The subscriber grant is applied to this subscription, so it can only be
+  # created afterwards. Ordering it before would bind IAM on a resource that
+  # does not exist yet.
   depends_on = [
     google_pubsub_topic_iam_member.pubsub_dead_letter_publisher,
-    google_pubsub_subscription_iam_member.pubsub_source_subscriber,
     google_service_account_iam_member.pubsub_token_creator,
   ]
 }
@@ -82,7 +84,7 @@ resource "google_pubsub_topic_iam_member" "pubsub_dead_letter_publisher" {
 
 resource "google_pubsub_subscription_iam_member" "pubsub_source_subscriber" {
   project      = var.project_id
-  subscription = "${local.pubsub_prefix}inbound-push"
+  subscription = google_pubsub_subscription.inbound_push.name
   role         = "roles/pubsub.subscriber"
   member       = "serviceAccount:${google_project_service_identity.pubsub.email}"
 }

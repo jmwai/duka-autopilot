@@ -56,10 +56,13 @@ locals {
     GEMINI_MODEL                = var.model
     GOOGLE_CLOUD_LOCATION       = "global"
     GOOGLE_CLOUD_PROJECT        = var.project_id
-    PUBSUB_TOPIC_PREFIX         = local.pubsub_prefix
-    RELEASE_SHA                 = var.release_sha
-    DUKA_TRACE_ENABLED          = "true"
-    DUKA_TRACE_SAMPLE_RATE      = "1.0"
+    # Required by /ready in cloud mode (FR-040): cloud must never fall back to
+    # the Gemini Developer API. Its absence fails the startup probe closed.
+    GOOGLE_GENAI_USE_VERTEXAI = "true"
+    PUBSUB_TOPIC_PREFIX       = local.pubsub_prefix
+    RELEASE_SHA               = var.release_sha
+    DUKA_TRACE_ENABLED        = "true"
+    DUKA_TRACE_SAMPLE_RATE    = "1.0"
   }
   labels = {
     app          = "duka-autopilot"
