@@ -27,9 +27,13 @@ Built for the [All Things Agentic Hackathon](https://allthingsagentichackathon.d
 
 ## Run in 5 minutes
 
+For the complete judge-seed, standalone Next.js frontend, browser-test, and
+GCP preparation path, use
+[docs/local-testing-and-gcp-configuration.md](docs/local-testing-and-gcp-configuration.md).
+
 ```bash
 uv sync --extra dev
-cp .env.example .env             # pick model access (Vertex AI recommended)
+cp .env.example .env.local       # ignored local config; safe when .env/ is a virtualenv
 uv run python -m agents.seed     # explicit synthetic demo seed
 uv run uvicorn app.main:app --reload    # open http://localhost:8000
 ```

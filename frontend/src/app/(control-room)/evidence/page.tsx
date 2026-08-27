@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 
 import { DisconnectedBrief } from "@/components/control-room/disconnected-brief";
 import { EvidenceWorkspace } from "@/components/evidence/evidence-workspace";
+import { QueryProvider } from "@/components/query-provider";
 import { getReleaseEvidence } from "@/lib/api/evidence";
 import { ApiError } from "@/lib/api/server-client";
 
@@ -16,5 +17,7 @@ export default async function EvidencePage() {
     if (error instanceof ApiError && error.status === 401) redirect("/login?next=/evidence");
     requestId = error instanceof ApiError ? error.requestId : undefined;
   }
-  return evidence ? <EvidenceWorkspace evidence={evidence} /> : <DisconnectedBrief requestId={requestId} />;
+  return evidence
+    ? <QueryProvider><EvidenceWorkspace evidence={evidence} /></QueryProvider>
+    : <DisconnectedBrief requestId={requestId} />;
 }

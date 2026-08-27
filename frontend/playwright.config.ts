@@ -36,6 +36,7 @@ export default defineConfig({
       env: {
         DUKA_API_URL: "http://127.0.0.1:8100",
         DUKA_ENV: "local",
+        NEXT_DEPLOYMENT_ID: "playwright-local",
         RELEASE_SHA: "playwright-local",
         HOSTNAME: "127.0.0.1",
         PORT: "3100",

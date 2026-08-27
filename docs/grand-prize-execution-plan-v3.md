@@ -4,7 +4,7 @@
 > Created: August 27, 2026
 > Baseline commit: `267440e820e018314c7227e2dcf0ff9799f88a41`
 > Baseline branch: private `origin/dev`
-> GCP project: `my-duka-autopilot`
+> GCP project: `agent-platform-503913` (`183775788663`)
 > Application region: `europe-west1`
 > Vertex AI / Agent Platform location: `global`
 > Core category: The Taskmaster
@@ -488,7 +488,7 @@ and no cloud mutation needed to diagnose local defects.
 
 ### Phase 5 — Approved Google Cloud bootstrap and development deploy
 
-**Goal:** establish the real private/public topology in `my-duka-autopilot`.
+**Goal:** establish the real private/public topology in `agent-platform-503913`.
 
 - [ ] **P5-00 APPROVAL** Review Terraform plans, APIs, IAM, quotas, budget/max
       instances, resource names, and expected judging-window spend with the user.

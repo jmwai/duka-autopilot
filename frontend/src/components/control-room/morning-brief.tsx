@@ -17,11 +17,11 @@ import { KshValue, Metric } from "@/components/control-room/metric";
 import { PageHeader } from "@/components/control-room/page-header";
 import { DegradedBanner } from "@/components/control-room/product-states";
 import { ProofSheet } from "@/components/control-room/proof-sheet";
+import { ReleaseStrip } from "@/components/control-room/release-strip";
 import { TrustBadge } from "@/components/control-room/trust-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 import type { MorningBriefData } from "@/lib/api/morning-brief";
 import { decisionPresentation } from "@/lib/decisions/decision";
 import { nightlyFreshness } from "@/lib/morning-brief/presentation";
@@ -53,7 +53,9 @@ export function MorningBrief({ data }: { data: MorningBriefData }) {
   const nightlyObserved = Boolean(nightly?.finished_at || nightly?.run_id);
   const freshness = nightlyFreshness(nightly?.finished_at);
   const nightlyStale = freshness.state === "stale" || freshness.state === "invalid";
-  const firstDecisions = approvals.slice(0, 3).map((approval) => ({ approval, view: decisionPresentation(approval) }));
+  const firstDecision = approvals[0]
+    ? { approval: approvals[0], view: decisionPresentation(approvals[0]) }
+    : null;
   const primaryAction = approvals.length
     ? { href: "/approvals", label: `Review ${approvals.length} decision${approvals.length === 1 ? "" : "s"}` }
     : nightlyObserved
@@ -75,6 +77,14 @@ export function MorningBrief({ data }: { data: MorningBriefData }) {
           description="These books remain visible, but Duka is not presenting an old run as today’s completed work. Open Night Shift to inspect or run the next approved check."
         />
       ) : null}
+
+      <ReleaseStrip
+        environment={environment}
+        releaseSha={version.release_sha}
+        model={version.model}
+        modelLocation={version.model_location}
+        runId={nightly?.run_id}
+      />
 
       <section className="paper-noise relative mb-5 overflow-hidden rounded-2xl bg-sidebar px-4 py-5 text-sidebar-foreground shadow-sm sm:px-7 sm:py-7">
         <div className="relative z-10 grid gap-7 lg:grid-cols-[minmax(0,1fr)_minmax(19rem,0.48fr)] lg:items-end">
@@ -154,24 +164,28 @@ export function MorningBrief({ data }: { data: MorningBriefData }) {
         <Card>
           <CardHeader>
             <div className="flex items-start justify-between gap-4">
-              <div><CardTitle>First decisions</CardTitle><CardDescription>Why Duka stopped, and the exact internal effect awaiting authority.</CardDescription></div>
+              <div><CardTitle>First decision</CardTitle><CardDescription>The first exact internal effect awaiting authority; the full queue stays one tap away.</CardDescription></div>
               <Clock3 aria-hidden="true" className="size-5 text-muted-foreground" />
             </div>
           </CardHeader>
           <CardContent className="space-y-0">
-            {firstDecisions.map(({ approval, view }, index) => (
-              <div key={approval.id}>
-                {index ? <Separator className="my-4" /> : null}
+            {firstDecision ? (
+              <div>
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold">{view.label}</p>
-                    <p className="mt-1 text-xs leading-5 text-muted-foreground">{view.stopped}</p>
-                    <p className="mt-2 rounded-lg bg-muted/50 p-2.5 text-xs leading-5"><span className="font-semibold">If approved:</span> {view.approveEffect}</p>
+                    <p className="text-sm font-semibold">{firstDecision.view.label}</p>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">{firstDecision.view.stopped}</p>
+                    <p className="mt-2 rounded-lg bg-muted/50 p-2.5 text-xs leading-5"><span className="font-semibold">If approved:</span> {firstDecision.view.approveEffect}</p>
                   </div>
                   <TrustBadge lane="owner" />
                 </div>
+                {approvals.length > 1 ? (
+                  <p className="mt-3 border-t pt-3 text-xs leading-5 text-muted-foreground">
+                    +{approvals.length - 1} more bounded decision{approvals.length === 2 ? "" : "s"} wait in the owner queue.
+                  </p>
+                ) : null}
               </div>
-            ))}
+            ) : null}
             {!approvals.length ? <div className="rounded-lg bg-exact/10 p-4 text-sm text-exact">Nothing is waiting for you. The decision queue is clear.</div> : null}
             <Button asChild variant="outline" className="mt-5 w-full"><Link href="/approvals">Open decision queue <ArrowRight aria-hidden="true" /></Link></Button>
           </CardContent>

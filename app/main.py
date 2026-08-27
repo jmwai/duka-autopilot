@@ -13,9 +13,9 @@ import json
 from typing import Literal
 from uuid import uuid4
 
-from dotenv import load_dotenv
+from app.environment import load_environment
 
-load_dotenv()  # before agents import (they read GEMINI_MODEL / keys at import)
+load_environment()  # before agents import (they read model/config at import)
 
 from pathlib import Path  # noqa: E402
 
@@ -560,6 +560,8 @@ def ready():
             "DUKA_TRACE_ENABLED",
         )
         missing.extend(key for key in required if not os.environ.get(key))
+        if os.environ.get("GOOGLE_GENAI_USE_VERTEXAI", "").lower() != "true":
+            missing.append("GOOGLE_GENAI_USE_VERTEXAI=true")
         if os.environ.get("DUKA_STORE") != "firestore":
             missing.append("DUKA_STORE=firestore")
         if os.environ.get("DUKA_BUS") != "pubsub":

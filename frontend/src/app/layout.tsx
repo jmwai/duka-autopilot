@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { GeistMono } from "geist/font/mono";
 import { GeistSans } from "geist/font/sans";
+import { headers } from "next/headers";
 
 import { AppProviders } from "@/components/app-providers";
 
@@ -15,7 +16,10 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  // Nonce-based CSP requires request-time rendering so Next can attach the
+  // request nonce to its framework and inline bootstrap scripts.
+  await headers();
   return (
     <html
       lang="en"

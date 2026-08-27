@@ -6,12 +6,21 @@ import asyncio
 import json
 import os
 
+from app.environment import load_environment
+
+load_environment()
+
 from app.observability import (
     bind_context,
     configure_observability,
     shutdown_observability,
     tracer,
 )
+
+
+def _seed_execution_surface() -> str:
+    environment = os.environ.get("DUKA_ENV", "local").lower()
+    return "cloud_run_seed_job" if environment in ("dev", "prod") else "local_seed_job"
 
 
 async def run(action: str, fuzzy: bool, *, seed_profile: str = "base",
@@ -28,7 +37,7 @@ async def run(action: str, fuzzy: bool, *, seed_profile: str = "base",
             result = await prepare_judge_state(
                 force=False,
                 rows=seed_rows,
-                execution_surface="cloud_run_seed_job",
+                execution_surface=_seed_execution_surface(),
             )
         elif seed_profile == "base":
             from agents.seed import seed

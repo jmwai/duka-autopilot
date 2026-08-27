@@ -17,6 +17,7 @@ import {
   X,
 } from "lucide-react";
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   FormEvent,
@@ -28,6 +29,7 @@ import {
 import { toast } from "sonner";
 
 import { AuthorityRail } from "@/components/control-room/authority-rail";
+import { OperationRecovery } from "@/components/control-room/operation-recovery";
 import { PageHeader } from "@/components/control-room/page-header";
 import { EvidenceSource, ProofSheet } from "@/components/control-room/proof-sheet";
 import { Badge } from "@/components/ui/badge";
@@ -152,9 +154,9 @@ function voiceProvider(fixture: DemoVoiceFixture) {
   return `Google Cloud TTS · ${fixture.source.model}`;
 }
 
-export function InboxWorkspace({ initialCustomers }: { initialCustomers: Customer[] }) {
+export function InboxWorkspace({ initialCustomers, initialCustomerId, initialEventId }: { initialCustomers: Customer[]; initialCustomerId?: string; initialEventId?: string }) {
   const router = useRouter();
-  const [selectedCustomerId, setSelectedCustomerId] = useState(initialCustomers[0]?.id ?? "");
+  const [selectedCustomerId, setSelectedCustomerId] = useState(initialCustomerId ?? initialCustomers[0]?.id ?? "");
   const [search, setSearch] = useState("");
   const [text, setText] = useState("");
   const [attachment, setAttachment] = useState<MediaAttachment | null>(null);
@@ -445,6 +447,8 @@ export function InboxWorkspace({ initialCustomers }: { initialCustomers: Custome
         ]}
       />
 
+      {initialEventId ? <div role="status" className="mb-4 flex flex-col gap-2 rounded-xl border border-exact/30 bg-exact/5 p-3 text-xs leading-5 sm:flex-row sm:items-center sm:justify-between"><span>Following source event <span className="break-all font-mono font-semibold">{initialEventId}</span> into this customer thread.</span><Button asChild variant="ghost" size="sm"><Link href="/evidence#trace">Continue to causal evidence</Link></Button></div> : null}
+
       <div className="grid min-h-[42rem] gap-4 lg:grid-cols-[16rem_minmax(0,1fr)] xl:grid-cols-[16rem_minmax(0,1fr)_18rem]">
         <Card className="hidden overflow-hidden lg:block">
           <CardHeader className="border-b">
@@ -587,9 +591,15 @@ export function InboxWorkspace({ initialCustomers }: { initialCustomers: Custome
                       {event.status === "sending" ? "Handing off…" : event.status === "queued" ? "Accepted · waiting for worker" : "Handoff uncertain"}
                     </p>
                     {event.status === "failed" ? (
-                      <Button type="button" size="sm" variant="outline" className="mt-2" onClick={() => void dispatchEvent(event)}>
-                        <RefreshCw aria-hidden="true" /> Retry same event ID
-                      </Button>
+                      <OperationRecovery
+                        compact
+                        className="mt-2 bg-card/65"
+                        title="Queue handoff is uncertain"
+                        description="The worker may still have received this event. Retrying preserves the same business ID so no second effect can be created."
+                        operationId={event.eventId}
+                        retryLabel="Retry same event ID"
+                        onRetry={() => void dispatchEvent(event)}
+                      />
                     ) : null}
                   </Bubble>
                 </Message>
@@ -743,18 +753,25 @@ export function InboxWorkspace({ initialCustomers }: { initialCustomers: Custome
             </DialogDescription>
           </DialogHeader>
           {rotationFailure ? (
-            <div role="alert" className="flex gap-3 rounded-xl border border-conflict/35 bg-conflict/5 p-4 text-sm leading-6">
-              <RefreshCw aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-conflict" />
-              <div><p className="font-semibold">The new session could not be confirmed.</p><p className="text-muted-foreground">{rotationFailure.message} Retrying reuses operation {rotationEventId.slice(0, 16)}… and cannot advance the active pointer twice.</p>{rotationFailure.requestId ? <p className="mt-1 font-mono text-[0.68rem] text-muted-foreground">Request {rotationFailure.requestId}</p> : null}</div>
-            </div>
+            <OperationRecovery
+              title="The new session could not be confirmed."
+              description={`${rotationFailure.message} Retrying cannot advance the active pointer twice.`}
+              operationId={rotationEventId}
+              requestId={rotationFailure.requestId}
+              retryLabel="Retry same session operation"
+              onRetry={() => void rotateSession()}
+              busy={rotating}
+            />
           ) : null}
           <p className="font-mono text-[0.68rem] text-muted-foreground">Session operation {rotationEventId.slice(0, 20)}…</p>
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <Button type="button" variant="outline" disabled={rotating} onClick={() => setRotationOpen(false)}>Keep this session</Button>
-            <Button type="button" disabled={rotating} onClick={() => void rotateSession()}>
-              {rotating ? <LoaderCircle aria-hidden="true" className="animate-spin" /> : <RotateCcw aria-hidden="true" />}
-              {rotating ? "Rotating…" : "Start new day"}
-            </Button>
+            {!rotationFailure ? (
+              <Button type="button" disabled={rotating} onClick={() => void rotateSession()}>
+                {rotating ? <LoaderCircle aria-hidden="true" className="animate-spin" /> : <RotateCcw aria-hidden="true" />}
+                {rotating ? "Rotating…" : "Start new day"}
+              </Button>
+            ) : null}
           </div>
         </DialogContent>
       </Dialog>

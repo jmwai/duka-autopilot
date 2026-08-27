@@ -7,6 +7,7 @@ import { AuthorityRail } from "@/components/control-room/authority-rail";
 import { Metric } from "@/components/control-room/metric";
 import { PageHeader } from "@/components/control-room/page-header";
 import { EnvironmentBadge, EvidenceSource, ReleaseStamp } from "@/components/control-room/proof-sheet";
+import { ReleaseStrip } from "@/components/control-room/release-strip";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { frontendVersionSchema, type ReleaseEvidence } from "@/lib/api/contracts";
@@ -70,6 +71,14 @@ export function EvidenceWorkspace({ evidence }: { evidence: ReleaseEvidence }) {
         title="How Duka worked"
         description="Release identity, ADK architecture, Google runtime, tests, evals, provenance, economics, and honest limitations—missing proof stays visible."
         action={<div className="flex flex-wrap gap-2"><EnvironmentBadge environment={evidence.release.environment} /><ReleaseStamp sha={evidence.release.sha} /></div>}
+      />
+
+      <ReleaseStrip
+        environment={evidence.release.environment}
+        releaseSha={evidence.release.sha}
+        model={evidence.model.name}
+        modelLocation={evidence.model.location}
+        className="lg:sticky lg:top-16 lg:z-20"
       />
 
       <section className="paper-noise mb-5 overflow-hidden rounded-2xl bg-sidebar p-5 text-sidebar-foreground sm:p-7">

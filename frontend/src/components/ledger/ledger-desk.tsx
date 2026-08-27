@@ -15,20 +15,21 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
-import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { DragEvent, FormEvent, useEffect, useRef, useState } from "react";
+import { DragEvent, FormEvent, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { AuthorityRail } from "@/components/control-room/authority-rail";
 import { PageHeader } from "@/components/control-room/page-header";
-import { PendingState } from "@/components/control-room/product-states";
-import { EvidenceSource, ProofSheet } from "@/components/control-room/proof-sheet";
+import { EvidenceSource } from "@/components/control-room/proof-sheet";
 import { ExecutionReceipt } from "@/components/inbox/execution-receipt";
+import { DocumentStage, type SelectedLedgerDocument } from "@/components/ledger/document-stage";
+import { FrozenTruthComparison } from "@/components/ledger/frozen-truth-comparison";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BrowserApiError, browserApi } from "@/lib/api/browser-client";
 import { ledgerUploadResponseSchema, type LedgerResult, type LedgerUploadResponse } from "@/lib/api/contracts";
 import {
@@ -42,100 +43,8 @@ import { blobToBase64, formatMediaBytes, normalizeMime } from "@/lib/inbox/media
 import { resultMatchesFrozenTruth, validateLedgerImage } from "@/lib/ledger/ledger";
 import { cn } from "@/lib/utils";
 
-type SelectedLedger = {
-  id: string;
-  eventId: string;
-  file: File;
-  fixture: DemoLedgerFixture | null;
-};
-
 function fixtureFilename(fixture: DemoLedgerFixture) {
   return fixture.path.split("/").at(-1) ?? `${fixture.id}.png`;
-}
-
-function Preview({ selected }: { selected: SelectedLedger }) {
-  const [url] = useState(() => URL.createObjectURL(selected.file));
-  useEffect(() => () => URL.revokeObjectURL(url), [url]);
-  const width = selected.fixture?.width ?? 1024;
-  const height = selected.fixture?.height ?? 1536;
-  return (
-    <div className="relative overflow-hidden rounded-xl border bg-muted">
-      <Image
-        unoptimized
-        src={url}
-        width={width}
-        height={height}
-        alt="Selected handwritten ledger page"
-        className="max-h-[34rem] w-full object-contain"
-      />
-      {selected.fixture ? (
-        <Badge variant="exact" className="absolute left-3 top-3 shadow-sm">
-          <FileCheck2 aria-hidden="true" className="size-3.5" /> Google fixture verified
-        </Badge>
-      ) : null}
-    </div>
-  );
-}
-
-function ExpectedTruth({ fixture, blockedReason }: {
-  fixture: DemoLedgerFixture | null;
-  blockedReason?: string;
-}) {
-  if (!fixture) {
-    return <PendingState title="Verified bilingual fixtures are pending" description={blockedReason ?? "Wait until both Google-generated English and Kiswahili release fixtures pass integrity checks before presenting a frozen expected result."} />;
-  }
-  return (
-    <Card>
-      <CardHeader>
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <CardTitle>Frozen ground truth</CardTitle>
-            <CardDescription>{fixture.label} · expected outcome, not a model result.</CardDescription>
-          </div>
-          <div className="flex flex-wrap justify-end gap-2">
-            <Badge variant="outline">{fixture.language === "en-KE" ? "English" : "Kiswahili"}</Badge>
-            <Badge variant="outline">Google · synthetic</Badge>
-            <ProofSheet
-              title={`${fixture.label} provenance`}
-              description="Frozen source, integrity, and reviewed expected truth for this release ledger."
-              outcome={`Two rows must record and one unreadable row must stop for owner review.`}
-              reason="The image is admitted only after its byte count and SHA-256 match the manifest. Frozen truth is reviewed independently from the observed model result."
-              facts={[
-                { label: "Language", value: fixture.language },
-                { label: "Provider", value: fixture.source.provider },
-                { label: "Model", value: fixture.source.model },
-                { label: "Location", value: fixture.source.location },
-                { label: "SHA-256", value: fixture.sha256 },
-                { label: "Prompt SHA-256", value: fixture.source.prompt_sha256 },
-              ]}
-              sources={[
-                { label: "Google Vertex AI image", detail: `${fixture.source.model} · ${fixture.source.location}`, state: "proven" },
-                { label: "Release integrity", detail: `${formatMediaBytes(fixture.bytes)} · ${fixture.width}×${fixture.height}`, state: "proven" },
-                { label: "Reviewed ground truth", detail: "2 record · 1 gate", state: "proven" },
-              ]}
-              limitations={["Synthetic media is used for privacy and known ground truth.", "Source integrity does not by itself prove extraction accuracy; observed truth is compared separately."]}
-              trigger={<Button type="button" size="sm" variant="ghost">Provenance</Button>}
-            />
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-2">
-        {fixture.ground_truth.rows.map((row) => (
-          <div key={row.description} className="flex items-center justify-between gap-3 rounded-lg border bg-background p-3 text-sm">
-            <div>
-              <p className="font-semibold">{row.description} · qty {row.quantity}</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">{row.expected_action === "record" ? "Legible, positive amount" : row.issue ?? "Amount unreadable · no value may be guessed"}</p>
-            </div>
-            <div className="shrink-0 text-right">
-              <Badge variant={row.expected_action === "record" ? "exact" : "attention"}>{row.expected_action === "record" ? "Record" : "Gate"}</Badge>
-              <p className="numeric mt-1 text-xs font-semibold">{row.amount_ksh === null ? "—" : formatKsh(row.amount_ksh)}</p>
-            </div>
-          </div>
-        ))}
-        <p className="pt-1 font-mono text-[0.66rem] leading-5 text-muted-foreground">SHA-256 {fixture.sha256.slice(0, 16)}… · {fixture.width}×{fixture.height} · {formatMediaBytes(fixture.bytes)} · {fixture.source.model} · {fixture.source.location}</p>
-      </CardContent>
-    </Card>
-  );
 }
 
 function OutcomeRows({ ledger }: { ledger: LedgerResult }) {
@@ -235,8 +144,9 @@ function ObservedResult({ response, fixture }: {
 export function LedgerDesk() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [selected, setSelected] = useState<SelectedLedger | null>(null);
+  const [selected, setSelected] = useState<SelectedLedgerDocument | null>(null);
   const [dragActive, setDragActive] = useState(false);
+  const [mobileTab, setMobileTab] = useState<"source" | "result">("source");
   const [loadingFixtureId, setLoadingFixtureId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [response, setResponse] = useState<LedgerUploadResponse | null>(null);
@@ -261,6 +171,7 @@ export function LedgerDesk() {
     setSelected({ id: crypto.randomUUID(), eventId: `ledger-${crypto.randomUUID().replaceAll("-", "")}`, file, fixture });
     setResponse(null);
     setError(null);
+    setMobileTab("source");
   }
 
   async function loadFrozenFixture(fixture: DemoLedgerFixture) {
@@ -302,6 +213,7 @@ export function LedgerDesk() {
         body: JSON.stringify({ event_id: selected.eventId, image_b64: imageB64, image_mime: normalizeMime(selected.file.type) }),
       });
       setResponse(result);
+      setMobileTab("result");
     } catch (uploadError) {
       if (uploadError instanceof BrowserApiError && uploadError.status === 401) {
         router.replace("/login?next=/ledger");
@@ -332,8 +244,13 @@ export function LedgerDesk() {
         ]}
       />
 
-      <div className="grid items-start gap-5 xl:grid-cols-[0.85fr_1.15fr]">
-        <div className="space-y-5 xl:sticky xl:top-24">
+      <Tabs value={mobileTab} onValueChange={(value) => setMobileTab(value as "source" | "result")} className="items-start gap-5 xl:grid xl:grid-cols-[0.85fr_1.15fr]">
+        <TabsList aria-label="Ledger workspace view" className="w-full xl:hidden">
+          <TabsTrigger value="source"><BookOpenCheck aria-hidden="true" className="size-4" /> Source</TabsTrigger>
+          <TabsTrigger value="result"><ShieldAlert aria-hidden="true" className="size-4" /> Result</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="source" forceMount className="w-full space-y-5 data-[state=inactive]:hidden xl:sticky xl:top-24 xl:data-[state=inactive]:block">
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2"><BookOpenCheck aria-hidden="true" className="size-4.5 text-primary" /> Page input</CardTitle>
@@ -344,7 +261,7 @@ export function LedgerDesk() {
                 <input ref={fileInputRef} type="file" aria-label="Choose a handwritten ledger image" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={(event) => { const file = event.target.files?.[0]; if (file) chooseFile(file); event.currentTarget.value = ""; }} />
                 {selected ? (
                   <>
-                    <Preview key={selected.id} selected={selected} />
+                    <DocumentStage key={selected.id} selected={selected} />
                     <div className="flex items-start justify-between gap-3 rounded-lg border bg-background p-3">
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold">{selected.file.name}</p>
@@ -391,13 +308,22 @@ export function LedgerDesk() {
               </form>
             </CardContent>
           </Card>
-        </div>
+        </TabsContent>
 
-        <div className="space-y-5">
+        <TabsContent value="result" forceMount className="w-full space-y-5 data-[state=inactive]:hidden xl:data-[state=inactive]:block">
           {submitting ? (
             <Card><CardContent className="grid min-h-64 place-items-center p-8 text-center"><div><span className="mx-auto grid size-12 place-items-center rounded-xl bg-gemini/10 text-gemini"><LoaderCircle aria-hidden="true" className="size-5 animate-spin" /></span><p className="mt-4 font-semibold">Reading every handwritten row</p><p className="mt-1 max-w-md text-sm leading-6 text-muted-foreground">Gemini extracts proposals first. The deterministic tool then commits clear positive amounts and gates each doubtful row independently.</p></div></CardContent></Card>
-          ) : response ? <ObservedResult response={response} fixture={selected?.fixture ?? null} /> : (
-            <ExpectedTruth
+          ) : response ? (
+            <>
+              <FrozenTruthComparison
+                fixture={selected?.fixture ?? null}
+                observed={response.ledger}
+                blockedReason={selected?.fixture ? undefined : "This owner upload has no frozen expected truth. Only the observed deterministic receipt may describe its outcome."}
+              />
+              <ObservedResult response={response} fixture={selected?.fixture ?? null} />
+            </>
+          ) : (
+            <FrozenTruthComparison
               fixture={selected ? selected.fixture : englishFixture}
               blockedReason={selected && !selected.fixture
                 ? "This is an owner upload, so it has no frozen expected truth. Only the observed tool receipt may describe its outcome."
@@ -417,8 +343,8 @@ export function LedgerDesk() {
               <EvidenceSource label="External financial effect" detail="None · internal books and proposals only" state="proven" />
             </CardContent>
           </Card>
-        </div>
-      </div>
+        </TabsContent>
+      </Tabs>
     </>
   );
 }

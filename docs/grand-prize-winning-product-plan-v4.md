@@ -4,7 +4,7 @@
 > Created: August 27, 2026
 > Planning baseline: `ba19196840877ba4c3914f52576c3e9edcb74e84`
 > Baseline branch: private `origin/dev`
-> GCP project: `my-duka-autopilot`
+> GCP project: `agent-platform-503913` (`183775788663`)
 > Cloud Run application region: `europe-west1`
 > Agent Platform location: `global`
 > Core category: The Taskmaster

@@ -8,6 +8,11 @@ from pathlib import Path
 import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
+
+from app.environment import load_environment
+
+load_environment()
+
 from app.http_security import RequestSecurityMiddleware
 from app.observability import inject_context, instrument_fastapi, tracer
 

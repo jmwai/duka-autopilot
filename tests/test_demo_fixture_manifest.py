@@ -55,11 +55,15 @@ def _manifest(root: Path) -> dict:
                 "synthetic": True,
                 "source": {
                     "provider": "google_vertex_ai",
-                    "project_id": "my-duka-autopilot",
+                    "project_id": "agent-platform-503913",
                     "location": "global",
-                    "model": "gemini-2.5-flash-image",
+                    "model": "gemini-3.1-flash-image",
                     "prompt_path": prompt.relative_to(root).as_posix(),
                     "prompt_sha256": _sha(prompt),
+                    "response_mime_type": "image/png",
+                    "usage": {"output_tokens": 1120},
+                    "generated_utc": "2026-08-27T08:00:00+00:00",
+                    "synthetic": True,
                 },
                 "ground_truth": {
                     "recorded_rows": 2,
@@ -74,6 +78,8 @@ def _manifest(root: Path) -> dict:
         )
         voice = root / "fixtures" / "demo" / f"voice-{suffix}.wav"
         duration = _write_wav(voice)
+        transcript = "Please bring my usual." if suffix == "en" else "Niletee ya kawaida."
+        style_prompt = f"Synthetic Google voice fixture for {language}."
         voices.append(
             {
                 "id": f"voice-{suffix}",
@@ -83,15 +89,20 @@ def _manifest(root: Path) -> dict:
                 "bytes": voice.stat().st_size,
                 "sha256": _sha(voice),
                 "duration_seconds": duration,
-                "transcript": "Please bring my usual." if suffix == "en" else "Niletee ya kawaida.",
+                "transcript": transcript,
                 "english_translation": "Please bring my usual.",
                 "synthetic": True,
                 "source": {
                     "provider": "google_cloud_text_to_speech",
-                    "project_id": "my-duka-autopilot",
-                    "location": "europe-west1",
+                    "project_id": "agent-platform-503913",
+                    "location": "eu",
                     "model": "gemini-2.5-flash-tts",
                     "speaker": "Kore",
+                    "style_prompt": style_prompt,
+                    "transcript_sha256": hashlib.sha256(transcript.encode()).hexdigest(),
+                    "style_prompt_sha256": hashlib.sha256(style_prompt.encode()).hexdigest(),
+                    "generated_utc": "2026-08-27T08:00:00+00:00",
+                    "synthetic": True,
                 },
             }
         )
@@ -142,6 +153,16 @@ def test_non_google_generated_provider_fails_closed(frozen_manifest: tuple[Path,
     manifest["ledgers"][0]["source"]["provider"] = "unapproved_image_generator"
     path.write_text(json.dumps(manifest), encoding="utf-8")
     with pytest.raises(ValueError, match="provider is absent from the manifest allowlist"):
+        verifier.verify(path)
+
+
+def test_superseded_gcp_project_provenance_fails_closed(
+    frozen_manifest: tuple[Path, dict],
+) -> None:
+    path, manifest = frozen_manifest
+    manifest["ledgers"][0]["source"]["project_id"] = "retired-project"
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(ValueError, match="approved GCP project"):
         verifier.verify(path)
 
 

@@ -23,7 +23,8 @@ const reports = filesBelow(manifestRoot)
   .map((manifestPath) => {
     const manifest = readFileSync(manifestPath, "utf8");
     const chunks = [...new Set(
-      [...manifest.matchAll(/"(static\/chunks\/[^" ]+\.js)"/g)].map((match) => match[1]),
+      [...manifest.matchAll(/"(static\/chunks\/[^" ]+\.js)(?:\?[^" ]*)?"/g)]
+        .map((match) => match[1]),
     )];
     const bytes = chunks.map((chunk) => readFileSync(join(buildRoot, chunk)));
     return {
@@ -36,6 +37,10 @@ const reports = filesBelow(manifestRoot)
     };
   })
   .sort((left, right) => left.route.localeCompare(right.route));
+
+if (!reports.length || reports.some((report) => report.chunks === 0)) {
+  throw new Error("route bundle accounting is incomplete; client chunks could not be resolved");
+}
 
 const failures = reports.filter((report) => (
   report.raw_bytes > maxRouteRawBytes || report.gzip_bytes > maxRouteGzipBytes

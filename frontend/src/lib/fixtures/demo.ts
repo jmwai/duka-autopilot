@@ -2,24 +2,34 @@ import { z } from "zod";
 
 const languageSchema = z.enum(["en-KE", "sw-KE"]);
 
+const usageSchema = z.object({
+  prompt_tokens: z.number().int().nonnegative().optional(),
+  output_tokens: z.number().int().nonnegative().optional(),
+  total_tokens: z.number().int().nonnegative().optional(),
+}).strict();
+
 const vertexImageSourceSchema = z.object({
   provider: z.literal("google_vertex_ai"),
-  project_id: z.literal("my-duka-autopilot"),
+  project_id: z.literal("agent-platform-503913"),
   location: z.string().min(1),
-  model: z.string().regex(/^gemini-/),
+  model: z.literal("gemini-3.1-flash-image"),
   prompt_path: z.string().regex(/^fixtures\/demo\/prompts\/[a-z0-9-]+\.txt$/),
   prompt_sha256: z.string().regex(/^[a-f0-9]{64}$/),
+  response_mime_type: z.string().regex(/^image\//),
+  usage: usageSchema,
   generated_utc: z.string().min(1),
   synthetic: z.literal(true),
 }).strict();
 
 const googleVoiceSourceSchema = z.object({
   provider: z.literal("google_cloud_text_to_speech"),
-  project_id: z.literal("my-duka-autopilot"),
-  location: z.string().min(1),
-  model: z.string().regex(/^gemini-/),
-  speaker: z.string().min(1),
+  project_id: z.literal("agent-platform-503913"),
+  location: z.literal("eu"),
+  model: z.literal("gemini-2.5-flash-tts"),
+  speaker: z.literal("Kore"),
   style_prompt: z.string().min(1),
+  transcript_sha256: z.string().regex(/^[a-f0-9]{64}$/),
+  style_prompt_sha256: z.string().regex(/^[a-f0-9]{64}$/),
   generated_utc: z.string().min(1),
   synthetic: z.literal(true),
 }).strict();

@@ -8,7 +8,8 @@
 > Official deadline: August 31, 2026 at 17:00 PT / September 1 at 03:00 EAT
 > Runtime decision: Cloud Run, deployed through GitHub Actions
 > Durable context decision: Agent Platform Sessions plus Memory Bank
-> Cloud project: `my-duka-autopilot`; hackathon credits applied; ADC quota project set
+> Cloud project: `agent-platform-503913` (`183775788663`); ADC quota project set;
+> billing/credit linkage still requires read-back
 > Application region: `europe-west1`; Vertex AI and Agent Platform context: `global`
 > Repository: private `jmwai/duka-autopilot`; `dev` pushed at baseline `4526871`
 > Demo delivery: Loom recording, preceded by a timecoded transcript and reproducible recording/demo guide
@@ -57,7 +58,7 @@ complete workflow. Broader market potential belongs at the end.
 | Decision | Contract |
 |---|---|
 | Core category | Stay in Taskmaster. Grand Prize is pursued through the highest overall score, not a category switch. |
-| GCP project | Use `my-duka-autopilot`. Local Application Default Credentials have `my-duka-autopilot` set as their quota project. |
+| GCP project | Use `agent-platform-503913` (`183775788663`). Local Application Default Credentials have `agent-platform-503913` set as their quota project. |
 | Application region | Use `europe-west1` for Cloud Run, Artifact Registry, Firestore, Pub/Sub, and Scheduler. Keep the configured Vertex model and Agent Platform context endpoints on `global`. |
 | Repository | Use private GitHub repository `jmwai/duka-autopilot`. Push only the audited `dev` branch until an explicit release decision changes that scope. |
 | Runtime | Cloud Run remains the execution plane. Duka code will not migrate to full Agent Runtime before submission. |
@@ -82,13 +83,14 @@ publish other Git refs, or publish the Loom recording. The authorized first
 `dev` push passed its Phase 4 audit; each later push repeats that audit. Cloud
 deployment remains a separately approval-gated action.
 
-### Owner-confirmed configuration checkpoint — August 26, 2026
+### Owner-confirmed configuration checkpoint — August 27, 2026
 
-- The active GCP project is `my-duka-autopilot`, and hackathon credits have been
-  applied to it.
-- Local Application Default Credentials use `my-duka-autopilot` as the quota
+- The active GCP project is `agent-platform-503913`, project number
+  `183775788663`. Billing and hackathon-credit linkage require authenticated
+  read-back before bootstrap.
+- Local Application Default Credentials use `agent-platform-503913` as the quota
   project via `gcloud auth application-default set-quota-project
-  my-duka-autopilot`.
+  agent-platform-503913`.
 - The application data plane is locked to `europe-west1`. Vertex AI model and
   Agent Platform Sessions/Memory Bank endpoints remain `global` where required
   by the selected services.
@@ -103,10 +105,10 @@ deployment remains a separately approval-gated action.
 
 ### Already complete
 
-- [x] GCP project `my-duka-autopilot` created.
-- [x] Hackathon credits applied.
+- [x] GCP project `agent-platform-503913` created.
+- [ ] Billing and hackathon-credit linkage verified on the replacement project.
 - [x] Local ADC quota project set with
-      `gcloud auth application-default set-quota-project my-duka-autopilot`.
+      `gcloud auth application-default set-quota-project agent-platform-503913`.
 - [x] Application region locked to `europe-west1`.
 - [x] Private Git remote configured as `jmwai/duka-autopilot`; audited `dev`
       branch pushed at baseline `4526871` and no other ref published.
@@ -462,7 +464,7 @@ Pub/Sub publishing.
 - Workflows request only repository read and OIDC token permissions.
 - No GCP service-account JSON key is generated or stored.
 - Local development uses Application Default Credentials with quota project
-  `my-duka-autopilot`; this setting is not a deployment credential and grants
+  `agent-platform-503913`; this setting is not a deployment credential and grants
   no GitHub or Cloud Run workload identity by itself.
 - Cloud Run uses Application Default Credentials derived from each attached
   runtime service account.
@@ -637,7 +639,7 @@ identity is:
 
 | Milestone | Deadline | Current status | Exit gate |
 |---|---|---|---|
-| M0 — scope and configuration lock | Aug 26 EOD | In progress: product/region/repository/narrative locked; project number, fixtures, and approved global probe remain | `my-duka-autopilot`, `europe-west1`, private repository policy, resource names, global model/context probe, claims, demo dataset, and cut line recorded |
+| M0 — scope and configuration lock | Aug 26 EOD | In progress: product/region/repository/narrative/project identity locked; billing linkage, fixtures, and approved global probe remain | `agent-platform-503913` / `183775788663`, `europe-west1`, private repository policy, resource names, global model/context probe, claims, demo dataset, and cut line recorded |
 | M1 — correctness release baseline | Aug 27 12:00 EAT | Local release suite is green at 107/0/0; cloud denial/retry/DLQ proof remains | ID, tool contract, idempotency, retry, fuzzy lifecycle, auth, fixture integrity, pre-push scanning, and production-seeding regressions pass |
 | M2 — reproducible cloud foundation | Aug 27 EOD | Local lock, containers, Terraform, and workflows validated; push, WIF, APIs, plan, and deploy are approval-gated | Dependency lock, containers, Terraform foundation, WIF auth, and first dev deployment succeed |
 | M3 — durable autonomous cloud loop | Aug 28 18:00 EAT | Cloud-pending; durable session/memory contracts implemented locally | Sessions, Memory Bank, Pub/Sub, Firestore, Scheduler, and Job pass all P0 production scenarios |
@@ -655,9 +657,10 @@ Confirmed inputs:
 
 | Input | Locked value |
 |---|---|
-| GCP project ID | `my-duka-autopilot` |
+| GCP project ID | `agent-platform-503913` |
+| GCP project number | `183775788663` (user-confirmed; authenticated read-back pending) |
 | Credits | Applied |
-| Local ADC quota project | `my-duka-autopilot` |
+| Local ADC quota project | `agent-platform-503913` |
 | Application region | `europe-west1` |
 | Vertex model endpoint | `global`; preserve the configured model |
 | Sessions and Memory Bank endpoint | `global` |
@@ -665,16 +668,15 @@ Confirmed inputs:
 | Repository state | Private; audited `dev` branch pushed at baseline `4526871` |
 | Recording platform | Loom |
 
-- [ ] **CFG-01** Record the remaining GCP project number, billing/credit
-      verification, exact model ID, and final environment resource names in the
-      non-secret deployment matrix. The project ID, ADC quota project, region,
-      Git remote, repository privacy/push policy, and Loom delivery format are
-      already locked.
+- [ ] **CFG-01** Verify billing/credit linkage, exact model ID, and final
+      environment resource names in the non-secret deployment matrix. The
+      project ID/number pair, ADC quota project, region, Git remote, repository
+      privacy/push policy, and Loom delivery format are already locked.
 - [ ] **CFG-02** Run one Vertex model call and one minimal Sessions/Memory
       resource probe across the `europe-west1` application plane and `global`
-      endpoints before provisioning the full stack. The first authenticated
-      ADK eval reached the credited project but confirmed
-      `aiplatform.googleapis.com` is disabled; complete this only after approval
+      endpoints before provisioning the full stack. The earlier authenticated
+      ADK eval targeted the superseded project, so it supplies no API-status
+      evidence for `agent-platform-503913`; complete this only after approval
       gate A enables the declared APIs.
 - [x] **CFG-03** Configure private GitHub remote `jmwai/duka-autopilot` and defer
       the first push until the Phase 4 pre-push gate passes and Actions/WIF are

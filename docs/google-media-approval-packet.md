@@ -2,7 +2,9 @@
 
 > Prepared: 2026-08-27
 >
-> Project: `my-duka-autopilot`
+> Project: `agent-platform-503913`
+>
+> Project number: `183775788663`
 >
 > Application region: `europe-west1`
 >
@@ -14,7 +16,7 @@
 Approve this bounded Phase 4 operation:
 
 1. enable `aiplatform.googleapis.com` and `texttospeech.googleapis.com` in
-   `my-duka-autopilot`;
+   `agent-platform-503913`;
 2. make two Vertex AI image-generation calls in `global`, one for each of the
    English and Kiswahili synthetic ledger candidates;
 3. make two Gemini-TTS calls through the Cloud Text-to-Speech `eu`
@@ -31,8 +33,8 @@ a new approval.
 
 | Artifact | Google surface | Model | Location | Reason |
 |---|---|---|---|---|
-| English ledger | Vertex AI native image generation | `gemini-2.5-flash-image` | `global` | Stable Google image model with strong text rendering; release artifact only |
-| Kiswahili ledger | Vertex AI native image generation | `gemini-2.5-flash-image` | `global` | Same model and prompt contract for a comparable bilingual pair |
+| English ledger | Vertex AI native image generation | `gemini-3.1-flash-image` | `global` | Current Google image model recommended for image generation; release artifact only |
+| Kiswahili ledger | Vertex AI native image generation | `gemini-3.1-flash-image` | `global` | Same model and prompt contract for a comparable bilingual pair |
 | English voice | Cloud Text-to-Speech Gemini-TTS | `gemini-2.5-flash-tts`, speaker `Kore` | `eu` | Prompted natural speech and a WAV container from the Cloud TTS API |
 | Kiswahili voice | Cloud Text-to-Speech Gemini-TTS | `gemini-2.5-flash-tts`, speaker `Kore` | `eu` | Same voice/model boundary; transcript and English translation are frozen |
 
@@ -51,10 +53,10 @@ Official basis:
 
 ## Cost envelope
 
-Google documents a 1024×1024 Gemini 2.5 Flash Image output as 1,290 image
-tokens, approximately $0.039 at the standard $30 per million output-image-token
-rate. Resolution changes the exact charge. Six candidates are therefore
-expected to stay well below $0.30 plus negligible prompt tokens.
+Google documents a roughly 1 MP Gemini 3.1 Flash Image output as 1,120 image
+tokens, approximately $0.067 at standard pricing. Resolution changes the exact
+charge. Six candidates are therefore expected to stay below $0.50 plus small
+prompt and text-output charges.
 
 Gemini 2.5 Flash TTS is $0.50 per million input text tokens and $10 per million
 audio tokens; audio is approximately 25 tokens per second. These two short
@@ -77,20 +79,32 @@ approval packet.
   account JSON file is created.
 - Generated media is written only to `fixtures/demo/` in this workspace.
 
+## Offline preflight (no API call)
+
+This command validates the exact project, prompts, hashes, models, locations,
+speaker, output paths, and four-call boundary without importing a cloud SDK:
+
+```bash
+uv run --extra assets python scripts/generate_google_demo_assets.py \
+  --kind all \
+  --project agent-platform-503913 \
+  --dry-run
+```
+
 ## Exact commands after approval
 
 ```bash
 gcloud services enable \
   aiplatform.googleapis.com \
   texttospeech.googleapis.com \
-  --project=my-duka-autopilot
+  --project=agent-platform-503913
 
 UV_CACHE_DIR=/tmp/duka-assets-uv-cache uv run --extra assets python \
   scripts/generate_google_demo_assets.py \
   --kind all \
-  --project my-duka-autopilot \
+  --project agent-platform-503913 \
   --image-location global \
-  --image-model gemini-2.5-flash-image \
+  --image-model gemini-3.1-flash-image \
   --voice-location eu \
   --voice-model gemini-2.5-flash-tts \
   --speaker Kore

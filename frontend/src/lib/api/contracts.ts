@@ -207,6 +207,7 @@ export const releaseEvidenceSchema = z.object({
 export const frontendVersionSchema = z.object({
   app: z.literal("duka-autopilot-web"),
   release_sha: z.string(),
+  deployment_id: z.string(),
   environment: z.string(),
   runtime: z.string(),
 });

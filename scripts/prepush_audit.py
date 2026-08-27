@@ -76,6 +76,7 @@ def _forbidden_path(path: str) -> bool:
     name = Path(path).name.lower()
     return (
         name in FORBIDDEN_BASENAMES
+        or (name.startswith(".env.") and name != ".env.example")
         or name.endswith((".pem", ".p12", ".pfx"))
         or (
             name.startswith(("service-account-", "service_account_"))

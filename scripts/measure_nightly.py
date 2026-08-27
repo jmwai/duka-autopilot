@@ -20,9 +20,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from dotenv import load_dotenv
+from app.environment import load_environment
 
-load_dotenv()
+load_environment()
 os.environ.setdefault("DUKA_DB", "data/measure.db")
 
 

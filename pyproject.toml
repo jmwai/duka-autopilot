@@ -44,3 +44,4 @@ packages = ["app", "agents", "agents.tools", "agents.store", "agents.synth"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+pythonpath = ["."]

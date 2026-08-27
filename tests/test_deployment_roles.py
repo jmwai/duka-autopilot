@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -62,6 +63,28 @@ def test_web_bff_allows_only_declared_owner_paths(monkeypatch):
         ("GET", "customers"), ("POST", "approvals/a1"),
         ("POST", "ledger"),
     ]
+
+
+def test_worker_readiness_requires_vertex_backend(monkeypatch):
+    from app.worker_api import app
+
+    for key, value in {
+        "GOOGLE_CLOUD_PROJECT": "agent-platform-503913",
+        "FIRESTORE_DATABASE": "duka-dev",
+        "AGENT_CONTEXT_ID": "123",
+        "DUKA_USER_KEY_SECRET": "test-user-key",
+        "DUKA_TRACE_ENABLED": "true",
+        "DUKA_STORE": "firestore",
+        "GOOGLE_GENAI_USE_VERTEXAI": "false",
+    }.items():
+        monkeypatch.setenv(key, value)
+    with TestClient(app) as client:
+        response = client.get("/ready")
+        assert response.status_code == 503
+        assert "GOOGLE_GENAI_USE_VERTEXAI=true" in response.json()["missing"]
+
+        monkeypatch.setenv("GOOGLE_GENAI_USE_VERTEXAI", "true")
+        assert client.get("/ready").status_code == 200
 
 
 def test_worker_push_surface_processes_pubsub_envelope(monkeypatch):
@@ -139,6 +162,17 @@ def test_seed_job_is_never_scheduled_and_is_promoted_with_release():
     assert "steps.previous.outputs.seed_image" in release_prod
 
 
+def test_seed_receipt_never_labels_local_execution_as_cloud(monkeypatch):
+    from app.jobs import _seed_execution_surface
+
+    monkeypatch.setenv("DUKA_ENV", "local")
+    assert _seed_execution_surface() == "local_seed_job"
+    monkeypatch.setenv("DUKA_ENV", "dev")
+    assert _seed_execution_surface() == "cloud_run_seed_job"
+    monkeypatch.setenv("DUKA_ENV", "prod")
+    assert _seed_execution_surface() == "cloud_run_seed_job"
+
+
 def test_ci_installs_firestore_emulator_command_group_explicitly():
     root = Path(__file__).resolve().parent.parent
     workflow = (root / ".github/workflows/ci.yml").read_text()
@@ -166,6 +200,28 @@ def test_terraform_provider_locks_cover_local_and_ci_platforms():
         # for Darwin ARM64 and one for Linux AMD64. The shared zh checksums alone
         # did not satisfy `terraform validate` on GitHub's clean Linux runner.
         assert lock.count('"h1:') == 4
+
+
+def test_terraform_modules_lock_the_replacement_project_identity():
+    root = Path(__file__).resolve().parent.parent
+    for module, refusal in (
+        ("bootstrap", "Refusing bootstrap"),
+        ("app", "Refusing app plan"),
+    ):
+        module_root = root / f"deployment/terraform/{module}"
+        variables = (module_root / "variables.tf").read_text()
+        terraform = "\n".join(
+            path.read_text() for path in sorted(module_root.glob("*.tf"))
+        )
+        example = (module_root / "terraform.tfvars.example").read_text()
+
+        assert re.search(r'default\s*=\s*"agent-platform-503913"', variables)
+        assert re.search(r'default\s*=\s*"183775788663"', variables)
+        assert 'check "project_identity"' in terraform
+        assert "data.google_project.current.number == var.expected_project_number" in terraform
+        assert refusal in terraform
+        assert 'project_id              = "agent-platform-503913"' in example
+        assert 'expected_project_number = "183775788663"' in example
 
 
 def test_ci_runs_the_frozen_nextjs_quality_gate_before_release_images():

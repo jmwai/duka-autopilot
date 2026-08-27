@@ -10,9 +10,16 @@ test("judge profile opens with meaningful evidence and bilingual history", async
   await expect(page.getByRole("heading", { level: 2, name: /3,874.*settled exactly/ })).toBeVisible();
   await expect(page.getByText(/97\.2% of 3,986 statement rows/)).toBeVisible();
   await expect(page.getByRole("link", { name: "Review 3 decisions" })).toBeVisible();
+  await expect(page.getByText("Local rehearsal", { exact: true })).toBeVisible();
   await expect(page.getByText("Restock draft", { exact: true })).toBeVisible();
-  await expect(page.getByText("Ledger row", { exact: true })).toBeVisible();
-  await expect(page.getByText("Uncertain order", { exact: true })).toBeVisible();
+  await expect(page.getByText("+2 more bounded decisions wait in the owner queue.")).toBeVisible();
+
+  await page.goto("/approvals");
+  const ownerQueue = page.getByRole("complementary", { name: "Decision queue" });
+  await expect(ownerQueue.getByText("Restock draft", { exact: true })).toBeVisible();
+  await expect(ownerQueue.getByText("Ledger row", { exact: true })).toBeVisible();
+  await expect(ownerQueue.getByText("Uncertain order", { exact: true })).toBeVisible();
+  await page.goto("/");
 
   const desktopA11y = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])

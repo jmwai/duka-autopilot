@@ -4,7 +4,7 @@
 > Created: August 27, 2026  
 > Planning baseline: `494291a` (`feat: harden control room evidence flow`)  
 > Baseline branch: private `origin/dev`  
-> GCP project: `my-duka-autopilot`  
+> GCP project: `agent-platform-503913` (`183775788663`)
 > Cloud Run application region: `europe-west1`  
 > Vertex AI and Agent Platform location: `global`  
 > Core category: The Taskmaster  

@@ -6,6 +6,13 @@ data "google_project" "current" {
   depends_on = [google_project_service.apis["cloudresourcemanager.googleapis.com"]]
 }
 
+check "project_identity" {
+  assert {
+    condition     = data.google_project.current.number == var.expected_project_number
+    error_message = "Refusing bootstrap: project_id must resolve to project number ${var.expected_project_number}."
+  }
+}
+
 locals {
   services = toset([
     "aiplatform.googleapis.com",

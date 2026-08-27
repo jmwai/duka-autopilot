@@ -13,9 +13,33 @@ export function validateLedgerImage(mimeValue: string, size: number) {
 }
 
 export function resultMatchesFrozenTruth(result: LedgerResult, fixture: DemoLedgerFixture) {
+  return compareFrozenTruth(result, fixture).matches;
+}
+
+export function compareFrozenTruth(result: LedgerResult, fixture: DemoLedgerFixture) {
   const truth = fixture.ground_truth;
-  return result.recorded === truth.recorded_rows
+  const rowComparisons = truth.rows.map((expected, index) => {
+    const observedRows = result.rows.filter((row) => row.index === index);
+    const observed = observedRows.length === 1 ? observedRows[0] : null;
+    const expectedOutcome = expected.expected_action === "record" ? "recorded" : "gated";
+    const outcomeMatches = observed?.outcome === expectedOutcome;
+    const amountMatches = expected.amount_ksh === null
+      ? observed?.amount === null
+      : observed?.amount === expected.amount_ksh;
+    const paidMatches = observed?.paid === expected.paid;
+    return {
+      index,
+      expected,
+      observed,
+      matches: Boolean(observed && outcomeMatches && amountMatches && paidMatches),
+    };
+  });
+  const countsMatch = result.recorded === truth.recorded_rows
     && result.gated === truth.gated_rows
-    && result.rows.length === truth.recorded_rows + truth.gated_rows
-    && result.rows.filter((row) => row.outcome === "gated").every((row) => row.amount === null);
+    && result.rows.length === truth.rows.length;
+  return {
+    matches: countsMatch && rowComparisons.every((row) => row.matches),
+    countsMatch,
+    rows: rowComparisons,
+  };
 }

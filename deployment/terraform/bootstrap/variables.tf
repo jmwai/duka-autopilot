@@ -1,7 +1,18 @@
 variable "project_id" {
   description = "Existing credited GCP project ID."
   type        = string
-  default     = "my-duka-autopilot"
+  default     = "agent-platform-503913"
+}
+
+variable "expected_project_number" {
+  description = "Immutable project-number guard for the credited GCP project."
+  type        = string
+  default     = "183775788663"
+
+  validation {
+    condition     = can(regex("^[0-9]+$", var.expected_project_number))
+    error_message = "expected_project_number must contain digits only"
+  }
 }
 
 variable "region" {

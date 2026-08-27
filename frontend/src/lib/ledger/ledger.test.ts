@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { ledgerResultSchema } from "../api/contracts";
 
-import { resultMatchesFrozenTruth, validateLedgerImage } from "./ledger";
+import { compareFrozenTruth, resultMatchesFrozenTruth, validateLedgerImage } from "./ledger";
 
 const frozenFixture = {
   id: "ledger-en-v2",
@@ -17,11 +17,13 @@ const frozenFixture = {
   synthetic: true as const,
   source: {
     provider: "google_vertex_ai" as const,
-    project_id: "my-duka-autopilot" as const,
+    project_id: "agent-platform-503913" as const,
     location: "global",
-    model: "gemini-2.5-flash-image",
+    model: "gemini-3.1-flash-image" as const,
     prompt_path: "fixtures/demo/prompts/ledger-en-v2.txt",
     prompt_sha256: "b".repeat(64),
+    response_mime_type: "image/png",
+    usage: { output_tokens: 1120 },
     generated_utc: "2026-08-27T00:00:00Z",
     synthetic: true as const,
   },
@@ -64,6 +66,22 @@ describe("Ledger fixture and receipt boundary", () => {
 
   it("rejects internally inconsistent result counts", () => {
     expect(ledgerResultSchema.safeParse({ ...frozenResult, recorded: 3 }).success).toBe(false);
+  });
+
+  it("rejects a same-count receipt with the wrong amount or row identity", () => {
+    const wrongAmount = {
+      ...frozenResult,
+      rows: frozenResult.rows.map((row, index) => index === 0 ? { ...row, amount: 391 } : row),
+    };
+    expect(resultMatchesFrozenTruth(ledgerResultSchema.parse(wrongAmount), frozenFixture)).toBe(false);
+
+    const duplicateIndex = {
+      ...frozenResult,
+      rows: frozenResult.rows.map((row, index) => index === 1 ? { ...row, index: 0 } : row),
+    };
+    const comparison = compareFrozenTruth(ledgerResultSchema.parse(duplicateIndex), frozenFixture);
+    expect(comparison.matches).toBe(false);
+    expect(comparison.rows[0].observed).toBeNull();
   });
 
   it("never permits an invented nonpositive gated amount through the schema", () => {

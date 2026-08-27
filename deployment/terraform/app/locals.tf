@@ -2,6 +2,13 @@ data "google_project" "current" {
   project_id = var.project_id
 }
 
+check "project_identity" {
+  assert {
+    condition     = data.google_project.current.number == var.expected_project_number
+    error_message = "Refusing app plan: project_id must resolve to project number ${var.expected_project_number}."
+  }
+}
+
 data "google_service_account" "deployer" {
   project    = var.project_id
   account_id = "duka-gha-${var.environment}-deployer"

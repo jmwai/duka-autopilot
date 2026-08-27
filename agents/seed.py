@@ -107,12 +107,9 @@ def seed(force: bool = False) -> dict:
 
 
 if __name__ == "__main__":
-    # honor .env like the app does, then land in the same default DB
-    try:
-        from dotenv import load_dotenv
-        load_dotenv()
-    except ImportError:
-        pass
+    # Honor the same explicit local config contract as every app entrypoint.
+    from app.environment import load_environment
+    load_environment()
     os.environ.setdefault("DUKA_DB", "data/duka.db")
     target = (os.environ.get("DUKA_DB") if
               os.environ.get("DUKA_STORE", "sqlite") == "sqlite" else "firestore")

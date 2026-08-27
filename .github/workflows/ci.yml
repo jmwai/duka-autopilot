@@ -20,6 +20,7 @@ env:
   PYTHON_VERSION: "3.12.12"
   UV_VERSION: "0.11.13"
   TERRAFORM_VERSION: "1.14.5"
+  ACTIONLINT_VERSION: "1.7.12"
 
 jobs:
   tests:
@@ -92,12 +93,23 @@ jobs:
           retention-days: 30
 
   terraform:
-    name: Terraform format and schema
+    name: Workflow and Terraform schemas
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - name: Check out the exact revision
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Verify GitHub Actions workflow syntax
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          archive="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          gh release download "v${ACTIONLINT_VERSION}" \
+            --repo rhysd/actionlint --pattern "${archive}"
+          gh attestation verify --repo rhysd/actionlint "${archive}"
+          tar -xzf "${archive}" actionlint
+          ./actionlint -no-color
 
       - name: Install Terraform
         uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
@@ -196,6 +208,7 @@ jobs:
         run: |
           docker build \
             --file deployment/docker/frontend.Dockerfile \
+            --build-arg "RELEASE_SHA=${GITHUB_SHA}" \
             --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
             --tag duka-frontend:ci .
 

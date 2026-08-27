@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  AlertTriangle,
   CheckCircle2,
   CloudCog,
   Coins,
@@ -12,11 +11,13 @@ import {
   ShieldCheck,
   Timer,
 } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
 
 import { AuthorityRail } from "@/components/control-room/authority-rail";
 import { Metric } from "@/components/control-room/metric";
+import { OperationRecovery } from "@/components/control-room/operation-recovery";
 import { PageHeader } from "@/components/control-room/page-header";
 import { PendingState } from "@/components/control-room/product-states";
 import { ProofSheet } from "@/components/control-room/proof-sheet";
@@ -61,7 +62,14 @@ function RunConfirmation({ busy, failure, onCancel, onConfirm }: {
         </AlertDialogDescription>
       </AlertDialogHeader>
       <div className="rounded-lg border border-owner/40 bg-owner/10 p-3 text-xs leading-5"><span className="font-semibold">Evidence boundary:</span> this is not Gemini evidence, Cloud Run Job evidence, or proof that Cloud Scheduler fired. Re-running an already-settled dataset is not a comparable benchmark.</div>
-      {failure ? <div role="alert" className="flex gap-3 rounded-lg border border-conflict/35 bg-conflict/5 p-3 text-xs leading-5"><AlertTriangle aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-conflict" /><div><p className="font-semibold">The exact pass result could not be confirmed.</p><p className="text-muted-foreground">{failure.message} Review the persisted report after retry; no Scheduler or Gemini success is inferred from this error.</p>{failure.requestId ? <p className="mt-1 font-mono text-[0.68rem] text-muted-foreground">Request {failure.requestId}</p> : null}</div></div> : null}
+      {failure ? (
+        <OperationRecovery
+          compact
+          title="The exact pass result could not be confirmed."
+          description={`${failure.message} Review the persisted report after retry; no Scheduler or Gemini success is inferred from this error.`}
+          requestId={failure.requestId}
+        />
+      ) : null}
       <AlertDialogFooter>
         <AlertDialogCancel onClick={onCancel} disabled={busy}>Cancel</AlertDialogCancel>
         <AlertDialogAction onClick={(event) => { event.preventDefault(); onConfirm(); }} disabled={busy}>{busy ? <LoaderCircle aria-hidden="true" className="animate-spin" /> : <Play aria-hidden="true" />}{busy ? "Running exact pass…" : "Run exact pass"}</AlertDialogAction>
@@ -111,13 +119,15 @@ function LiveReport({ report, data }: { report: NightlyReport; data: NightShiftD
           </Card>
 
           <Card>
-            <CardHeader><CardTitle>One workflow, three authority lanes</CardTitle><CardDescription>Autonomy where evidence is exact. Gemini where reality is messy. A human where consequences matter.</CardDescription></CardHeader>
+            <CardHeader><CardTitle>One run, four inspectable stages</CardTitle><CardDescription>Autonomy where evidence is exact. Gemini where reality is messy. A human where consequences matter.</CardDescription></CardHeader>
             <CardContent>
               <AuthorityRail steps={[
                 { lane: "exact", title: "Indexed exact pass", detail: `${metric(report.exact_matched)} rows linked on phone, integer amount, and a 48-hour window.`, value: duration(report.exact_wall_ms) },
                 { lane: "gemini", title: "Bounded residue review", detail: `${metric(report.residue_start)} ambiguous rows entered; Gemini cannot mark them paid.`, value: `${report.fuzzy_batches}/${NIGHTLY_BOUNDS.batchCeiling}` },
                 { lane: "owner", title: "Consequences wait", detail: `${metric(report.fuzzy_proposals)} proposals require exact-effect confirmation.`, value: metric(report.fuzzy_proposals) },
+                { lane: "exact", title: "Receipt persisted", detail: `Run ${report.run_id ?? "without an attributed ID"} became the morning handoff; configured services alone are not proof.`, value: report.status === "completed" ? "saved" : "legacy" },
               ]} />
+              <div className="mt-3 flex justify-end"><Button asChild variant="outline" size="sm"><Link href="/evidence#trace">Follow this run to Evidence <FileCheck2 aria-hidden="true" /></Link></Button></div>
             </CardContent>
           </Card>
         </div>

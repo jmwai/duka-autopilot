@@ -70,8 +70,10 @@ function OrderDetail({ order }: { order: Order }) {
           label="Source event correlation"
           detail={order.source_event_id ? `Inbound event ${order.source_event_id}` : "This manual or seeded order has no inbound event correlation."}
           state={order.source_event_id ? "proven" : "pending"}
+          href={order.source_event_id ? `/inbox?customer=${encodeURIComponent(order.customer_id)}&event=${encodeURIComponent(order.source_event_id)}` : undefined}
         />
         <EvidenceSource label="External payment effect" detail="None. Paid is an internal bookkeeping status; no transfer was initiated." state="proven" />
+        <EvidenceSource label="Release evidence" detail="Inspect the release-bound architecture, artifacts, and causal trace behind this runtime." state="pending" href="/evidence#trace" />
       </section>
     </div>
   );
@@ -186,7 +188,7 @@ export function OrdersWorkspace({ data, initialOrderId }: { data: OrdersData; in
   const [orders, setOrders] = useState(data.orders);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
-  const [sort, setSort] = useState("recent");
+  const [sort, setSort] = useState("attention");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Order | null>(
     () => data.orders.find((order) => order.id === initialOrderId) ?? null,
@@ -199,12 +201,20 @@ export function OrdersWorkspace({ data, initialOrderId }: { data: OrdersData; in
       (status === "all" || order.status === status)
       && (!needle || [order.id, order.customer_name, order.status, ...order.items.map((item) => item.name)].filter(Boolean).join(" ").toLowerCase().includes(needle))
     ));
-    return [...filtered].sort((a, b) => sort === "amount" ? b.total - a.total : sort === "oldest" ? String(a.created_at).localeCompare(String(b.created_at)) : String(b.created_at).localeCompare(String(a.created_at)));
+    const attention = (order: Order) => order.needs_review || ["needs_review", "pending_confirmation"].includes(order.status) ? 1 : 0;
+    return [...filtered].sort((a, b) => sort === "amount"
+      ? b.total - a.total
+      : sort === "oldest"
+        ? String(a.created_at).localeCompare(String(b.created_at))
+        : sort === "attention"
+          ? attention(b) - attention(a) || String(b.created_at).localeCompare(String(a.created_at))
+          : String(b.created_at).localeCompare(String(a.created_at)));
   }, [orders, query, sort, status]);
   const pageCount = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
   const safePage = Math.min(page, pageCount);
   const pageOrders = visible.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
   const paidOrders = orders.filter((order) => order.status === "paid");
+  const reviewOrders = orders.filter((order) => order.needs_review || ["needs_review", "pending_confirmation"].includes(order.status));
   const paidRevenue = paidOrders.reduce((sum, order) => sum + order.total, 0);
 
   async function refreshOrders(orderId?: string) {
@@ -218,7 +228,8 @@ export function OrdersWorkspace({ data, initialOrderId }: { data: OrdersData; in
     <>
       <PageHeader eyebrow="Business truth" title="Orders" description="Grounded sales with catalog-derived names, current prices, positive quantities, and integer KSh totals." action={<Button onClick={() => setSaleOpen(true)}><CirclePlus aria-hidden="true" /> Record sale</Button>} />
 
-      <section className="mb-5 grid gap-3 sm:grid-cols-3">
+      <section className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <Metric label="Needs attention" value={reviewOrders.length.toLocaleString()} detail="Shown first by default" icon={AlertTriangle} tone="owner" />
         <Metric label="Recent orders" value={orders.length.toLocaleString()} detail="Latest 100 validated records" icon={PackageOpen} />
         <Metric label="Marked paid" value={paidOrders.length.toLocaleString()} detail="Internal bookkeeping status" icon={ShoppingBag} tone="exact" />
         <Metric label="Paid value" value={<KshValue value={paidRevenue} />} detail="No external transfer implied" icon={ArrowDownUp} />
@@ -228,7 +239,7 @@ export function OrdersWorkspace({ data, initialOrderId }: { data: OrdersData; in
         <CardContent className="grid gap-3 p-4 lg:grid-cols-[1fr_13rem_13rem]">
           <label className="relative"><span className="sr-only">Search orders</span><Search aria-hidden="true" className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} placeholder="Find order, customer, or item" className="pl-9" /></label>
           <select value={status} onChange={(event) => { setStatus(event.target.value); setPage(1); }} aria-label="Filter by status" className="h-11 rounded-md border bg-background px-3 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"><option value="all">All statuses</option>{statuses.map((value) => <option key={value} value={value}>{statusLabel(value)}</option>)}</select>
-          <select value={sort} onChange={(event) => setSort(event.target.value)} aria-label="Sort orders" className="h-11 rounded-md border bg-background px-3 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"><option value="recent">Newest first</option><option value="oldest">Oldest first</option><option value="amount">Highest value</option></select>
+          <select value={sort} onChange={(event) => setSort(event.target.value)} aria-label="Sort orders" className="h-11 rounded-md border bg-background px-3 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"><option value="attention">Needs attention first</option><option value="recent">Newest first</option><option value="oldest">Oldest first</option><option value="amount">Highest value</option></select>
         </CardContent>
       </Card>
 

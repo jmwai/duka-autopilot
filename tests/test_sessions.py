@@ -239,7 +239,7 @@ def test_cloud_readiness_requires_user_key_secret(monkeypatch):
     monkeypatch.setenv("DUKA_ENV", "prod")
     monkeypatch.setenv("DUKA_STORE", "firestore")
     monkeypatch.setenv("DUKA_BUS", "pubsub")
-    monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "my-duka-autopilot")
+    monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "agent-platform-503913")
     monkeypatch.setenv("GOOGLE_CLOUD_LOCATION", "global")
     monkeypatch.setenv("FIRESTORE_DATABASE", "duka-prod")
     monkeypatch.setenv("AGENT_CONTEXT_ID", "123")
@@ -248,6 +248,32 @@ def test_cloud_readiness_requires_user_key_secret(monkeypatch):
         response = client.get("/ready")
     assert response.status_code == 503
     assert "DUKA_USER_KEY_SECRET" in response.json()["missing"]
+
+
+def test_cloud_readiness_rejects_gemini_api_backend(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+    for key, value in {
+        "DUKA_ENV": "prod",
+        "DUKA_STORE": "firestore",
+        "DUKA_BUS": "pubsub",
+        "GOOGLE_CLOUD_PROJECT": "agent-platform-503913",
+        "GOOGLE_CLOUD_LOCATION": "global",
+        "FIRESTORE_DATABASE": "duka-prod",
+        "AGENT_CONTEXT_ID": "123",
+        "DUKA_USER_KEY_SECRET": "test-user-key",
+        "DUKA_OWNER_PASSWORD": "test-owner-password",
+        "DUKA_SESSION_SECRET": "test-session-secret",
+        "DUKA_CHANNEL_KEY": "test-channel-key",
+        "DUKA_TRACE_ENABLED": "true",
+        "GOOGLE_GENAI_USE_VERTEXAI": "false",
+    }.items():
+        monkeypatch.setenv(key, value)
+    with TestClient(app) as client:
+        response = client.get("/ready")
+    assert response.status_code == 503
+    assert "GOOGLE_GENAI_USE_VERTEXAI=true" in response.json()["missing"]
 
 
 def test_durable_topology_manifest_matches_runtime():
@@ -279,7 +305,7 @@ def test_memory_bank_customization_matches_locked_vertex_schema():
         validate_memory_bank_config,
     )
 
-    config = build_memory_bank_config("my-duka-autopilot")
+    config = build_memory_bank_config("agent-platform-503913")
     validate_memory_bank_config(config)
     customization = config["customization_configs"][0]
     assert customization["scope_keys"] == ["app_name", "user_id"]

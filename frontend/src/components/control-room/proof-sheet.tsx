@@ -1,6 +1,7 @@
 "use client";
 
 import { CircleCheck, CircleDashed, ExternalLink, FileSearch, ShieldAlert } from "lucide-react";
+import Link from "next/link";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -45,7 +46,10 @@ export function EvidenceSource({ label, detail, state, href }: { label: string; 
           <Icon aria-hidden="true" className="size-3.5" /> {presentation.label}
         </span>
       </div>
-      {href ? <a href={href} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-primary underline-offset-4 hover:underline">Open evidence <ExternalLink aria-hidden="true" className="size-3" /></a> : null}
+      {href ? href.startsWith("/")
+        ? <Link href={href} className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-primary underline-offset-4 hover:underline">Open evidence <ExternalLink aria-hidden="true" className="size-3" /></Link>
+        : <a href={href} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-primary underline-offset-4 hover:underline">Open evidence <ExternalLink aria-hidden="true" className="size-3" /></a>
+        : null}
     </div>
   );
 }

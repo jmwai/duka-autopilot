@@ -204,6 +204,10 @@ resource "google_cloud_run_v2_service" "web" {
         value = var.release_sha
       }
       env {
+        name  = "NEXT_DEPLOYMENT_ID"
+        value = var.release_sha
+      }
+      env {
         name  = "GOOGLE_CLOUD_PROJECT"
         value = var.project_id
       }

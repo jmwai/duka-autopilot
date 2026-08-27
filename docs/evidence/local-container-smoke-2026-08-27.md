@@ -8,24 +8,24 @@ Cloud deployment evidence and not a frozen release digest.
 
 | Image | Local image ID | Runtime user |
 |---|---|---|
-| `duka-backend:local` | `sha256:a6411271e2034b35935537d15ffa6ae7ad3883da6c622b84bc1ff31b14915f58` | `10001:10001` (`duka`) |
-| `duka-frontend:local` | `sha256:de01106cc409219875d780bff685b89e357ac5aab8b0ac0dfca9c6242e2547dc` | `10001:10001` (`duka`) |
+| `duka-backend:grand-prize-wip` | `sha256:4f34e5ad10b5353be04d13f93047335ec0f4c6b5831e7c734863f3fec1004057` | `10001:10001` (`duka`) |
+| `duka-frontend:grand-prize-wip` | `sha256:cac98fc7ef4dd2a7227123806a33402f0009da0ceaa8cd04754abfac7b706841` | `10001:10001` (`duka`) |
 
 Both Docker health checks reached `healthy`. `docker exec ... id` confirmed
 UID/GID `10001` in both running containers.
 
 ## Paired topology
 
-- Isolated Docker network: `duka-smoke`.
-- Public loopback web: `127.0.0.1:8180`.
-- API container alias: `duka-smoke-api:8080`.
-- API loopback mapping for diagnostics only: `127.0.0.1:8181`.
+- Isolated Docker network: `duka-gp-smoke-20260827`.
+- Public loopback web: `127.0.0.1:18080`.
+- API container alias: `duka-gp-api-20260827:8080`.
+- The private API was not mapped to a host port.
 - Shared test release identity: `local-wip-20260827`.
 - Backend store/bus: local SQLite and in-process bus.
 - Model calls: none.
 - Google Cloud mutations: none.
 
-The test containers and network were removed after verification. The two local
+The uniquely named test containers and network were removed after verification. The two local
 images remain in Docker's cache and may be rebuilt from the Dockerfiles.
 
 ## Observed release smoke
@@ -47,6 +47,9 @@ Additional checks observed:
 - the authenticated `/api/approvals` read returned `200`;
 - an unknown browser mutation route returned a normalized `404` with only a
   request ID and safe error;
+- a synthetic 65 KB order mutation exceeded the 64 KB route budget and
+  returned normalized `413` with request ID `payload-limit-r2`; the payload was
+  not forwarded;
 - `/health` and `/version` returned `cache-control: no-store`;
 - the release fixture sync stayed fail-closed because bilingual Google media
   is not yet approved or frozen.
@@ -59,4 +62,3 @@ claim that anonymous access to the Cloud Run API is denied. That boundary must
 be proven after approved deployment using Cloud Run IAM, an unauthenticated
 request, and the public-web service identity. It also does not prove Firestore,
 Pub/Sub, managed Sessions, Memory Bank, Scheduler, Trace, or hosted latency.
-

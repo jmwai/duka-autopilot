@@ -11,6 +11,7 @@ import {
   Scale,
   ShieldAlert,
 } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -95,6 +96,9 @@ function DecisionEvidence({ view }: { view: DecisionPresentation }) {
 
 function DecisionInspector({ approval, busy, onAction }: { approval: Approval; busy: boolean; onAction: (approval: Approval, decision: Decision) => void }) {
   const view = decisionPresentation(approval);
+  const sourceEventId = typeof approval.payload.source_event_id === "string" ? approval.payload.source_event_id : null;
+  const customerId = typeof approval.payload.customer_id === "string" ? approval.payload.customer_id : null;
+  const orderId = typeof approval.payload.order_id === "string" || typeof approval.payload.order_id === "number" ? String(approval.payload.order_id) : null;
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex-1 space-y-5 p-5 sm:p-6">
@@ -108,6 +112,11 @@ function DecisionInspector({ approval, busy, onAction }: { approval: Approval; b
         </div>
 
         <DecisionEvidence view={view} />
+        {(orderId || sourceEventId) ? <nav aria-label="Related business evidence" className="flex flex-wrap gap-2">
+          {orderId ? <Button asChild variant="outline" size="sm"><Link href={`/orders?order=${encodeURIComponent(orderId)}`}>Open order #{orderId} <ArrowRight aria-hidden="true" /></Link></Button> : null}
+          {sourceEventId && customerId ? <Button asChild variant="outline" size="sm"><Link href={`/inbox?customer=${encodeURIComponent(customerId)}&event=${encodeURIComponent(sourceEventId)}`}>Open source event <ArrowRight aria-hidden="true" /></Link></Button> : null}
+          <Button asChild variant="ghost" size="sm"><Link href="/evidence#trace">Causal evidence</Link></Button>
+        </nav> : null}
         <RetryState approval={approval} />
 
         <section className="rounded-xl border border-owner/35 bg-owner/10 p-4">

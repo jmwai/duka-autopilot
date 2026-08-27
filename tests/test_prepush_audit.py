@@ -26,6 +26,8 @@ def test_prepush_detector_ignores_placeholders_and_flags_secret_files():
     assert _secret_hits(b"GOOGLE_API_KEY=replace-me", "fixture") == []
     assert not _forbidden_path(".env.example")
     assert _forbidden_path(".env")
+    assert _forbidden_path(".env.local")
+    assert _forbidden_path("backend/.env.production")
     assert _forbidden_path("ops/service-account-prod.json")
     assert _forbidden_path("keys/deployer.pem")
 

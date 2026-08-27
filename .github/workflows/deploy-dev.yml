@@ -54,6 +54,7 @@ jobs:
             --tag "${BACKEND_IMAGE}:${GITHUB_SHA}" .
           docker build \
             --file deployment/docker/frontend.Dockerfile \
+            --build-arg "RELEASE_SHA=${GITHUB_SHA}" \
             --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
             --tag "${FRONTEND_IMAGE}:${GITHUB_SHA}" .
 

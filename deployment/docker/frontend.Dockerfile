@@ -1,4 +1,5 @@
 ARG NODE_IMAGE=node:24.12.0-bookworm-slim@sha256:7326fb2dbdce998edd72140946851be64ef4a643e8715e138ca467e8e9d92c99
+ARG RELEASE_SHA=local-build
 
 FROM ${NODE_IMAGE} AS base
 ENV PNPM_HOME=/pnpm \
@@ -12,17 +13,23 @@ COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml 
 RUN pnpm install --frozen-lockfile
 
 FROM base AS builder
-ENV NEXT_TELEMETRY_DISABLED=1
+ARG RELEASE_SHA
+ENV NEXT_DEPLOYMENT_ID=${RELEASE_SHA} \
+    NEXT_TELEMETRY_DISABLED=1 \
+    RELEASE_SHA=${RELEASE_SHA}
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY frontend/ ./
 COPY fixtures/demo/ /fixtures/demo/
 RUN pnpm build
 
 FROM ${NODE_IMAGE} AS runner
+ARG RELEASE_SHA
 ENV NODE_ENV=production \
+    NEXT_DEPLOYMENT_ID=${RELEASE_SHA} \
     NEXT_TELEMETRY_DISABLED=1 \
     HOSTNAME=0.0.0.0 \
-    PORT=8080
+    PORT=8080 \
+    RELEASE_SHA=${RELEASE_SHA}
 
 RUN groupadd --system --gid 10001 duka \
     && useradd --system --uid 10001 --gid duka --home-dir /app duka

@@ -34,6 +34,22 @@ def test_quarantined_manifest_cannot_pass_release_verification():
         verify(MANIFEST)
 
 
+def test_quarantined_manifest_passes_pending_google_policy_verification():
+    result = verify(MANIFEST, allow_pending=True)
+    assert result == {
+        "schema_version": 2,
+        "status": "pending",
+        "release_ready": False,
+        "ledgers": 0,
+        "voices": 0,
+        "languages_required": ["en-KE", "sw-KE"],
+        "providers_allowed": [
+            "google_cloud_text_to_speech",
+            "google_vertex_ai",
+        ],
+    }
+
+
 def test_removed_non_google_media_is_not_present():
     assert not (ROOT / "fixtures" / "demo" / "ledger-page-v1.png").exists()
     voice_dir = ROOT / "data" / "voice_notes"

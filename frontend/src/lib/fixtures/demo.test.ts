@@ -38,11 +38,13 @@ function readyManifest() {
       synthetic: true,
       source: {
         provider: "google_vertex_ai",
-        project_id: "my-duka-autopilot",
+        project_id: "agent-platform-503913",
         location: "global",
-        model: "gemini-2.5-flash-image",
+        model: "gemini-3.1-flash-image",
         prompt_path: `fixtures/demo/prompts/ledger-${suffix}-v2.txt`,
         prompt_sha256: hash,
+        response_mime_type: "image/png",
+        usage: { output_tokens: 1120 },
         generated_utc: "2026-08-27T08:00:00Z",
         synthetic: true,
       },
@@ -74,11 +76,13 @@ function readyManifest() {
       synthetic: true,
       source: {
         provider: "google_cloud_text_to_speech",
-        project_id: "my-duka-autopilot",
-        location: "europe-west1",
+        project_id: "agent-platform-503913",
+        location: "eu",
         model: "gemini-2.5-flash-tts",
         speaker: "Kore",
         style_prompt: "A natural shop customer voice note.",
+        transcript_sha256: hash,
+        style_prompt_sha256: hash,
         generated_utc: "2026-08-27T08:00:00Z",
         synthetic: true,
       },
@@ -115,6 +119,12 @@ describe("Google-only demo fixture boundary", () => {
   it("rejects any non-Google generated-media provider", () => {
     const manifest = readyManifest();
     manifest.ledgers[0].source.provider = "unapproved_image_generator";
+    expect(demoFixtureManifestSchema.safeParse(manifest).success).toBe(false);
+  });
+
+  it("rejects provenance from a superseded GCP project", () => {
+    const manifest = readyManifest();
+    manifest.voices[0].source.project_id = "retired-project";
     expect(demoFixtureManifestSchema.safeParse(manifest).success).toBe(false);
   });
 

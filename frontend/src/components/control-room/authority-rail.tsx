@@ -22,7 +22,13 @@ export function AuthorityRail({
   return (
     <ol
       aria-label="Authority path"
-      className={cn("grid gap-2 rounded-xl border bg-card p-3 lg:grid-cols-[1fr_auto_1fr_auto_1fr] lg:items-stretch", className)}
+      className={cn(
+        "grid gap-2 rounded-xl border bg-card p-3 lg:items-stretch",
+        steps.length === 4
+          ? "lg:grid-cols-[1fr_auto_1fr_auto_1fr_auto_1fr]"
+          : "lg:grid-cols-[1fr_auto_1fr_auto_1fr]",
+        className,
+      )}
     >
       {steps.map((step, index) => (
         <li key={`${step.lane}-${step.title}`} className="contents">

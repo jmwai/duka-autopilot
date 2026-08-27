@@ -8,14 +8,14 @@
 
 | Setting | Value | Status |
 |---|---|---|
-| GCP project ID | `my-duka-autopilot` | Locked |
-| GCP project number | Pending read after `gcloud` user credentials are refreshed | Blocked only for numeric IAM conditions |
-| Credits | Hackathon credits applied | User-confirmed |
-| Local ADC quota project | `my-duka-autopilot` | Configured |
+| GCP project ID | `agent-platform-503913` | Locked |
+| GCP project number | `183775788663` | User-confirmed; Terraform plans assert the ID/number pair |
+| Credits | Billing/credit linkage on replacement project | Authenticated read-back pending |
+| Local ADC quota project | `agent-platform-503913` | `.env.local` updated; rerun quota-project command for the replacement project |
 | Application region | `europe-west1` | Locked |
 | Vertex AI location | `global` | Locked |
 | Agent Platform context location | `global` | Locked |
-| Agent Platform API | `aiplatform.googleapis.com` | Authenticated preflight found it disabled; enable only through approval gate A |
+| Agent Platform API | `aiplatform.googleapis.com` | Replacement-project status unverified; enable only through approval gate A |
 | Model | `gemini-3.7-flash` | Preserve |
 | Memory generation model | `gemini-3.5-flash` | Locked for custom Memory Bank extraction only |
 | Memory embedding | `gemini-embedding-2` at `global` | Locally schema-validated |
@@ -24,7 +24,7 @@
 | GitHub owner/repository | `jmwai/duka-autopilot` | Locked |
 | Git remote | `git@github.com:jmwai/duka-autopilot.git` | Configured |
 | Repository visibility | Private | Locked for development |
-| Push state | Private `origin/dev` and local `dev` are synchronized at `494291a`; no other branch/tag release is authorized | Verified locally |
+| Push state | Private `origin/dev` and local `dev` are synchronized at `0a9390a`; no other branch/tag release is authorized | Verified locally |
 | Scheduler timezone | `Africa/Nairobi` | Locked |
 | Nightly schedule | `02:00` daily | Defined, not applied |
 | Morning digest schedule | `06:30` daily | Defined, not applied |
@@ -32,11 +32,10 @@
 
 The ADC quota-project command controls quota/billing attribution for local
 Application Default Credentials. It does not grant GitHub or Cloud Run an
-identity. The attempted project-number read on August 26 could not refresh the
-non-interactive `gcloud` user token; no cloud mutation was attempted. An
-authenticated ADK evaluation reached `my-duka-autopilot` but stopped with
-`SERVICE_DISABLED`, confirming that Agent Platform API enablement remains part
-of the reviewed bootstrap rather than an undocumented prerequisite.
+identity. The operator supplied the new project number on August 27; it still
+requires a read-back after interactive `gcloud` authentication. An earlier ADK
+evaluation targeted the superseded project and stopped with `SERVICE_DISABLED`;
+it is historical diagnostics, not evidence about `agent-platform-503913`.
 
 ## Environment resources
 
@@ -68,7 +67,7 @@ recreated by an application deployment.
 | Artifact Registry repository | `duka-images` |
 | Frontend image | `duka-frontend` |
 | Backend image | `duka-backend` |
-| Terraform state bucket | `my-duka-autopilot-tfstate` (availability check required before creation) |
+| Terraform state bucket | `agent-platform-503913-tfstate` (availability check required before creation) |
 | WIF pool | `github-pool` |
 | WIF provider | `duka-github` |
 
@@ -102,7 +101,7 @@ access, model invocation, Memory Bank access, or secret payload access.
 
 | Key | Development | Production | Secret? |
 |---|---|---|---|
-| `GOOGLE_CLOUD_PROJECT` | `my-duka-autopilot` | `my-duka-autopilot` | No |
+| `GOOGLE_CLOUD_PROJECT` | `agent-platform-503913` | `agent-platform-503913` | No |
 | `GOOGLE_CLOUD_LOCATION` | `global` | `global` | No |
 | `GEMINI_MODEL` | `gemini-3.7-flash` | `gemini-3.7-flash` | No |
 | `DUKA_ENV` | `dev` | `prod` | No |
@@ -129,7 +128,7 @@ access, model invocation, Memory Bank access, or secret payload access.
 
 | Variable | Scope | Value/source |
 |---|---|---|
-| `GCP_PROJECT_ID` | Repository | `my-duka-autopilot` |
+| `GCP_PROJECT_ID` | Repository | `agent-platform-503913` |
 | `GCP_REGION` | Repository | `europe-west1` |
 | `GCP_WIF_PROVIDER` | Repository | Terraform bootstrap output `workload_identity_provider` |
 | `GCP_DEV_DEPLOYER_SA` | `development` environment | Bootstrap dev deployer output |
@@ -143,8 +142,9 @@ secret payloads; GitHub receives no service-account JSON key.
 
 ## Outstanding Phase 0 checks
 
-- [ ] Refresh interactive `gcloud` user authentication, then record the project
-      number without printing access tokens.
+- [ ] Refresh interactive `gcloud` user authentication, verify that
+      `agent-platform-503913` resolves to `183775788663`, and reset the ADC quota
+      project without printing access tokens.
 - [ ] Verify billing/credit linkage and required service quotas.
 - [ ] Run one `global` Vertex model call without changing the model.
 - [ ] Create/probe a disposable development Agent Platform context and verify

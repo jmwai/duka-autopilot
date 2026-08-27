@@ -32,18 +32,36 @@ claim that the pending Google-generated bilingual media exists.
 
 | Gate | Result |
 |---|---:|
-| Vitest component/contract tests | 36 passed |
-| Playwright production journeys | 23 passed |
+| Vitest component/contract tests | 46 passed |
+| Playwright production journeys | 29 passed |
 | Playwright judge-profile journey | 1 passed |
 | Route-level axe scans | 8 passed, 0 reported violations |
 | Judge-profile axe scan | 1 passed, 0 reported violations |
-| Python suite | 121 passed, 16 skipped |
-| Heaviest route JavaScript | 128,839 bytes gzip / 153,600-byte budget |
-| Total production static assets | 1,683,901 bytes |
+| Python suite, local keyless mode | 134 passed, 16 emulator-gated skips |
+| Python suite, Firestore emulator | 150 passed, 0 failed, 0 errors, 0 skipped |
+| Heaviest route JavaScript | 129,532 bytes gzip / 153,600-byte budget |
+| Total production static assets | 1,701,081 bytes |
 | Local production-build lab budgets | TTFB < 800 ms; LCP < 2.5 s; CLS < 0.1; observed interaction ≤ 200 ms |
 
-The skipped Python tests require optional cloud/emulator infrastructure and are
-not represented as passing release evidence.
+The paired production images were also measured at every release width. All
+four runs had zero horizontal overflow and stayed within every local lab
+budget:
+
+| Width | TTFB | LCP | CLS | Max observed event | Menu action |
+|---:|---:|---:|---:|---:|---:|
+| 390 px | 133.7 ms | 848 ms | 0 | 32 ms | 65.27 ms |
+| 768 px | 27.2 ms | 100 ms | 0 | 40 ms | 42.55 ms |
+| 1280 px | 63.7 ms | 124 ms | 0 | 56 ms | 85.70 ms |
+| 1440 px | 20.1 ms | 68 ms | 0 | 48 ms | 69.93 ms |
+
+The machine-readable record is
+`docs/evidence/frontend-lab-performance-2026-08-27.json`. These are loopback
+lab measurements against local production containers, not hosted field data.
+
+The ordinary keyless run skips the Firestore parity cases. A separate full run
+used the installed Google Cloud Firestore emulator with Java 21 and produced a
+JUnit summary of 144 tests, zero failures, zero errors, and zero skips. This is
+local emulator evidence, not managed Firestore execution evidence.
 
 ## Commands
 
@@ -59,6 +77,13 @@ pnpm test:e2e:judge
 
 cd ..
 .venv/bin/python -m pytest -q
+
+FIRESTORE_EMULATOR_HOST=127.0.0.1:8085 \
+FIRESTORE_DATABASE='(default)' \
+GOOGLE_CLOUD_PROJECT=demo-duka \
+uv run --frozen pytest -q -rs --junitxml=/tmp/duka-pytest-firestore.xml
+uv run --frozen python scripts/assert_junit.py \
+  /tmp/duka-pytest-firestore.xml --max-skipped 0
 ```
 
 `pnpm test:e2e` first builds the production application, then starts a
@@ -84,7 +109,8 @@ execution. The separate 50,000-row local run produced 48,402 exact matches,
 1,354 residue rows, a 97.28% deterministic rate, zero Gemini calls, and zero
 Gemini cost in 501 ms. See `judge-profile-local-2026-08-27.md`.
 
-The judge-facing Evidence route is now organized into five ordered chapters:
+The judge-facing Evidence route is now organized into five ordered chapters
+and carries the same fail-closed release strip used by the Morning Brief:
 release identity, how Duka acts, one causal trace, measured quality, and honest
 boundaries. Configured services do not make the trace green; only an attached,
 release-bound Cloud Trace artifact does.
@@ -111,7 +137,7 @@ cloud-deployment evidence.
 - No external M-Pesa transfer, refund, supplier order, or payment is initiated.
 - Cloud Run, managed Sessions, Memory Bank, Scheduler, Pub/Sub, and cloud trace
   proof remain pending until an approved deployment is exercised and captured.
-- Core Web Vitals remain production-image work; the current bundle result is a
-  local lab gate, not hosted field-user evidence.
+- Hosted Core Web Vitals remain cloud-release work; the current production-image
+  result is a local lab gate, not hosted field-user evidence.
 - Paired-container details and the explicit Cloud Run IAM limitation are in
   `local-container-smoke-2026-08-27.md`.

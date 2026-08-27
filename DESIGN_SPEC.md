@@ -4,7 +4,7 @@
 > Version: 1.0
 > Last updated: August 26, 2026
 > Core hackathon category: The Taskmaster
-> GCP project: `my-duka-autopilot`
+> GCP project: `agent-platform-503913` (`183775788663`)
 > Application region: `europe-west1`
 > Vertex AI and Agent Platform context location: `global`
 

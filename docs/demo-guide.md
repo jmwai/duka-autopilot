@@ -59,7 +59,7 @@ an unresolved project, environment, database, or context resource. Rehearse in
 development; seed production only when the final release is ready for its first
 judge-facing take.
 
-1. Confirm gcloud/GitHub console headers show `my-duka-autopilot` and production.
+1. Confirm gcloud/GitHub console headers show `agent-platform-503913` and production.
 2. Confirm the deployed `/version` response matches `{{FINAL_RELEASE_SHA}}` and
    durable fingerprint `{{TOPOLOGY_FINGERPRINT}}`.
 3. Verify the production Firestore database is the intended empty synthetic

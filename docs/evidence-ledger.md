@@ -75,11 +75,13 @@
 
 | Artifact | Purpose | Status |
 |---|---|---|
-| `docs/evidence/local-preflight-2026-08-26.md` | 107/0/0 suite, schema/workflow/container/seed/eval-package gate | Current local candidate |
+| `docs/evidence/local-preflight-2026-08-26.md` | 107/0/0 suite, schema/workflow/container/seed/eval-package gate | Historical baseline |
+| `docs/evidence/local-infrastructure-validation-2026-08-27.md` | Attested actionlint, exact Terraform 1.14.5 format/schema validation, locked providers, topology, pending Google-only fixture policy, and repository audit | Current uncommitted candidate; no plan/apply or GCP mutation |
+| `docs/evidence/google-media-preflight-2026-08-27.md` | Offline four-call Google-only plan, current model/API contract, atomic staging, overwrite/billing-project guards, and focused tests | Preflight only; APIs and generated candidates still require F3 approval |
 | `docs/evidence/prepush-audit.json` | Candidate and branch/tag history credential/trailer scan | Preliminary; rerun immediately before each push |
 | `fixtures/demo/manifest.json` | Google-only bilingual fixture allowlist and freeze contract | Schema v2 implemented; release-ready false until four generated assets are frozen |
 | `docs/evidence/benchmark-local.json` | Raw 50,000-row local no-fuzzy baseline | Current local candidate |
-| `docs/evidence/frontend-product-qa-2026-08-27.md` | 121-test backend, 23 base journeys, isolated judge journey, axe, print, correlation, and bundle budgets | Current local candidate |
+| `docs/evidence/frontend-product-qa-2026-08-27.md` | 46 frontend tests, 29 base journeys, isolated judge journey, 150/0/0 Firestore parity, axe, print, correlation, and bundle budgets | Current uncommitted candidate; bind to final SHA later |
 | `docs/evidence/judge-profile-local-2026-08-27.md` | 50,000-row meaningful judge seed, bilingual history, three decisions, and claim boundaries | Current local candidate; bind to final SHA later |
 | `docs/economics.md` | Interpreted local baseline and claim limits | Current local candidate |
 | `deployment/compatibility.json` | Durable topology fingerprint | Enforced locally and in deploy workflows |

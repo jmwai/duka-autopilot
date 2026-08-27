@@ -1,6 +1,7 @@
 # Duka Autopilot Deployment Runbook
 
-> Project: `my-duka-autopilot`
+> Project: `agent-platform-503913`
+> Project number: `183775788663`
 > Application region: `europe-west1`
 > Vertex AI / Agent Platform context location: `global`
 > Repository: private `jmwai/duka-autopilot`
@@ -75,17 +76,17 @@ zero skips. The GitHub CI workflow supplies this automatically.
 
 Before execution, record:
 
-- GCP project number and billing-account linkage;
+- verified GCP project ID/number pair (`agent-platform-503913` /
+  `183775788663`) and billing-account linkage;
 - immutable GitHub owner ID and repository ID;
 - final bootstrap Terraform plan;
 - estimated monthly/judging-window spend;
 - operator name and approval time.
 
-The local authenticated preflight confirmed that
-`aiplatform.googleapis.com` and `cloudresourcemanager.googleapis.com` are not
-yet enabled. This is expected before bootstrap and must not be worked around by
-an ad-hoc local enablement. The reviewed bootstrap plan is the authorization
-boundary. If Terraform cannot read the project before creating the declared
+API status in the replacement project is not yet verified. Do not infer it from
+the superseded project's earlier `SERVICE_DISABLED` result or work around it by
+ad-hoc enablement. The reviewed bootstrap plan is the authorization boundary.
+If Terraform cannot read the project before creating the declared
 project-service resources, enable only `serviceusage.googleapis.com` and
 `cloudresourcemanager.googleapis.com` as a separately recorded bootstrap
 prerequisite, rerun the saved plan, and let Terraform own the full declared API
@@ -103,7 +104,7 @@ GitHub IDs. Review the saved plan before the separately approved apply:
 
 ```bash
 terraform -chdir=deployment/terraform/bootstrap init -backend-config=backend.hcl
-terraform -chdir=deployment/terraform/bootstrap import google_storage_bucket.terraform_state my-duka-autopilot-tfstate
+terraform -chdir=deployment/terraform/bootstrap import google_storage_bucket.terraform_state agent-platform-503913-tfstate
 terraform -chdir=deployment/terraform/bootstrap plan -out=bootstrap.tfplan
 terraform -chdir=deployment/terraform/bootstrap show bootstrap.tfplan
 ```
@@ -229,7 +230,7 @@ First render the payload locally; this performs no network call:
 
 ```bash
 uv run --frozen python scripts/configure_memory_bank.py \
-  --project my-duka-autopilot \
+  --project agent-platform-503913 \
   --location global \
   --context-id CONTEXT_ID
 ```

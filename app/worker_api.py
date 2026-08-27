@@ -7,6 +7,10 @@ import json
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
+from app.environment import load_environment
+
+load_environment()
+
 from agents.store import get_store
 from app.http_security import RequestSecurityMiddleware
 from app.worker import RetryableInboundError, handle_inbound
@@ -37,6 +41,8 @@ def ready():
         "DUKA_USER_KEY_SECRET", "DUKA_TRACE_ENABLED",
     )
     missing = [key for key in required if not os.environ.get(key)]
+    if os.environ.get("GOOGLE_GENAI_USE_VERTEXAI", "").lower() != "true":
+        missing.append("GOOGLE_GENAI_USE_VERTEXAI=true")
     if os.environ.get("DUKA_STORE") != "firestore":
         missing.append("DUKA_STORE=firestore")
     if missing:

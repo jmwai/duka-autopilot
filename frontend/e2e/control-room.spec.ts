@@ -25,6 +25,39 @@ test.describe("control room release candidate", () => {
     });
   }
 
+  test("public HTML enforces the release and browser security boundary", async ({ page, request }) => {
+    const response = await request.get("/");
+    expect(response.ok()).toBeTruthy();
+    const headers = response.headers();
+    const html = await response.text();
+    const policy = headers["content-security-policy"] ?? "";
+    expect(policy).toContain("script-src 'self' 'nonce-");
+    expect(policy).toContain("'strict-dynamic'");
+    expect(policy).toContain("object-src 'none'");
+    expect(policy).toContain("frame-ancestors 'none'");
+    expect(policy.match(/script-src[^;]*/u)?.[0]).not.toContain("unsafe-inline");
+    expect(headers["x-content-type-options"]).toBe("nosniff");
+    expect(headers["x-frame-options"]).toBe("DENY");
+    expect(headers["referrer-policy"]).toBe("no-referrer");
+    expect(html).toContain('data-dpl-id="playwright-local"');
+
+    const cspErrors: string[] = [];
+    page.on("console", (message) => {
+      if (message.type() === "error" && /content security policy|refused to/u.test(message.text().toLowerCase())) {
+        cspErrors.push(message.text());
+      }
+    });
+    await page.goto("/");
+    await expect(page.getByRole("heading", { name: "Your shop is ready for the day." })).toBeVisible();
+    expect(cspErrors).toEqual([]);
+
+    const version = await (await request.get("/version")).json() as {
+      deployment_id: string;
+      release_sha: string;
+    };
+    expect(version).toMatchObject({ deployment_id: "playwright-local", release_sha: "playwright-local" });
+  });
+
   test("shell remains usable across release widths", async ({ page }, testInfo) => {
     for (const width of [390, 768, 1280, 1440]) {
       await page.setViewportSize({ width, height: width < 768 ? 844 : 1000 });
@@ -134,6 +167,21 @@ test.describe("control room release candidate", () => {
     await page.goto("/evidence");
     await expect(page.getByText("Evidence fails closed")).toBeVisible();
     await expect(page.getByText("ADK model evaluation")).toBeVisible();
+  });
+
+  test("ledger keeps source and result legible as focused mobile views", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/ledger");
+
+    const source = page.getByRole("tab", { name: "Source" });
+    const result = page.getByRole("tab", { name: "Result" });
+    await expect(source).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("heading", { name: "Page input" })).toBeVisible();
+
+    await result.click();
+    await expect(result).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByText("Verified bilingual fixtures are pending")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Page input" })).toBeHidden();
   });
 
   test("manual sale sends only catalog keys and renders the authoritative total", async ({ page }) => {
@@ -255,6 +303,101 @@ test.describe("control room release candidate", () => {
     expect(attempts).toBe(2);
   });
 
+  test("decision conflict keeps the effect pending and refreshes the queue", async ({ page }) => {
+    await page.route("**/api/approvals/*", async (route) => {
+      if (route.request().method() === "POST") {
+        return route.fulfill({
+          status: 409,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Simulated conflicting decision" }),
+        });
+      }
+      return route.continue();
+    });
+
+    await page.goto("/approvals");
+    await page.getByRole("button", { name: "Reject draft" }).click();
+    await page.getByRole("alertdialog").getByRole("button", { name: "Reject draft" }).click();
+
+    await expect(page.getByRole("status")).toContainText("Decision conflict");
+    await expect(page.getByText("1 waiting decision")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Restock draft" })).toBeVisible();
+  });
+
+  test("decision resume failure stays retryable and completes the same rejection once", async ({ page }) => {
+    const pendingResponse = await page.request.get("/api/approvals");
+    const pending = await pendingResponse.json() as Array<Record<string, unknown>>;
+    expect(pending).toHaveLength(1);
+    let postAttempts = 0;
+
+    await page.route("**/api/approvals**", async (route) => {
+      const request = route.request();
+      if (request.method() === "POST" && /\/api\/approvals\//.test(request.url())) {
+        postAttempts += 1;
+        if (postAttempts === 1) {
+          return route.fulfill({
+            status: 503,
+            contentType: "application/json",
+            headers: { "x-request-id": "decision-retry-request" },
+            body: JSON.stringify({ error: "Simulated resume interruption" }),
+          });
+        }
+        return route.continue();
+      }
+      if (request.method() === "GET" && request.url().endsWith("/api/approvals") && postAttempts === 1) {
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(pending.map((approval) => ({
+            ...approval,
+            status: "resume_failed",
+            requested_decision: "rejected",
+            resume_attempts: 1,
+            retryable: true,
+          }))),
+        });
+      }
+      return route.continue();
+    });
+
+    await page.goto("/approvals");
+    await page.getByRole("button", { name: "Reject draft" }).click();
+    await page.getByRole("alertdialog").getByRole("button", { name: "Reject draft" }).click();
+    await expect(page.getByRole("status")).toContainText("same decision remains retryable");
+    await expect(page.getByText(/previous rejected attempt did not complete/i)).toBeVisible();
+
+    await page.getByRole("button", { name: "Reject draft" }).click();
+    await page.getByRole("alertdialog").getByRole("button", { name: "Reject draft" }).click();
+    await expect(page.getByRole("status")).toContainText("Rejected exactly once");
+    await expect(page.getByText("The queue is clear")).toBeVisible();
+    expect(postAttempts).toBe(2);
+  });
+
+  test("owner approval applies the named draft once and replays idempotently", async ({ page }) => {
+    await page.goto("/inventory");
+    await page.getByRole("button", { name: "Run shelf scan" }).click();
+    await expect(page.getByRole("status")).toContainText("One owner-reviewed draft was created");
+
+    await page.goto("/approvals");
+    await page.getByRole("button", { name: "Accept draft" }).click();
+    const confirmation = page.getByRole("alertdialog");
+    const decisionResponse = page.waitForResponse((response) => (
+      response.request().method() === "POST"
+      && response.url().includes("/api/approvals/")
+    ));
+    await confirmation.getByRole("button", { name: "Accept draft" }).click();
+    const firstResponse = await decisionResponse;
+
+    await expect(page.getByRole("status")).toContainText("Approved exactly once");
+    await expect(page.getByText("The queue is clear")).toBeVisible();
+    const replay = await page.request.post(firstResponse.url(), {
+      data: { decision: "approved" },
+      headers: { "content-type": "application/json" },
+    });
+    expect(replay.ok()).toBeTruthy();
+    expect(await replay.json()).toMatchObject({ ok: true, idempotent: true, decision: "approved" });
+  });
+
   test("local night run persists a receipt without claiming Scheduler evidence", async ({ page }) => {
     await page.goto("/night-shift");
     await page.getByRole("button", { name: "Run local exact check" }).click();
@@ -339,7 +482,7 @@ test.describe("control room release candidate", () => {
     const dialog = page.getByRole("dialog", { name: "Start a fresh managed session?" });
     await dialog.getByRole("button", { name: "Start new day" }).click();
     await expect(dialog.getByRole("alert")).toContainText("The new session could not be confirmed");
-    await dialog.getByRole("button", { name: "Start new day" }).click();
+    await dialog.getByRole("button", { name: "Retry same session operation" }).click();
     await expect(page.getByText(/fresh managed session is active.*safe replay/i)).toBeVisible();
 
     expect(attempts).toHaveLength(2);
@@ -385,6 +528,34 @@ test.describe("control room release candidate", () => {
     await page.getByRole("link", { name: "Open order" }).click();
     await expect(page).toHaveURL(new RegExp(`/orders\\?order=${persistedOrder.id}$`));
     await expect(page.getByRole("dialog", { name: "Order details" })).toContainText(`Order #${persistedOrder.id}`);
+  });
+
+  test("catalog-grounded order follows its source event into the customer thread", async ({ page }) => {
+    const [customersResponse, productsResponse] = await Promise.all([
+      page.request.get("/api/customers"),
+      page.request.get("/api/products"),
+    ]);
+    expect(customersResponse.ok()).toBeTruthy();
+    expect(productsResponse.ok()).toBeTruthy();
+    const customers = await customersResponse.json() as Array<{ id: string }>;
+    const products = await productsResponse.json() as Array<{ sku: string }>;
+    const customerId = customers[0]?.id;
+    const sku = products[0]?.sku;
+    expect(customerId).toBeTruthy();
+    expect(sku).toBeTruthy();
+    const eventId = "causal-order-proof-e2e";
+    const createdResponse = await page.request.post("/api/orders", {
+      data: { event_id: eventId, customer_id: customerId, items: [{ sku, qty: 1 }], paid: false },
+    });
+    expect(createdResponse.ok()).toBeTruthy();
+    const created = await createdResponse.json() as { order_id: string };
+
+    await page.goto(`/orders?order=${encodeURIComponent(String(created.order_id))}`);
+    const dialog = page.getByRole("dialog", { name: "Order details" });
+    await expect(dialog).toContainText(`Inbound event ${eventId}`);
+    await dialog.getByRole("link", { name: "Open evidence" }).first().click();
+    await expect(page).toHaveURL(new RegExp(`/inbox\\?customer=${customerId}&event=${eventId}$`));
+    await expect(page.getByText(`Following source event ${eventId} into this customer thread.`)).toBeVisible();
   });
 
   test("client authorization failure returns the owner to login", async ({ page }) => {

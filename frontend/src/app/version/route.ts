@@ -7,6 +7,7 @@ export function GET() {
     {
       app: "duka-autopilot-web",
       release_sha: process.env.RELEASE_SHA ?? "local",
+      deployment_id: process.env.NEXT_DEPLOYMENT_ID ?? process.env.RELEASE_SHA ?? "local-build",
       environment: process.env.DUKA_ENV ?? "local",
       runtime: process.version,
     },

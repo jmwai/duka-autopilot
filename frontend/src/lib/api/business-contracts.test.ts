@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { inventorySchema, ordersSchema, releaseEvidenceSchema } from "./contracts";
+import { frontendVersionSchema, inventorySchema, ordersSchema, releaseEvidenceSchema } from "./contracts";
 
 describe("Owner product API contracts", () => {
   it("normalizes SQLite and Firestore order identifiers and review flags", () => {
@@ -31,5 +31,17 @@ describe("Owner product API contracts", () => {
     };
     expect(releaseEvidenceSchema.parse(evidence).artifacts[0].state).toBe("pending");
     expect(releaseEvidenceSchema.safeParse({ ...evidence, artifacts: [{ ...evidence.artifacts[0], state: "claimed" }] }).success).toBe(false);
+  });
+
+  it("requires the web runtime and built deployment identities", () => {
+    const version = {
+      app: "duka-autopilot-web",
+      release_sha: "release-a",
+      deployment_id: "release-a",
+      environment: "dev",
+      runtime: "v24.12.0",
+    };
+    expect(frontendVersionSchema.safeParse(version).success).toBe(true);
+    expect(frontendVersionSchema.safeParse({ ...version, deployment_id: undefined }).success).toBe(false);
   });
 });
