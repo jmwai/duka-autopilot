@@ -34,3 +34,4 @@ crash.*.log
 gha-creds-*.json
 backend.hcl
 *.tfplan
+docs/*.md
