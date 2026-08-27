@@ -1,0 +1,15 @@
+{
+  "schema_version": 2,
+  "release_ready": false,
+  "synthetic_only": true,
+  "provider_policy": {
+    "generated_media": "google_only",
+    "allowed": [
+      "google_vertex_ai",
+      "google_cloud_text_to_speech"
+    ]
+  },
+  "ledgers": [],
+  "voices": [],
+  "blocked_reason": "Vertex AI and Cloud Text-to-Speech APIs require explicit activation before bilingual release assets can be generated."
+}

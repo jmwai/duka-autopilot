@@ -1,0 +1,22 @@
+{
+  "branch": "dev",
+  "candidate_file_count": 283,
+  "failures": [],
+  "forbidden_commit_trailers": [],
+  "forbidden_paths": [],
+  "generated_at": "2026-08-27T12:42:56.978645+00:00",
+  "notes": [
+    "GitHub visibility and remote branch emptiness require a separate read-only external check immediately before first push.",
+    "A dirty worktree is reported but is not itself a failure; push is forbidden until the candidate is reviewed and committed.",
+    "Only branch/tag-reachable history is a normal push surface. Local backup/original refs are excluded; mirror pushes are forbidden."
+  ],
+  "ok": true,
+  "push_reachable_path_count": 335,
+  "remote": "git@github.com:jmwai/duka-autopilot.git",
+  "secret_hits": [],
+  "worktree": {
+    "staged_changes": false,
+    "unstaged_changes": true,
+    "untracked_files": true
+  }
+}

@@ -59,15 +59,31 @@ class PubSubBus:
 
     def __init__(self) -> None:
         from google.cloud import pubsub_v1
-        self._client = pubsub_v1.PublisherClient()
+        self._client = pubsub_v1.PublisherClient(
+            publisher_options=pubsub_v1.types.PublisherOptions(
+                enable_message_ordering=True))
         self._project = os.environ["GOOGLE_CLOUD_PROJECT"]
 
     async def publish(self, topic: str, payload: dict) -> None:
         topic_path = self._client.topic_path(
             self._project, os.environ.get("PUBSUB_TOPIC_PREFIX", "duka-") + topic)
         data = json.dumps(payload).encode()
-        future = self._client.publish(topic_path, data)
-        await asyncio.to_thread(future.result)  # surface publish errors
+        attributes = ({"event_id": str(payload["event_id"])}
+                      if payload.get("event_id") else {})
+        from app.observability import inject_context, tracer
+        inject_context(attributes)
+        ordering_key = str(payload.get("customer_id") or payload.get("event_id") or "")
+        with tracer().start_as_current_span("duka.pubsub.publish") as span:
+            span.set_attribute("messaging.system", "gcp_pubsub")
+            span.set_attribute("messaging.destination.name", topic)
+            future = self._client.publish(
+                topic_path, data, ordering_key=ordering_key, **attributes)
+            try:
+                await asyncio.to_thread(future.result)  # surface publish errors
+            except Exception:
+                if ordering_key:
+                    self._client.resume_publish(topic_path, ordering_key)
+                raise
 
     async def wait_idle(self) -> None:  # delivery is Pub/Sub's job in cloud mode
         return None

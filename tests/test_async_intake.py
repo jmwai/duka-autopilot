@@ -23,6 +23,7 @@ class FakeTurn:
     wall_ms = 42
     input_tokens = 100
     output_tokens = 20
+    order_result = None
 
 
 @pytest.fixture(autouse=True)
@@ -53,7 +54,8 @@ async def test_bus_dispatch_persists_conversation(stub_turn):
     from app.worker import INBOUND_TOPIC, register
     register()
     bus = get_bus()
-    await bus.publish(INBOUND_TOPIC, {"customer_id": "254711000001",
+    await bus.publish(INBOUND_TOPIC, {"event_id": "evt-bus-1",
+                                      "customer_id": "254711000001",
                                       "text": "Nataka unga 2 bales"})
     await bus.wait_idle()
 
@@ -66,15 +68,47 @@ async def test_bus_dispatch_persists_conversation(stub_turn):
 
 
 @pytest.mark.asyncio
+async def test_order_receipt_is_allowlisted_in_event_and_message(monkeypatch):
+    class OrderTurn(FakeTurn):
+        order_result = {
+            "status": "success", "order_id": 42,
+            "status_detail": "pending_confirmation", "total": 710,
+            "needs_review": False, "customer_id": "must-not-leak",
+        }
+
+    async def fake_run_turn(customer_id, text, **kw):
+        return OrderTurn()
+
+    from app import runner
+    monkeypatch.setattr(runner, "run_turn", fake_run_turn)
+    from app.worker import handle_inbound
+    out = await handle_inbound({
+        "event_id": "evt-order-proof-1",
+        "customer_id": "254711000001",
+        "text": "Nataka unga",
+    })
+
+    expected = {
+        "order_id": "42", "status": "pending_confirmation",
+        "total": 710, "needs_review": False,
+    }
+    assert out["order"] == expected
+    assert get_store().messages_for("254711000001")[-1]["meta"]["order"] == expected
+    assert "customer_id" not in out["order"]
+
+
+@pytest.mark.asyncio
 async def test_voice_payload_reaches_runner_as_audio(stub_turn):
     from app.worker import handle_inbound
     audio = base64.b64encode(b"OggS-fake-voice-note").decode()
-    out = await handle_inbound({"customer_id": "254711000003", "text": "",
+    out = await handle_inbound({"event_id": "evt-voice-1",
+                                "customer_id": "254711000003", "text": "",
                                 "audio_b64": audio, "audio_mime": "audio/ogg"})
     assert out["reply"] == FakeTurn.reply
     call = stub_turn.calls[0]
     assert call["audio_bytes"] == b"OggS-fake-voice-note"
     assert call["audio_mime"] == "audio/ogg"
+    assert call["source_event_id"] == "evt-voice-1"
     # channel inferred as voice for the message log
     msgs = get_store().messages_for("254711000003")
     assert msgs[0]["channel"] == "voice"
@@ -99,20 +133,68 @@ def test_pubsub_push_envelope(stub_turn):
 
 @pytest.mark.asyncio
 async def test_failed_turn_never_strands_the_customer(monkeypatch):
-    """Model outage / missing key: the thread gets an apology with the error
-    in meta, and the handler returns instead of raising (no Pub/Sub poison
-    pill)."""
+    """A model outage is retryable and the retry creates one conversation."""
     async def broken_run_turn(customer_id, text, **kw):
         raise RuntimeError("503 model unavailable")
     from app import runner
     monkeypatch.setattr(runner, "run_turn", broken_run_turn)
-    from app.worker import handle_inbound
-    out = await handle_inbound({"customer_id": "254711000004", "text": "habari"})
-    assert out["reply"] is None and "503" in out["error"]
+    from app.worker import RetryableInboundError, handle_inbound
+    payload = {"event_id": "evt-retry-1", "customer_id": "254711000004",
+               "text": "habari"}
+    with pytest.raises(RetryableInboundError):
+        await handle_inbound(payload)
+    receipt = get_store().get_event("evt-retry-1")
+    assert receipt["status"] == "failed_retryable"
+    msgs = get_store().messages_for("254711000004")
+    assert [m["direction"] for m in msgs] == ["in"]
+
+    async def recovered_run_turn(customer_id, text, **kw):
+        return FakeTurn()
+    monkeypatch.setattr(runner, "run_turn", recovered_run_turn)
+    out = await handle_inbound(payload)
+    assert out["reply"] == FakeTurn.reply
+    assert get_store().get_event("evt-retry-1")["attempts"] == 2
     msgs = get_store().messages_for("254711000004")
     assert [m["direction"] for m in msgs] == ["in", "out"]
-    assert "Samahani" in msgs[1]["text"]
-    assert "503" in msgs[1]["meta"]["error"]
+
+
+@pytest.mark.asyncio
+async def test_duplicate_event_replays_without_second_turn(stub_turn):
+    from app.worker import handle_inbound
+    payload = {"event_id": "evt-duplicate-1", "customer_id": "254711000001",
+               "text": "Nataka unga"}
+    first = await handle_inbound(payload)
+    second = await handle_inbound(dict(payload))
+    assert first["duplicate"] is False
+    assert second["duplicate"] is True and second["event_status"] == "completed"
+    assert len(stub_turn.calls) == 1
+    assert [m["direction"] for m in
+            get_store().messages_for("254711000001")] == ["in", "out"]
+
+
+@pytest.mark.asyncio
+async def test_event_id_payload_conflict_fails_closed(stub_turn):
+    from app.worker import handle_inbound
+    first = {"event_id": "evt-conflict-1", "customer_id": "254711000001",
+             "text": "Nataka unga"}
+    await handle_inbound(first)
+    conflict = await handle_inbound({**first, "text": "Nataka mafuta"})
+    assert conflict["duplicate"] is True and conflict["event_status"] == "conflict"
+    assert len(stub_turn.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_invalid_media_is_terminal_and_idempotent(stub_turn):
+    from app.worker import handle_inbound
+    payload = {"event_id": "evt-bad-media-1", "customer_id": "254711000001",
+               "image_b64": "not-base64%%%"}
+    first = await handle_inbound(payload)
+    second = await handle_inbound(payload)
+    assert first["retryable"] is False
+    assert second["event_status"] == "failed_permanent"
+    assert not stub_turn.calls
+    assert [m["direction"] for m in
+            get_store().messages_for("254711000001")] == ["in", "out"]
 
 
 def test_inbound_endpoint_queues_and_returns_202(stub_turn):
@@ -122,4 +204,31 @@ def test_inbound_endpoint_queues_and_returns_202(stub_turn):
     with TestClient(app) as client:
         r = client.post("/inbound", json={"customer_id": "254711000001",
                                           "text": "bei ya sukari?"})
-        assert r.status_code == 202 and r.json() == {"queued": True}
+        assert r.status_code == 202 and r.json()["queued"] is True
+        assert len(r.json()["event_id"]) == 32
+
+
+def test_cloud_readiness_fails_closed(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+    monkeypatch.setenv("DUKA_ENV", "prod")
+    monkeypatch.setenv("DUKA_STORE", "sqlite")
+    monkeypatch.setenv("DUKA_BUS", "local")
+    for key in ("GOOGLE_CLOUD_PROJECT", "GOOGLE_CLOUD_LOCATION",
+                "FIRESTORE_DATABASE", "AGENT_CONTEXT_ID"):
+        monkeypatch.delenv(key, raising=False)
+    with TestClient(app) as client:
+        response = client.get("/ready")
+    assert response.status_code == 503
+    assert "AGENT_CONTEXT_ID" in response.json()["missing"]
+
+
+def test_approval_route_accepts_opaque_id():
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+    with TestClient(app) as client:
+        response = client.post("/approvals/opaque-for-test",
+                               json={"decision": "rejected"})
+    assert response.status_code == 404, "opaque IDs must reach the handler, not fail 422"

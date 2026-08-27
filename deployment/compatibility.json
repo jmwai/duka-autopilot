@@ -1,0 +1,38 @@
+{
+  "fingerprint": "f8899ce46bfc5165a5143cab67e874bad44d489a094d9aaad65df0e182ef3d9b",
+  "contract": {
+    "adk_version": "2.7.1",
+    "app_name": "duka-autopilot",
+    "edges": [
+      {"from": "__START__", "route": null, "to": "screen"},
+      {"from": "classifier", "route": null, "to": "router"},
+      {"from": "exact_recon", "route": "fuzzy", "to": "fuzzy_recon"},
+      {"from": "exact_recon", "route": "done", "to": "recon_summary"},
+      {"from": "router", "route": "blocked", "to": "blocked"},
+      {"from": "router", "route": "recon", "to": "exact_recon"},
+      {"from": "router", "route": "ledger", "to": "ledger_reader"},
+      {"from": "router", "route": "order", "to": "order_intake"},
+      {"from": "router", "route": "support", "to": "support"},
+      {"from": "screen", "route": "blocked", "to": "blocked"},
+      {"from": "screen", "route": "clean", "to": "classifier"},
+      {"from": "support", "route": null, "to": "refund_gate"}
+    ],
+    "nodes": [
+      {"name": "__START__", "rerun_on_resume": false},
+      {"name": "blocked", "rerun_on_resume": false},
+      {"name": "classifier", "rerun_on_resume": true},
+      {"name": "exact_recon", "rerun_on_resume": false},
+      {"name": "fuzzy_recon", "rerun_on_resume": true},
+      {"name": "ledger_reader", "rerun_on_resume": true},
+      {"name": "order_intake", "rerun_on_resume": true},
+      {"name": "recon_summary", "rerun_on_resume": false},
+      {"name": "refund_gate", "rerun_on_resume": true},
+      {"name": "router", "rerun_on_resume": false},
+      {"name": "screen", "rerun_on_resume": false},
+      {"name": "support", "rerun_on_resume": true}
+    ],
+    "schema": 1,
+    "user_key_algorithm": "hmac-sha256-v1",
+    "workflow_name": "duka_autopilot"
+  }
+}

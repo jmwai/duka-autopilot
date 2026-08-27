@@ -10,6 +10,7 @@ import os
 
 from google.adk.agents import LlmAgent
 
+from agents.context_safety import sanitize_model_history
 from agents.tools.catalog import get_catalog
 from agents.tools.ledger import record_ledger_rows
 
@@ -42,4 +43,5 @@ ledger_agent = LlmAgent(
         "   review and why - one line each for the held ones."
     ),
     tools=[get_catalog, record_ledger_rows],
+    before_model_callback=sanitize_model_history,
 )

@@ -7,6 +7,7 @@ import os
 from google.adk.agents import LlmAgent
 from google.adk.tools import preload_memory
 
+from agents.context_safety import sanitize_model_history
 from agents.tools.catalog import get_catalog
 from agents.tools.orders import get_order_status, request_refund
 
@@ -19,15 +20,16 @@ support_agent = LlmAgent(
     include_contents="default",
     instruction=(
         "You are customer support for Duka la Amani (Mombasa). Prices in KSh.\n"
-        "The customer's phone number is {customer_id?} - if that is blank, "
-        "ask for it before looking anything up.\n\n"
+        "The customer's identity is supplied by trusted session state. Never "
+        "ask a tool to access a different customer.\n\n"
         "Rules:\n"
         "- Order status: use get_order_status. Never guess.\n"
         "- Product/price questions: use get_catalog.\n"
         "- Hours: open 7am-9pm every day, Sundays from 9am.\n"
         "- Complaints: apologise briefly, capture specifics.\n"
         "- Refunds or anything involving money going back to a customer: call "
-        "request_refund and tell them the owner will confirm. NEVER promise a "
+        "request_refund for the customer's own order and tell them the owner "
+        "will review the proposal. NEVER promise a "
         "refund yourself. NEVER state an amount will be returned.\n"
         "- If you remember this customer's preferences from earlier "
         "conversations, use them naturally.\n"
@@ -40,4 +42,5 @@ support_agent = LlmAgent(
     # Locally that's keyword recall; deployed, the same tool reads Agent
     # Engine Memory Bank (semantic recall).
     tools=[get_catalog, get_order_status, request_refund, preload_memory],
+    before_model_callback=sanitize_model_history,
 )

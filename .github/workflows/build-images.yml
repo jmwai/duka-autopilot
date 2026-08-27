@@ -1,0 +1,82 @@
+name: Build release images
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-images-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and publish immutable image candidates
+    if: github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: development
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      REGION: ${{ vars.GCP_REGION }}
+      IMAGE_REPOSITORY: duka-images
+    steps:
+      - name: Check out the exact revision
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Name release images
+        run: |
+          test -n "${PROJECT_ID}"
+          test -n "${REGION}"
+          echo "BACKEND_IMAGE=${REGION}-docker.pkg.dev/${PROJECT_ID}/${IMAGE_REPOSITORY}/duka-backend" >>"${GITHUB_ENV}"
+          echo "FRONTEND_IMAGE=${REGION}-docker.pkg.dev/${PROJECT_ID}/${IMAGE_REPOSITORY}/duka-frontend" >>"${GITHUB_ENV}"
+
+      - name: Build before creating cloud credentials
+        run: |
+          docker build \
+            --file deployment/docker/backend.Dockerfile \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            --tag "${BACKEND_IMAGE}:${GITHUB_SHA}" .
+          docker build \
+            --file deployment/docker/frontend.Dockerfile \
+            --build-arg "RELEASE_SHA=${GITHUB_SHA}" \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            --tag "${FRONTEND_IMAGE}:${GITHUB_SHA}" .
+
+      - name: Authenticate to Artifact Registry through WIF
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEV_DEPLOYER_SA }}
+
+      - name: Install gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3
+
+      - name: Push and resolve immutable digests
+        run: |
+          gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+          docker push "${BACKEND_IMAGE}:${GITHUB_SHA}"
+          docker push "${FRONTEND_IMAGE}:${GITHUB_SHA}"
+          BACKEND_DIGEST=$(gcloud artifacts docker images describe \
+            "${BACKEND_IMAGE}:${GITHUB_SHA}" --format='value(image_summary.digest)')
+          FRONTEND_DIGEST=$(gcloud artifacts docker images describe \
+            "${FRONTEND_IMAGE}:${GITHUB_SHA}" --format='value(image_summary.digest)')
+          test -n "${BACKEND_DIGEST}"
+          test -n "${FRONTEND_DIGEST}"
+          jq -n \
+            --arg release_sha "${GITHUB_SHA}" \
+            --arg backend "${BACKEND_IMAGE}@${BACKEND_DIGEST}" \
+            --arg frontend "${FRONTEND_IMAGE}@${FRONTEND_DIGEST}" \
+            '{release_sha:$release_sha,images:{backend:$backend,frontend:$frontend}}' \
+            > image-manifest.json
+
+      - name: Upload image manifest
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-images-${{ github.sha }}
+          path: image-manifest.json
+          retention-days: 30

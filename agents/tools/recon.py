@@ -24,7 +24,8 @@ def unpaid_orders_summary() -> dict:
     }
 
 
-def record_fuzzy_match(payment_id: int, order_id: int, confidence: float, rationale: str) -> dict:
+def record_fuzzy_match(payment_id: str, order_id: str,
+                       confidence: float, rationale: str) -> dict:
     """Record an LLM-proposed match. Goes to the approval queue, never auto-paid.
 
     Args:
@@ -34,12 +35,39 @@ def record_fuzzy_match(payment_id: int, order_id: int, confidence: float, ration
         rationale: One-line explanation, e.g. 'payer name variant of customer name'.
 
     Returns:
-        {"approval_id": int}
+        A pending proposal identifier, an existing duplicate proposal, or a
+        structured validation error.
     """
     store = get_store()
+    payment = store.get_payment(payment_id)
+    order = store.get_order(order_id)
+    if payment is None or order is None:
+        return {"status": "error", "error": "payment or order not found",
+                "approval_id": None}
+    if payment.get("matched_order_id") is not None:
+        return {"status": "error", "error": "payment is already linked",
+                "approval_id": None}
+    if order.get("status") not in ("confirmed", "pending_confirmation"):
+        return {"status": "error", "error": "order is not open",
+                "approval_id": None}
+    if isinstance(confidence, bool):
+        return {"status": "error", "error": "invalid confidence", "approval_id": None}
+    try:
+        confidence_value = float(confidence)
+    except (TypeError, ValueError):
+        return {"status": "error", "error": "invalid confidence", "approval_id": None}
+    if not 0.0 <= confidence_value <= 1.0:
+        return {"status": "error", "error": "invalid confidence", "approval_id": None}
+    for approval in store.pending_approvals():
+        payload = approval.get("payload") or {}
+        if (approval.get("kind") == "fuzzy_match"
+                and str(payload.get("payment_id")) == str(payment_id)):
+            return {"status": "pending_owner_approval",
+                    "approval_id": approval["id"], "duplicate": True}
     approval_id = store.add_approval("fuzzy_match", {
         "payment_id": payment_id, "order_id": order_id,
-        "confidence": confidence, "rationale": rationale,
+        "confidence": confidence_value, "rationale": str(rationale or "")[:500],
     })
     store.mark_payment_kind(payment_id, "fuzzy")
-    return {"approval_id": approval_id}
+    return {"status": "pending_owner_approval", "approval_id": approval_id,
+            "duplicate": False}

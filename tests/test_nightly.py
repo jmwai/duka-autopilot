@@ -29,6 +29,12 @@ async def test_nightly_keyless_deterministic_only():
     assert report["residue_start"] == 4 and report["residue_end"] == 4
     assert report["fuzzy_batches"] == 0
     assert report["cost_usd"] == 0.0
+    assert report["total_considered"] == 6
+    assert report["model_calls"] == 0
+    assert report["model_input_tokens"] == 0
+    assert report["model_output_tokens"] == 0
+    assert report["execution_surface"] == "library"
+    assert report["status"] == "completed"
     # report persisted for the digest
     msgs = get_store().messages_for("owner")
     assert msgs and msgs[-1]["channel"] == "system"

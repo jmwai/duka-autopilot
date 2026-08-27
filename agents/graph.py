@@ -27,13 +27,14 @@ from agents.support import support_agent
 
 autopilot_workflow = Workflow(
     name="duka_autopilot",
-    description="Always-on back office for Duka la Amani: orders, support, reconciliation - humans gate money.",
+    description="Autonomous back office: exact evidence proceeds; uncertainty and irreversible effects gate.",
     retry_config=RetryConfig(max_attempts=3),
     edges=[
         (START, screen),
         Edge(from_node=screen, to_node=classifier, route="clean"),
         Edge(from_node=screen, to_node=blocked, route="blocked"),
         (classifier, router),
+        Edge(from_node=router, to_node=blocked, route="blocked"),
         Edge(from_node=router, to_node=intake_agent, route="order"),
         Edge(from_node=router, to_node=support_agent, route="support"),
         Edge(from_node=router, to_node=exact_recon, route="recon"),

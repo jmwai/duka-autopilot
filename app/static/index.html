@@ -103,7 +103,7 @@
 
 <section class="dash">
   <h1>Duka Autopilot <span style="font-weight:400;color:#68788c">· owner dashboard</span></h1>
-  <div class="tagline">Agents run in the background. Every shilling stops here for your approval.</div>
+  <div class="tagline">Exact evidence settles automatically. Uncertain or irreversible actions stop for your approval.</div>
   <div class="tabs">
     <button id="tab-overview" class="active" onclick="showTab('overview')">Overview</button>
     <button id="tab-sale" onclick="showTab('sale')">Create sale</button>
@@ -113,6 +113,8 @@
     <div class="toolbar">
       <button onclick="runNightly(false)" title="Deterministic pass only — no LLM, no key">Run night shift (exact)</button>
       <button onclick="runNightly(true)" title="Exact pass + LLM fuzzy batches">Night shift + fuzzy</button>
+      <input id="ledger-file" type="file" accept="image/jpeg,image/png,image/webp" hidden onchange="ledgerPicked()">
+      <button onclick="$('#ledger-file').click()" class="alt" title="Owner-only handwritten ledger upload">Upload ledger</button>
       <button onclick="showDigest()" class="alt">Morning digest</button>
       <button onclick="restockCheck()" class="alt">Check shelves</button>
       <button onclick="refresh()" class="alt">Refresh</button>
@@ -149,6 +151,35 @@
 <script>
 const $ = (s) => document.querySelector(s);
 const msgs = $('#messages');
+
+// Cloud mode uses an HttpOnly signed owner cookie. The password is sent once
+// to /auth/login and is never stored in JavaScript or localStorage.
+const nativeFetch = window.fetch.bind(window);
+let loginInFlight = null;
+
+async function loginOwner() {
+  if (loginInFlight) return loginInFlight;
+  loginInFlight = (async () => {
+    const password = window.prompt('Owner password');
+    if (!password) throw new Error('owner login cancelled');
+    const response = await nativeFetch('/auth/login', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({password})
+    });
+    if (!response.ok) throw new Error('owner login failed');
+  })();
+  try { await loginInFlight; } finally { loginInFlight = null; }
+}
+
+window.fetch = async (input, init) => {
+  let response = await nativeFetch(input, init);
+  const url = typeof input === 'string' ? input : input.url;
+  if (response.status === 401 && !url.includes('/auth/login')) {
+    await loginOwner();
+    response = await nativeFetch(input, init);
+  }
+  return response;
+};
 
 // ---------- conversation rendering (async: server owns the thread) ----------
 
@@ -251,9 +282,13 @@ async function send() {
     // fire the event and walk away - the reply lands via /messages polling
     const ms = await fetch('/messages/' + $('#who').value).then(r => r.json());
     lastMsgId = Math.max(lastMsgId, ...ms.map(m => m.id), 0);
+    const queuedAt = performance.now();
     const r = await fetch('/inbound', { method:'POST',
       headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
     if (r.status !== 202) throw new Error('queue refused: ' + r.status);
+    const accepted = await r.json();
+    if (waiting) waiting.textContent = `202 queued · ${accepted.event_id.slice(0,12)}… · ` +
+      `${Math.round(performance.now()-queuedAt)}ms · worker processing`;
   } catch (e) { if (waiting) { waiting.textContent = 'error: ' + e.message; waiting = null; } }
 }
 
@@ -272,6 +307,28 @@ async function runNightly(fuzzy) {
     `(${Math.round(j.settle_rate*1000)/10}% deterministic, ${j.exact_wall_ms}ms), ` +
     `${j.fuzzy_proposals} fuzzy proposal(s), ${j.residue_end} unmatched · LLM $${j.cost_usd}`;
   refresh();
+}
+
+async function ledgerPicked() {
+  const input = $('#ledger-file'); const file = input.files[0]; if (!file) return;
+  const status = bubble('(owner) uploading ledger page…', 'sys');
+  try {
+    const b64 = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(reader.error);
+      reader.onload = () => resolve(reader.result.split(',')[1]);
+      reader.readAsDataURL(file);
+    });
+    const response = await fetch('/ledger', {method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({image_b64:b64, image_mime:file.type || 'image/jpeg'})});
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || `ledger failed: ${response.status}`);
+    status.textContent = result.reply;
+    const meta = document.createElement('div'); meta.className='meta';
+    meta.textContent = `${(result.node_path||[]).join(' › ')} · $${result.cost_usd} · ${result.wall_ms}ms`;
+    status.appendChild(meta); refresh();
+  } catch (error) { status.textContent = 'ledger error: ' + error.message; }
+  finally { input.value = ''; }
 }
 
 async function showDigest() {

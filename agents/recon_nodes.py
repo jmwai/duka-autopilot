@@ -8,6 +8,7 @@ import os
 from google.adk.agents import Context, LlmAgent
 from google.adk.workflow import FunctionNode
 
+from agents.context_safety import sanitize_model_history
 from agents.recon_engine import run_exact_pass
 from agents.store import get_store
 from agents.tools.recon import record_fuzzy_match, unpaid_orders_summary
@@ -57,6 +58,7 @@ fuzzy_recon = LlmAgent(
         "proposals, anything still unmatched."
     ),
     tools=[unpaid_orders_summary, record_fuzzy_match],
+    before_model_callback=sanitize_model_history,
 )
 
 

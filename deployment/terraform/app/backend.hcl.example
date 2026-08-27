@@ -1,0 +1,2 @@
+bucket = "agent-platform-503913-tfstate"
+prefix = "duka/dev/app"

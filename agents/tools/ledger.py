@@ -13,12 +13,79 @@ the nine clean ones, and must never sneak in with them either.
 """
 from __future__ import annotations
 
+import math
+import re
+
+from google.adk.tools import ToolContext
+
 from agents.store import get_store
 
 ROW_CONFIDENCE_GATE = 0.8
+CUSTOMER_ID = re.compile(r"^[A-Za-z0-9_-]{1,100}$")
 
 
-def record_ledger_rows(rows: list[dict], page_note: str = "") -> dict:
+def _text(value: object, fallback: str = "", limit: int = 500) -> str:
+    cleaned = str(value or "").strip()
+    return (cleaned or fallback)[:limit]
+
+
+def _normalize_row(raw: object) -> tuple[dict, list[str]]:
+    """Keep one malformed model row from blocking valid rows on the page."""
+    row = raw if isinstance(raw, dict) else {}
+    issues: list[str] = []
+    stated_issue = _text(row.get("issue"), limit=300)
+
+    customer_id = row.get("customer_id")
+    if customer_id is not None:
+        customer_id = str(customer_id).strip()
+        if not CUSTOMER_ID.fullmatch(customer_id):
+            customer_id = None
+            issues.append("customer identifier invalid")
+
+    description = _text(row.get("description"))
+    if not description:
+        issues.append("description missing")
+
+    raw_amount = row.get("amount")
+    amount = raw_amount if isinstance(raw_amount, int) and not isinstance(raw_amount, bool) else 0
+    if amount <= 0:
+        amount = 0
+        if "amount" not in stated_issue.lower():
+            issues.append("amount must be a positive integer")
+
+    raw_confidence = row.get("confidence")
+    confidence_valid = True
+    try:
+        confidence = float(raw_confidence)
+    except (TypeError, ValueError):
+        confidence = 0.0
+        confidence_valid = False
+    if (not confidence_valid or isinstance(raw_confidence, bool) or not math.isfinite(confidence)
+            or not 0 <= confidence <= 1):
+        confidence = 0.0
+        issues.append("confidence invalid")
+
+    raw_paid = row.get("paid")
+    paid = raw_paid if isinstance(raw_paid, bool) else False
+    if not isinstance(raw_paid, bool):
+        issues.append("paid marker invalid")
+
+    if stated_issue:
+        issues.insert(0, stated_issue)
+
+    return {
+        "customer_name": _text(row.get("customer_name"), "walk-in", 200),
+        "customer_id": customer_id,
+        "description": description,
+        "amount": amount,
+        "paid": paid,
+        "confidence": confidence,
+        "issue": stated_issue or None,
+    }, list(dict.fromkeys(issues))
+
+
+def record_ledger_rows(rows: list[dict], page_note: str,
+                       tool_context: ToolContext) -> dict:
     """Record extracted ledger rows; doubtful rows gate on the owner.
 
     Args:
@@ -32,17 +99,33 @@ def record_ledger_rows(rows: list[dict], page_note: str = "") -> dict:
     Returns:
         {"recorded": int, "gated": int, "order_ids": [...], "approval_ids": [...]}
     """
+    if tool_context.state.get("actor_role") != "owner":
+        return {
+            "status": "error", "error": "owner authority required",
+            "recorded": 0, "gated": 0, "order_ids": [], "approval_ids": [],
+        }
     store = get_store()
-    recorded, gated, order_ids, approval_ids = 0, 0, [], []
-    for row in rows:
-        confidence = float(row.get("confidence", 0))
-        doubtful = (confidence < ROW_CONFIDENCE_GATE or row.get("issue")
-                    or not row.get("amount"))
+    source_event_id = str(
+        tool_context.state.get("source_event_id") or "").strip() or None
+    recorded, gated, order_ids, approval_ids, outcomes = 0, 0, [], [], []
+    for index, raw_row in enumerate(rows):
+        row, issues = _normalize_row(raw_row)
+        confidence = row["confidence"]
+        doubtful = confidence < ROW_CONFIDENCE_GATE or bool(issues)
         if doubtful:
+            reason = "; ".join(issues) if issues else f"confidence {confidence:.2f}"
             approval_ids.append(store.add_approval("ledger_row", {
                 "row": row, "page_note": page_note,
-                "reason": row.get("issue") or f"confidence {confidence:.2f}",
+                "reason": reason,
+                "source_event_id": source_event_id,
             }))
+            outcomes.append({
+                "index": index, "outcome": "gated",
+                "customer_name": row["customer_name"],
+                "description": row["description"], "amount": row["amount"] or None,
+                "paid": row["paid"], "confidence": confidence,
+                "reason": reason, "approval_id": approval_ids[-1],
+            })
             gated += 1
             continue
         customer_id = row.get("customer_id") or "walk-in"
@@ -59,8 +142,17 @@ def record_ledger_rows(rows: list[dict], page_note: str = "") -> dict:
             items,
             status="paid" if row.get("paid") else "confirmed",
             notes=f"ledger page: {page_note}" if page_note else "ledger row",
+            source_event_id=source_event_id,
         )
         order_ids.append(oid)
+        outcomes.append({
+            "index": index, "outcome": "recorded",
+            "customer_name": row["customer_name"],
+            "description": row["description"], "amount": row["amount"],
+            "paid": row["paid"], "confidence": confidence,
+            "reason": None, "order_id": oid,
+        })
         recorded += 1
-    return {"recorded": recorded, "gated": gated,
-            "order_ids": order_ids, "approval_ids": approval_ids}
+    return {"status": "success", "recorded": recorded, "gated": gated,
+            "order_ids": order_ids, "approval_ids": approval_ids,
+            "rows": outcomes}

@@ -11,6 +11,9 @@ import os
 from google.adk.agents import Context, LlmAgent
 from google.adk.workflow import FunctionNode
 
+from agents.context_safety import sanitize_model_history
+from agents.store import get_store
+
 MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.7-flash")
 
 ROUTES = ("order", "support", "recon", "ledger")
@@ -31,6 +34,7 @@ classifier = LlmAgent(
         "Reply with only the single word. Nothing else."
     ),
     output_key="route_decision",
+    before_model_callback=sanitize_model_history,
 )
 
 
@@ -42,6 +46,19 @@ def route_message(ctx: Context) -> None:
     returning the route word would make intake see a bogus "order" message.
     The route travels only via ctx.route."""
     decision = str(ctx.state.get("route_decision", "")).strip().lower()
+    if (decision in ("ledger", "recon")
+            and ctx.state.get("actor_role") != "owner"):
+        text = " ".join(
+            part.text for part in (ctx.user_content.parts or [])
+            if getattr(part, "text", None)
+        ) if ctx.user_content else ""
+        get_store().add_approval("security_flag", {
+            "customer_id": ctx.state.get("customer_id", "unknown"),
+            "message_excerpt": text[:200],
+            "reasons": [f"customer attempted owner-only {decision} route"],
+        })
+        ctx.route = "blocked"
+        return
     ctx.route = decision if decision in ROUTES else "support"  # safe default
 
 

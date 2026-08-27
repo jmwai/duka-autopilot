@@ -1,0 +1,24 @@
+project_id              = "agent-platform-503913"
+expected_project_number = "183775788663"
+environment             = "dev"
+region                  = "europe-west1"
+agent_context_location  = "global"
+model                   = "gemini-3.7-flash"
+
+# Replace these placeholders with full immutable digests from Artifact Registry.
+# Image names must match what the release workflows push: duka-backend and
+# duka-frontend inside the duka-images repository.
+backend_image  = "europe-west1-docker.pkg.dev/agent-platform-503913/duka-images/duka-backend@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+frontend_image = "europe-west1-docker.pkg.dev/agent-platform-503913/duka-images/duka-frontend@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+release_sha    = "0000000000000000000000000000000000000000"
+
+# Judge-facing demo: grant the owner session on arrival instead of behind a
+# password. Owner routes still require an owner session and customer scoping is
+# unchanged; only the credential prompt is waived. Synthetic data only.
+demo_open_access = true
+
+protect_durable_resources = true
+web_min_instances         = 0
+web_max_instances         = 2
+api_max_instances         = 2
+worker_max_instances      = 2
