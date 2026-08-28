@@ -256,6 +256,49 @@ def test_approval_decision_state_machine():
     assert replay["outcome"] == "idempotent"
 
 
+def test_owner_entered_ledger_amount_is_claimed_and_applied():
+    """The amount the owner types must survive the claim on this backend too:
+    payloads are JSON text here, not documents."""
+    from agents.store import get_store
+    store = get_store()
+    approval_id = store.add_approval("ledger_row", {
+        "row": {"customer_id": "walk-in", "customer_name": "walk-in",
+                "description": "mayai tray", "amount": 0, "paid": False},
+        "reason": "amount unreadable",
+    })
+
+    claim = store.claim_approval_decision(approval_id, "approved", owner_amount=240)
+    assert claim["claimed"] is True
+    # stored beside the extracted row, never over it
+    payload = store.get_approval(approval_id)["payload"]
+    assert payload["owner_amount"] == 240 and payload["row"]["amount"] == 0
+
+    effect = store.apply_approval_effect(approval_id, "approved")
+    assert effect["amount"] == 240 and effect["amount_source"] == "owner"
+    store.complete_approval_decision(approval_id, "approved")
+    order = store.get_order(effect["order_id"])
+    assert order["total"] == 240 and "amount entered by owner" in order["notes"]
+
+
+def test_a_changed_owner_amount_conflicts_instead_of_overwriting():
+    from agents.store import get_store
+    store = get_store()
+    approval_id = store.add_approval("ledger_row", {
+        "row": {"customer_id": "walk-in", "customer_name": "walk-in",
+                "description": "rice 2kg", "amount": 0, "paid": False},
+        "reason": "amount unreadable",
+    })
+    store.claim_approval_decision(approval_id, "approved", owner_amount=240)
+    store.fail_approval_decision(approval_id, "revision terminated")
+
+    changed = store.claim_approval_decision(approval_id, "approved", owner_amount=900)
+    assert changed["claimed"] is False and changed["outcome"] == "conflict"
+    assert store.get_approval(approval_id)["payload"]["owner_amount"] == 240
+
+    replay = store.claim_approval_decision(approval_id, "approved", owner_amount=240)
+    assert replay["claimed"] is True
+
+
 def test_approval_effect_is_transactional_and_exactly_once():
     from agents.store import get_store
     store = get_store()

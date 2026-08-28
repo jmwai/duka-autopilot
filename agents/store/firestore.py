@@ -425,7 +425,9 @@ class FirestoreStore:
             approval = snap.to_dict() or {}
             status = approval.get("status")
             requested = approval.get("requested_decision")
-            payload = approval.get("payload") or {}
+            # Approval payloads are stored as JSON text here, the same as the
+            # SQLite column, so they have to be decoded before being read.
+            payload = json.loads(approval.get("payload") or "{}")
             stored_amount = payload.get("owner_amount")
             # The typed amount is part of the decision, so it obeys the same
             # rule: the same amount replays, a different one conflicts.
@@ -455,7 +457,8 @@ class FirestoreStore:
             if owner_amount is not None and stored_amount is None:
                 # Same transaction as the claim: the effect can never read a
                 # payload the claim did not agree to.
-                update["payload"] = {**payload, "owner_amount": int(owner_amount)}
+                update["payload"] = json.dumps(
+                    {**payload, "owner_amount": int(owner_amount)})
             txn.update(ref, update)
             return {"claimed": True, "outcome": "claimed", "status": "resuming",
                     "decision": decision, "attempts": attempts}
