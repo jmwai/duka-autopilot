@@ -12,7 +12,6 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 
-import { AuthorityRail } from "@/components/control-room/authority-rail";
 import { KshValue, Metric } from "@/components/control-room/metric";
 import { PageHeader } from "@/components/control-room/page-header";
 import { DegradedBanner } from "@/components/control-room/product-states";
@@ -47,7 +46,6 @@ export function MorningBrief({ data }: { data: MorningBriefData }) {
   const nightly = digest.digest.nightly;
   const settledRate = statement.total ? statement.matched_exact / statement.total : 0;
   const settledPercent = new Intl.NumberFormat("en", { style: "percent", maximumFractionDigits: 1 }).format(settledRate);
-  const residue = statement.unmatched + statement.fuzzy_proposed;
   const environment = version.environment || "unknown";
   const releaseProven = Boolean(version.release_sha && version.release_sha !== "unknown");
   const nightlyObserved = Boolean(nightly?.finished_at || nightly?.run_id);
@@ -142,16 +140,6 @@ export function MorningBrief({ data }: { data: MorningBriefData }) {
           </div>
         </div>
       </section>
-
-      <AuthorityRail
-        className="mb-5"
-        compactOnMobile
-        steps={[
-          { lane: "exact", title: "Routine evidence settled", detail: "Reference, amount, and chronology satisfied deterministic invariants.", value: statement.matched_exact.toLocaleString() },
-          { lane: "gemini", title: "Ambiguity stayed bounded", detail: "The model may extract or propose; it cannot declare uncertain money paid.", value: residue.toLocaleString() },
-          { lane: "owner", title: "Consequences stopped here", detail: "Only the exact effect written in the decision queue can be authorized.", value: approvals.length.toLocaleString() },
-        ]}
-      />
 
       <section aria-label="Morning outcomes" className="mb-6 grid grid-cols-2 gap-3 xl:grid-cols-4">
         <Metric className="p-3 sm:p-5" label="Settled exactly" value={statement.matched_exact.toLocaleString()} detail={`${settledPercent} of statement rows`} icon={CheckCircle2} tone="exact" />

@@ -3,7 +3,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Boxes, BrainCircuit, CheckCircle2, CircleDashed, Cloud, FileCheck2, GitBranch, Globe2, KeyRound, Route, ShieldCheck, TestTube2, TriangleAlert } from "lucide-react";
 
-import { AuthorityRail } from "@/components/control-room/authority-rail";
 import { Metric } from "@/components/control-room/metric";
 import { PageHeader } from "@/components/control-room/page-header";
 import { EnvironmentBadge, EvidenceSource, ReleaseStamp } from "@/components/control-room/proof-sheet";
@@ -123,11 +122,6 @@ export function EvidenceWorkspace({ evidence }: { evidence: ReleaseEvidence }) {
         </div>
 
         <ChapterHeader number={2} id="acts" title="How Duka acts" description="The ADK graph makes authority explicit: deterministic code settles exact evidence, Gemini interprets ambiguity, and consequences stop with the owner." />
-        <AuthorityRail steps={[
-          { lane: "exact", title: "Deterministic invariants", detail: "Screening, routing, catalog grounding, idempotency, exact reconciliation, and hard cost bounds." },
-          { lane: "gemini", title: "Bounded interpretation", detail: `${evidence.model.name} on Google Vertex AI interprets messy voice, images, and residue.` },
-          { lane: "owner", title: "Consequential authority", detail: "Refund, fuzzy payment, doubtful ledger, and restock effects stop in one durable queue." },
-        ]} />
         <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
           <Card>
             <CardHeader><CardTitle>ADK topology identity</CardTitle><CardDescription>The fingerprint protects durable sessions and resumable invocations across releases.</CardDescription></CardHeader>

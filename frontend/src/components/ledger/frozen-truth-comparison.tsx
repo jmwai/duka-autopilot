@@ -34,18 +34,17 @@ export function FrozenTruthComparison({ fixture, observed, blockedReason }: {
       <CardHeader>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="text-[0.68rem] font-bold uppercase tracking-[0.16em] text-gemini">Before the model runs</p>
             <CardTitle className="mt-1">Frozen ground truth</CardTitle>
-            <CardDescription>{fixture.label} · expected outcome, never inferred from model prose.</CardDescription>
+            <CardDescription>{fixture.label}</CardDescription>
           </div>
           <div className="flex flex-wrap justify-end gap-2">
             <Badge variant="outline">{fixture.language === "en-KE" ? "English" : "Kiswahili"}</Badge>
             <Badge variant="outline"><FileCheck2 aria-hidden="true" className="size-3.5" /> Google · synthetic</Badge>
             <ProofSheet
               title={`${fixture.label} provenance`}
-              description="Frozen source, integrity, and reviewed expected truth for this release ledger."
+              description={`Provenance and expected result for ${fixture.label}.`}
               outcome={`${expectedRecords} rows must record and ${expectedGates} unreadable row${expectedGates === 1 ? "" : "s"} must stop for owner review.`}
-              reason="The image is admitted only after its byte count and SHA-256 match the manifest. Frozen truth is reviewed independently from the observed model result."
+              reason="The image is admitted only if its byte count and SHA-256 match the manifest."
               facts={[
                 { label: "Language", value: fixture.language },
                 { label: "Provider", value: fixture.source.provider },
@@ -59,7 +58,7 @@ export function FrozenTruthComparison({ fixture, observed, blockedReason }: {
                 { label: "Release integrity", detail: `${formatMediaBytes(fixture.bytes)} · ${fixture.width}×${fixture.height}`, state: "proven" },
                 { label: "Reviewed ground truth", detail: `${expectedRecords} record · ${expectedGates} gate`, state: "proven" },
               ]}
-              limitations={["Synthetic media is used for privacy and known ground truth.", "Source integrity does not by itself prove extraction accuracy; observed truth is compared separately."]}
+              limitations={["Synthetic media, used for privacy and known ground truth."]}
               trigger={<Button type="button" size="sm" variant="ghost">Provenance</Button>}
             />
           </div>
@@ -73,7 +72,6 @@ export function FrozenTruthComparison({ fixture, observed, blockedReason }: {
               : <TriangleAlert aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-conflict" />}
             <div>
               <p className="font-semibold">{comparison.matches ? "Observed tool receipt matches frozen truth" : "Observed tool receipt differs from frozen truth"}</p>
-              <p className="text-xs text-muted-foreground">Compared by row index, expected action, exact integer KSh amount, and paid state—not by agent summary prose.</p>
             </div>
           </div>
         ) : null}

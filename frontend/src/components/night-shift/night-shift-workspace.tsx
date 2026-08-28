@@ -15,7 +15,6 @@ import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
 
-import { AuthorityRail } from "@/components/control-room/authority-rail";
 import { Metric } from "@/components/control-room/metric";
 import { OperationRecovery } from "@/components/control-room/operation-recovery";
 import { PageHeader } from "@/components/control-room/page-header";
@@ -121,12 +120,6 @@ function LiveReport({ report, data }: { report: NightlyReport; data: NightShiftD
           <Card>
             <CardHeader><CardTitle>One run, four inspectable stages</CardTitle><CardDescription>Autonomy where evidence is exact. Gemini where reality is messy. A human where consequences matter.</CardDescription></CardHeader>
             <CardContent>
-              <AuthorityRail steps={[
-                { lane: "exact", title: "Indexed exact pass", detail: `${metric(report.exact_matched)} rows linked on phone, integer amount, and a 48-hour window.`, value: duration(report.exact_wall_ms) },
-                { lane: "gemini", title: "Bounded residue review", detail: `${metric(report.residue_start)} ambiguous rows entered; Gemini cannot mark them paid.`, value: `${report.fuzzy_batches}/${NIGHTLY_BOUNDS.batchCeiling}` },
-                { lane: "owner", title: "Consequences wait", detail: `${metric(report.fuzzy_proposals)} proposals require exact-effect confirmation.`, value: metric(report.fuzzy_proposals) },
-                { lane: "exact", title: "Receipt persisted", detail: `Run ${report.run_id ?? "without an attributed ID"} became the morning handoff; configured services alone are not proof.`, value: report.status === "completed" ? "saved" : "legacy" },
-              ]} />
               <div className="mt-3 flex justify-end"><Button asChild variant="outline" size="sm"><Link href="/evidence#trace">Follow this run to Evidence <FileCheck2 aria-hidden="true" /></Link></Button></div>
             </CardContent>
           </Card>
