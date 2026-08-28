@@ -32,10 +32,12 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { approvalsSchema, decisionResponseSchema, type Approval } from "@/lib/api/contracts";
 import { BrowserApiError, browserApi } from "@/lib/api/browser-client";
-import { decisionKinds, decisionPresentation, type DecisionPresentation } from "@/lib/decisions/decision";
+import { decisionKinds, decisionPresentation, ownerAmountError, OWNER_AMOUNT_MAX, type DecisionPresentation } from "@/lib/decisions/decision";
+import { formatKsh } from "@/lib/format/money";
 import { cn } from "@/lib/utils";
 
 type Decision = "approved" | "rejected";
@@ -125,7 +127,7 @@ function DecisionInspector({ approval, busy, onAction }: { approval: Approval; b
           <p className="mt-3 border-t border-owner/20 pt-3 text-xs leading-5 text-muted-foreground"><span className="font-semibold text-foreground">If rejected:</span> {view.rejectEffect}</p>
         </section>
 
-        <p className="text-xs leading-5 text-muted-foreground">Boundary: Duka applies only the named internal effect exactly once. It does not infer an external transfer, supplier fulfillment, or corrected ledger value.</p>
+        <p className="text-xs leading-5 text-muted-foreground">Boundary: Duka applies only the named internal effect exactly once. It does not infer an external transfer, supplier fulfillment, or a ledger value you did not enter yourself.</p>
       </div>
 
       <div className="sticky bottom-0 grid gap-2 border-t bg-card/95 p-4 backdrop-blur sm:grid-cols-2 sm:p-5">
@@ -172,6 +174,9 @@ export function DecisionQueue({ initialApprovals }: { initialApprovals: Approval
   const [busyId, setBusyId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
+  // Only used by a ledger row whose amount the model could not read.
+  const [amount, setAmount] = useState("");
+  const amountError = ownerAmountError(amount);
   const kinds = useMemo(() => decisionKinds(approvals), [approvals]);
   const visible = useMemo(() => filter === "all" ? approvals : approvals.filter((approval) => approval.kind === filter), [approvals, filter]);
   const selected = visible.find((approval) => approval.id === selectedId) ?? visible[0] ?? null;
@@ -195,19 +200,29 @@ export function DecisionQueue({ initialApprovals }: { initialApprovals: Approval
   async function applyDecision() {
     if (!confirmation || busyId) return;
     const { approval, decision } = confirmation;
+    const view = decisionPresentation(approval);
+    const entering = decision === "approved" && view.needsAmount === true;
+    if (entering && amountError) return;
     setBusyId(approval.id);
     setOutcome(null);
     try {
       const result = await browserApi(`approvals/${encodeURIComponent(approval.id)}`, decisionResponseSchema, {
         method: "POST",
-        body: JSON.stringify({ decision }),
+        body: JSON.stringify(entering
+          ? { decision, amount: Number(amount.trim()) }
+          : { decision }),
       });
       setConfirmation(null);
+      setAmount("");
       if (result.ok) {
         setApprovals((current) => current.filter((item) => item.id !== approval.id));
         setMobileOpen(false);
         const detail = result.resumed_reply ? ` Workflow reply: ${result.resumed_reply}` : "";
-        setOutcome({ tone: "success", text: `${decision === "approved" ? "Approved" : "Rejected"} exactly once${result.idempotent ? " (idempotent replay)" : ""}.${detail}` });
+        // A recorded sale is the point of the decision, so name it.
+        const sale = result.order_id
+          ? ` Sale recorded as order #${result.order_id}${result.amount ? ` for ${formatKsh(result.amount)}` : ""}${result.amount_source === "owner" ? ", using the amount you entered" : ""}.`
+          : "";
+        setOutcome({ tone: "success", text: `${decision === "approved" ? "Approved" : "Rejected"} exactly once${result.idempotent ? " (idempotent replay)" : ""}.${sale}${detail}` });
       } else {
         setOutcome({ tone: "notice", text: `The ${result.decision} decision is already in progress. No second effect was started.` });
         await refreshQueue();
@@ -292,7 +307,7 @@ export function DecisionQueue({ initialApprovals }: { initialApprovals: Approval
 
       <p className="mt-7 text-center text-xs text-muted-foreground">No external M-Pesa transfer or supplier order is initiated by this release.</p>
 
-      <AlertDialog open={Boolean(confirmation)} onOpenChange={(open) => { if (!open && !busyId) setConfirmation(null); }}>
+      <AlertDialog open={Boolean(confirmation)} onOpenChange={(open) => { if (!open && !busyId) { setConfirmation(null); setAmount(""); } }}>
         {confirmation ? (() => {
           const view = decisionPresentation(confirmation.approval);
           const approving = confirmation.decision === "approved";
@@ -305,11 +320,39 @@ export function DecisionQueue({ initialApprovals }: { initialApprovals: Approval
                 <AlertDialogTitle>{approving ? view.approveLabel : view.rejectLabel}?</AlertDialogTitle>
                 <AlertDialogDescription>{approving ? view.approveEffect : view.rejectEffect}</AlertDialogDescription>
               </AlertDialogHeader>
-              <div className="rounded-lg border bg-background p-3 text-xs leading-5"><span className="font-semibold">Exactly-once boundary:</span> Duka applies the named internal effect once. No external transfer, supplier fulfillment, or corrected ledger value is inferred.</div>
+              {approving && view.needsAmount ? (
+                <div className="rounded-lg border border-owner/40 bg-owner/10 p-3">
+                  <label htmlFor="owner-amount" className="text-sm font-semibold">
+                    Amount on the page
+                  </label>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    Whole shillings, up to KSh {OWNER_AMOUNT_MAX.toLocaleString("en-KE")}. This is recorded as your figure, not the model&rsquo;s.
+                  </p>
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className="text-sm font-semibold text-muted-foreground">KSh</span>
+                    <Input
+                      id="owner-amount"
+                      inputMode="numeric"
+                      autoComplete="off"
+                      autoFocus
+                      value={amount}
+                      onChange={(event) => setAmount(event.target.value)}
+                      aria-invalid={amountError !== null && amount.trim() !== ""}
+                      aria-describedby={amountError ? "owner-amount-error" : undefined}
+                      className="numeric max-w-[10rem]"
+                      placeholder="240"
+                    />
+                  </div>
+                  {amountError && amount.trim() !== "" ? (
+                    <p id="owner-amount-error" role="alert" className="mt-2 text-xs font-medium text-conflict">{amountError}</p>
+                  ) : null}
+                </div>
+              ) : null}
+              <div className="rounded-lg border bg-background p-3 text-xs leading-5"><span className="font-semibold">Exactly-once boundary:</span> Duka applies the named internal effect once. No external transfer, supplier fulfillment, or ledger value you did not enter is inferred.</div>
               <AlertDialogFooter>
                 <AlertDialogCancel disabled={Boolean(busyId)}>Cancel</AlertDialogCancel>
                 <AlertDialogAction
-                  disabled={Boolean(busyId) || (approving && !view.canApprove)}
+                  disabled={Boolean(busyId) || (approving && (!view.canApprove || (view.needsAmount === true && amountError !== null)))}
                   className={cn(!approving && "bg-conflict text-white hover:bg-conflict/90")}
                   onClick={(event) => { event.preventDefault(); void applyDecision(); }}
                 >

@@ -12,6 +12,13 @@ routing - the Taskmaster shape). Two backends behind one interface:
               handler. The bus is the only thing that changes between local
               and cloud - the seam mirrors the Store seam.
 
+Logical topics are the unit of subscription on both backends. In cloud they
+all ride ONE Pub/Sub topic and carry their logical name in the "topic"
+message attribute; the worker looks the handler back up through the same
+get_handler() registry. That keeps a second kind of work - the background
+night shift - on the existing topic, subscription, retry policy and DLQ
+instead of duplicating the topology per kind of work.
+
 DUKA_BUS=local (default) | pubsub
 """
 from __future__ import annotations
@@ -22,6 +29,11 @@ import os
 from typing import Awaitable, Callable
 
 Handler = Callable[[dict], Awaitable[dict]]
+
+# The single Pub/Sub topic every logical topic is delivered through.
+TRANSPORT_TOPIC = "inbound"
+# Message attribute naming the logical topic, so the worker can route.
+TOPIC_ATTRIBUTE = "topic"
 
 _handlers: dict[str, Handler] = {}
 
@@ -66,16 +78,21 @@ class PubSubBus:
 
     async def publish(self, topic: str, payload: dict) -> None:
         topic_path = self._client.topic_path(
-            self._project, os.environ.get("PUBSUB_TOPIC_PREFIX", "duka-") + topic)
+            self._project,
+            os.environ.get("PUBSUB_TOPIC_PREFIX", "duka-") + TRANSPORT_TOPIC)
         data = json.dumps(payload).encode()
-        attributes = ({"event_id": str(payload["event_id"])}
-                      if payload.get("event_id") else {})
+        # The logical topic travels as an attribute: one subscription, and the
+        # worker still dispatches through get_handler().
+        attributes = {TOPIC_ATTRIBUTE: topic}
+        if payload.get("event_id"):
+            attributes["event_id"] = str(payload["event_id"])
         from app.observability import inject_context, tracer
         inject_context(attributes)
         ordering_key = str(payload.get("customer_id") or payload.get("event_id") or "")
         with tracer().start_as_current_span("duka.pubsub.publish") as span:
             span.set_attribute("messaging.system", "gcp_pubsub")
-            span.set_attribute("messaging.destination.name", topic)
+            span.set_attribute("messaging.destination.name", TRANSPORT_TOPIC)
+            span.set_attribute("duka.topic", topic)
             future = self._client.publish(
                 topic_path, data, ordering_key=ordering_key, **attributes)
             try:

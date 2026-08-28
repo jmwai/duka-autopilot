@@ -281,6 +281,69 @@ test.describe("control room release candidate", () => {
     expect(await replay.json()).toMatchObject({ ok: true, idempotent: true, decision: "rejected" });
   });
 
+  test("an unreadable ledger amount is completed by the owner, never guessed", async ({ page }) => {
+    let posted: unknown = null;
+    await page.route("**/api/approvals**", async (route) => {
+      const request = route.request();
+      if (request.method() === "GET" && request.url().endsWith("/api/approvals")) {
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify([{
+            id: "77", kind: "ledger_row", status: "pending",
+            created_at: "2026-08-28T06:00:00Z",
+            payload: {
+              row: { customer_name: "J. Kilonzo", customer_id: null,
+                     description: "mayai tray", amount: 0, paid: false,
+                     confidence: 0.41 },
+              reason: "amount unreadable", page_note: "Tuesday page",
+            },
+          }]),
+        });
+      }
+      if (request.method() === "POST" && request.url().includes("/api/approvals/77")) {
+        posted = request.postDataJSON();
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            ok: true, idempotent: false, kind: "ledger_row",
+            decision: "approved", order_id: "31", amount: 240,
+            amount_source: "owner",
+          }),
+        });
+      }
+      return route.continue();
+    });
+
+    await page.goto("/approvals");
+    await page.getByRole("button", { name: "Refresh queue" }).click();
+    // The queue renders a desktop pane and a mobile sheet; assert on whichever
+    // one this viewport actually shows.
+    await expect(page.getByText("amount unreadable").filter({ visible: true }).first()).toBeVisible();
+
+    await page.getByRole("button", { name: "Enter amount and record" }).filter({ visible: true }).first().click();
+    const dialog = page.getByRole("alertdialog");
+    await expect(dialog).toContainText("will not guess");
+    const confirm = dialog.getByRole("button", { name: "Enter amount and record" });
+    // Nothing typed yet, so there is nothing to record.
+    await expect(confirm).toBeDisabled();
+
+    const field = dialog.getByLabel("Amount on the page");
+    await field.fill("71000000");
+    await expect(dialog.getByRole("alert")).toContainText("limit");
+    await expect(confirm).toBeDisabled();
+
+    await field.fill("240");
+    await expect(dialog.getByRole("alert")).toBeHidden();
+    await confirm.click();
+
+    await expect(page.getByRole("status")).toContainText("Sale recorded as order #31 for KSh 240");
+    await expect(page.getByRole("status")).toContainText("using the amount you entered");
+    // The typed figure must reach the server as the decision, not as a hint.
+    expect(posted).toEqual({ decision: "approved", amount: 240 });
+  });
+
   test("restock scan keeps a visible retry state after failure", async ({ page }) => {
     let attempts = 0;
     await page.route("**/api/restock/check", async (route) => {
@@ -402,7 +465,7 @@ test.describe("control room release candidate", () => {
 
   test("local night run persists a receipt without claiming Scheduler evidence", async ({ page }) => {
     await page.goto("/night-shift");
-    await page.getByRole("button", { name: "Run local exact check" }).click();
+    await page.getByRole("button", { name: "Exact pass only" }).click();
     const confirmation = page.getByRole("alertdialog");
     await expect(confirmation).toContainText("not Gemini evidence, Cloud Run Job evidence, or proof that Cloud Scheduler fired");
     await confirmation.getByRole("button", { name: "Run exact pass" }).click();
@@ -410,6 +473,13 @@ test.describe("control room release candidate", () => {
     await expect(page.getByText("Night shift complete")).toBeVisible();
     await expect(page.getByText("Surface", { exact: true }).first().locator("..")).toContainText("api");
     await expect(page.getByText("This page alone is not scheduler evidence.")).toBeVisible();
+
+    // the stage ladder reports what actually ran, and says plainly what did not
+    const stages = page.getByRole("listitem").filter({ hasText: "Bounded review" });
+    await expect(stages).toContainText("Not run");
+    await expect(stages).toContainText("so no model saw any row");
+    await expect(page.getByRole("listitem").filter({ hasText: "Owner queue" })).toContainText("KSh 0 moved");
+    await expect(page.getByRole("listitem").filter({ hasText: "Restock scan" })).toBeVisible();
   });
 
   test("local night run keeps an explicit failure state before retry", async ({ page }) => {
@@ -427,13 +497,88 @@ test.describe("control room release candidate", () => {
     });
 
     await page.goto("/night-shift");
-    await page.getByRole("button", { name: "Run local exact check" }).click();
+    await page.getByRole("button", { name: "Exact pass only" }).click();
     const confirmation = page.getByRole("alertdialog");
     await confirmation.getByRole("button", { name: "Run exact pass" }).click();
     await expect(confirmation.getByRole("alert")).toContainText("result could not be confirmed");
     await confirmation.getByRole("button", { name: "Run exact pass" }).click();
     await expect(page.getByText("Local exact report persisted. This is not Scheduler proof.")).toBeVisible();
     expect(attempts).toBe(2);
+  });
+
+  test("night shift runs in the background and reports back from another page", async ({ page }) => {
+    const finishedReport = {
+      run_id: "e2e-run", status: "completed", execution_surface: "worker",
+      exact_matched: 2, settle_rate: 0.5, exact_wall_ms: 4,
+      residue_start: 4, fuzzy_batches: 1, fuzzy_proposals: 2, residue_end: 2,
+      cost_usd: 0.0041, restock_low_count: 0, restock_proposed: false, wall_ms: 21_000,
+      statement: { total: 6, matched_exact: 2, fuzzy_proposed: 2, unmatched: 2 },
+    };
+    let polls = 0;
+
+    await page.route("**/api/recon/nightly/start", async (route) => route.fulfill({
+      status: 202,
+      contentType: "application/json",
+      body: JSON.stringify({ queued: true, run_id: "e2e-run" }),
+    }));
+    await page.route("**/api/recon/nightly/status*", async (route) => {
+      polls += 1;
+      // The worker is still going for the first poll, so the owner has a real
+      // window in which to walk away from the page.
+      const done = polls > 1;
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          run_id: "e2e-run",
+          status: done ? "completed" : "processing",
+          report: done ? finishedReport : null,
+          error: null,
+        }),
+      });
+    });
+
+    await page.goto("/night-shift");
+    await page.getByRole("button", { name: "Run night shift" }).click();
+    const confirmation = page.getByRole("alertdialog");
+    await expect(confirmation).toContainText("runs in the background");
+    await confirmation.getByRole("button", { name: "Run night shift" }).click();
+
+    // The dialog releases the owner immediately instead of holding the run.
+    await expect(page.getByText("Night shift started")).toBeVisible();
+    await expect(confirmation).toBeHidden();
+    await expect(page.getByRole("status")).toContainText("running in the background");
+    await expect(page.getByRole("button", { name: "Running…" })).toBeDisabled();
+
+    // Walking away is the whole point: the alert must still find them.
+    await page.getByRole("link", { name: "Customer inbox" }).first().click();
+    await expect(page).toHaveURL(/\/inbox/);
+    await expect(page.getByText("Night shift finished · 2 proposals for you")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText("Gemini proposed 2 links and moved nothing")).toBeVisible();
+  });
+
+  test("a background night run that fails says so and claims no settlement", async ({ page }) => {
+    await page.route("**/api/recon/nightly/start", async (route) => route.fulfill({
+      status: 202,
+      contentType: "application/json",
+      body: JSON.stringify({ queued: true, run_id: "e2e-broken" }),
+    }));
+    await page.route("**/api/recon/nightly/status*", async (route) => route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        run_id: "e2e-broken", status: "failed_permanent", report: null,
+        error: "ValueError: statement source is unreadable",
+      }),
+    }));
+
+    await page.goto("/night-shift");
+    await page.getByRole("button", { name: "Run night shift" }).click();
+    await page.getByRole("alertdialog").getByRole("button", { name: "Run night shift" }).click();
+    await expect(page.getByText("The night shift did not finish")).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText("nothing was marked paid")).toBeVisible();
+    // The failed run must release the console rather than pinning it as busy.
+    await expect(page.getByRole("button", { name: "Run night shift" })).toBeEnabled();
   });
 
   test("inbox preserves an event ID across an uncertain handoff and retry", async ({ page }) => {

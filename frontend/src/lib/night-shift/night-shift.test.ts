@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { nightlyReportSchema, versionSchema } from "../api/contracts";
-import { LOCAL_BASELINE, NIGHTLY_BOUNDS, observedSettlePercent, reportReleaseState } from "./night-shift";
+import { LOCAL_BASELINE, NIGHTLY_BOUNDS, observedSettlePercent, reportReleaseState, stopReasonLabel } from "./night-shift";
 
 const report = nightlyReportSchema.parse({
   release_sha: "release-a",
@@ -45,5 +45,38 @@ describe("Night shift evidence contracts", () => {
 
   it("rejects a report whose residue grows during the run", () => {
     expect(nightlyReportSchema.safeParse({ ...report, residue_start: 2, residue_end: 3 }).success).toBe(false);
+  });
+
+  it("reads a report persisted before the batch trace existed", () => {
+    expect(report.fuzzy_batch_trace).toEqual([]);
+    expect(report.fuzzy_proposal_sample).toEqual([]);
+    expect(stopReasonLabel(report.fuzzy_stop_reason)).toBe("Not recorded in this report");
+  });
+
+  it("keeps the batch trace and its proposals when the run produced them", () => {
+    const reviewed = nightlyReportSchema.parse({
+      ...report,
+      fuzzy_batches: 1,
+      fuzzy_proposals: 1,
+      fuzzy_stop_reason: "no_progress",
+      fuzzy_batch_trace: [{
+        batch: 1, residue_before: 4, residue_after: 3, proposed: 1,
+        node_path: ["exact_recon", "fuzzy_recon"],
+        input_tokens: 1_240, output_tokens: 86, cost_usd: 0.0003, wall_ms: 820,
+      }],
+      fuzzy_proposal_sample: [{
+        approval_id: "7", payment_id: "12", order_id: "4",
+        confidence: 0.72, rationale: "payer name variant of customer name",
+        payment_ref: "SJ81K2LMN0", payer_name: "B. OTIENO",
+        payment_amount: 320, order_total: 320, customer_name: "Mama Njeri",
+      }],
+    });
+    expect(reviewed.fuzzy_batch_trace[0].node_path).toEqual(["exact_recon", "fuzzy_recon"]);
+    expect(reviewed.fuzzy_proposal_sample[0].rationale).toContain("payer name variant");
+    expect(stopReasonLabel(reviewed.fuzzy_stop_reason)).toBe("A batch proposed nothing new");
+  });
+
+  it("reports an unrecognised stop reason verbatim rather than guessing", () => {
+    expect(stopReasonLabel("something_new")).toBe("something_new");
   });
 });

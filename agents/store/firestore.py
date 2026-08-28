@@ -23,6 +23,8 @@ import time
 from hashlib import sha256
 from datetime import datetime, timezone
 
+from agents.store.base import LEDGER_OWNER_AMOUNT_MAX
+
 
 def _now() -> str:
     # Microseconds preserve the write order of sequential channel messages.
@@ -407,7 +409,8 @@ class FirestoreStore:
              "resolved_at": _now()})
 
     def claim_approval_decision(self, approval_id, decision: str,
-                                lease_seconds: int = 120) -> dict:
+                                lease_seconds: int = 120,
+                                owner_amount: int | None = None) -> dict:
         from google.cloud import firestore
 
         ref = self._col("approvals").document(str(approval_id))
@@ -422,6 +425,14 @@ class FirestoreStore:
             approval = snap.to_dict() or {}
             status = approval.get("status")
             requested = approval.get("requested_decision")
+            payload = approval.get("payload") or {}
+            stored_amount = payload.get("owner_amount")
+            # The typed amount is part of the decision, so it obeys the same
+            # rule: the same amount replays, a different one conflicts.
+            if (owner_amount is not None and stored_amount is not None
+                    and int(stored_amount) != int(owner_amount)):
+                return {"claimed": False, "outcome": "conflict",
+                        "status": status, "decision": requested or status}
             if status in ("approved", "rejected"):
                 return {"claimed": False,
                         "outcome": "idempotent" if status == decision else "conflict",
@@ -435,12 +446,17 @@ class FirestoreStore:
                 return {"claimed": False, "outcome": "in_progress",
                         "status": status, "decision": requested}
             attempts = int(approval.get("resume_attempts") or 0) + 1
-            txn.update(ref, {
+            update = {
                 "status": "resuming", "requested_decision": decision,
                 "resume_attempts": attempts,
                 "resume_lease_expires_at": now + lease_seconds,
                 "last_error": None,
-            })
+            }
+            if owner_amount is not None and stored_amount is None:
+                # Same transaction as the claim: the effect can never read a
+                # payload the claim did not agree to.
+                update["payload"] = {**payload, "owner_amount": int(owner_amount)}
+            txn.update(ref, update)
             return {"claimed": True, "outcome": "claimed", "status": "resuming",
                     "decision": decision, "attempts": attempts}
 
@@ -516,9 +532,16 @@ class FirestoreStore:
                 writes.append(("update", order_ref, patch))
             elif kind == "ledger_row" and decision == "approved":
                 row = payload.get("row") or {}
-                amount = int(row.get("amount") or 0)
+                # The owner may supply the amount the model could not read.
+                # The extracted row is never overwritten, so the trail keeps
+                # what the model saw next to what the owner said.
+                owner_amount = payload.get("owner_amount")
+                owner_entered = owner_amount is not None
+                amount = int(owner_amount) if owner_entered else int(row.get("amount") or 0)
                 if amount <= 0:
                     raise ValueError("approved ledger row requires a positive amount")
+                if amount > LEDGER_OWNER_AMOUNT_MAX and owner_entered:
+                    raise ValueError("owner-entered ledger amount exceeds the limit")
                 customer_id = row.get("customer_id") or "walk-in"
                 customer_ref = self._col("customers").document(customer_id)
                 customer_exists = customer_ref.get(transaction=txn).exists
@@ -534,7 +557,8 @@ class FirestoreStore:
                     "customer_name": row.get("customer_name") or customer_id,
                     "status": "paid" if row.get("paid") else "confirmed",
                     "total": amount, "needs_review": False,
-                    "notes": "ledger row approved by owner",
+                    "notes": ("ledger row approved by owner; amount entered by owner"
+                              if owner_entered else "ledger row approved by owner"),
                     "source_event_id": payload.get("source_event_id"),
                     "items": [{
                         "sku": None,
@@ -544,6 +568,8 @@ class FirestoreStore:
                     "created_at": _now(),
                 }))
                 result["order_id"] = order_ref.id
+                result["amount"] = amount
+                result["amount_source"] = "owner" if owner_entered else "extracted"
 
             for operation, ref, data in writes:
                 if operation == "set":

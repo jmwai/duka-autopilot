@@ -74,9 +74,20 @@ function OutcomeRows({ ledger }: { ledger: LedgerResult }) {
               </Button>
             </div>
           ) : (
-            <p className="mt-3 font-mono text-[0.68rem] text-muted-foreground">
-              {row.order_id ? <Link href={`/orders?order=${encodeURIComponent(row.order_id)}`} className="font-semibold text-primary underline-offset-4 hover:underline">Open order {row.order_id}</Link> : "Order recorded"}
-            </p>
+            /* The sale is already in the books; say so like it matters rather
+               than hiding it in a footnote. */
+            <div className="mt-3 flex flex-col gap-3 rounded-lg bg-card p-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm">
+                <span className="font-semibold">Sale recorded:</span>{" "}
+                {row.amount === null ? "amount recorded" : formatKsh(row.amount)} for {row.customer_name}
+                {row.paid ? ", marked paid" : ", payment still owed"}.
+              </p>
+              {row.order_id ? (
+                <Button asChild size="sm" variant="outline" className="shrink-0">
+                  <Link href={`/orders?order=${encodeURIComponent(row.order_id)}`}>Open order #{row.order_id} <ArrowRight aria-hidden="true" /></Link>
+                </Button>
+              ) : null}
+            </div>
           )}
         </article>
       ))}

@@ -14,6 +14,7 @@ const EXACT_GET = new Set([
   "orders",
   "approvals",
   "recon/report",
+  "recon/nightly/status",
   "digest/morning",
   "metrics/costs",
   "evidence/release",
@@ -30,6 +31,7 @@ const EXACT_POST = new Set([
   "recon/run",
   "recon/exact",
   "recon/nightly",
+  "recon/nightly/start",
   "restock/check",
   "memory/drain",
 ]);

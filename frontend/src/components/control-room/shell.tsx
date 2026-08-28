@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { DesktopNavigation, MobileNavigation } from "@/components/control-room/navigation";
 import { LogoutButton } from "@/components/control-room/logout-button";
 import { ControlRoomTopBar } from "@/components/control-room/top-bar";
+import { NightRunWatcher } from "@/components/night-shift/night-run-watcher";
 import {
   Sidebar,
   SidebarContent,
@@ -73,6 +74,9 @@ export async function ControlRoomShell({ children }: { children: React.ReactNode
       </SidebarInset>
 
       <MobileNavigation />
+      {/* Mounted here, not on the night shift page, so a run the owner started
+          still reports back after they have moved on to another screen. */}
+      <NightRunWatcher />
     </SidebarProvider>
   );
 }

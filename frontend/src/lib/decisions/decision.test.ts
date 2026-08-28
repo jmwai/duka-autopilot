@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { Approval } from "../api/contracts";
-import { decisionKinds, decisionPresentation } from "./decision";
+import { decisionKinds, decisionPresentation, ownerAmountError, OWNER_AMOUNT_MAX } from "./decision";
 
 function approval(kind: string, payload: Record<string, unknown> = {}): Approval {
   return { id: "opaque-1", kind, status: "pending", payload };
@@ -50,15 +50,42 @@ describe("Decision presentation contracts", () => {
     expect(JSON.stringify(ledger)).not.toContain(internalKey);
   });
 
-  it("fails closed for an unreadable ledger amount and an unknown kind", () => {
+  it("asks the owner for an unreadable ledger amount instead of guessing", () => {
     const ledger = decisionPresentation(approval("ledger_row", {
       row: { customer_name: "Asha", description: "Sukari", amount: 0, confidence: 0.4 },
       reason: "amount unreadable",
     }));
-    const unknown = decisionPresentation(approval("future_effect"));
-    expect(ledger.canApprove).toBe(false);
     expect(ledger.observed).toContain("amount unreadable");
-    expect(unknown.canApprove).toBe(false);
+    // The owner can complete the row, but only by supplying the figure.
+    expect(ledger.canApprove).toBe(true);
+    expect(ledger.needsAmount).toBe(true);
+    expect(ledger.approveEffect).toContain("will not guess");
+    expect(ledger.approveEffect).toContain("owner-entered");
+  });
+
+  it("does not offer an amount field when the model read one", () => {
+    const ledger = decisionPresentation(approval("ledger_row", {
+      row: { customer_name: "Asha", description: "Sukari", amount: 390, confidence: 0.6 },
+      reason: "confidence 0.60",
+    }));
+    expect(ledger.canApprove).toBe(true);
+    expect(ledger.needsAmount).toBe(false);
+  });
+
+  it("still fails closed for a kind it does not know", () => {
+    expect(decisionPresentation(approval("future_effect")).canApprove).toBe(false);
+  });
+
+  it("keeps an owner-entered amount inside shop-counter bounds", () => {
+    expect(ownerAmountError("240")).toBeNull();
+    expect(ownerAmountError(String(OWNER_AMOUNT_MAX))).toBeNull();
+    expect(ownerAmountError("")).toContain("Enter the amount");
+    expect(ownerAmountError("0")).toContain("at least KSh 1");
+    expect(ownerAmountError("-5")).toContain("digits only");
+    expect(ownerAmountError("24.50")).toContain("whole shillings");
+    expect(ownerAmountError("1e4")).toContain("digits only");
+    expect(ownerAmountError(String(OWNER_AMOUNT_MAX + 1))).toContain("limit");
+    expect(ownerAmountError("71000000")).toContain("limit");
   });
 
   it("produces stable unique filter kinds", () => {

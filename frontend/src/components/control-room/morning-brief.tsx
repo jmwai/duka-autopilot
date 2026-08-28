@@ -16,7 +16,6 @@ import { KshValue, Metric } from "@/components/control-room/metric";
 import { PageHeader } from "@/components/control-room/page-header";
 import { DegradedBanner } from "@/components/control-room/product-states";
 import { ProofSheet } from "@/components/control-room/proof-sheet";
-import { ReleaseStrip } from "@/components/control-room/release-strip";
 import { TrustBadge } from "@/components/control-room/trust-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -75,14 +74,6 @@ export function MorningBrief({ data }: { data: MorningBriefData }) {
           description="These books remain visible, but Duka is not presenting an old run as today’s completed work. Open Night Shift to inspect or run the next approved check."
         />
       ) : null}
-
-      <ReleaseStrip
-        environment={environment}
-        releaseSha={version.release_sha}
-        model={version.model}
-        modelLocation={version.model_location}
-        runId={nightly?.run_id}
-      />
 
       <section className="paper-noise relative mb-5 overflow-hidden rounded-2xl bg-sidebar px-4 py-5 text-sidebar-foreground shadow-sm sm:px-7 sm:py-7">
         <div className="relative z-10 grid gap-7 lg:grid-cols-[minmax(0,1fr)_minmax(19rem,0.48fr)] lg:items-end">
@@ -205,7 +196,6 @@ export function MorningBrief({ data }: { data: MorningBriefData }) {
         </div>
       </div>
 
-      <p className="mt-7 text-center text-xs text-muted-foreground">Synthetic judging environment · No external M-Pesa transfer or supplier order is initiated.</p>
     </>
   );
 }

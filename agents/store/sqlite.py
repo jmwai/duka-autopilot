@@ -19,6 +19,8 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
+from agents.store.base import LEDGER_OWNER_AMOUNT_MAX
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS products (
     sku TEXT PRIMARY KEY,
@@ -494,18 +496,27 @@ class SqliteStore:
             (decision, decision, approval_id))
 
     def claim_approval_decision(self, approval_id, decision: str,
-                                lease_seconds: int = 120) -> dict:
+                                lease_seconds: int = 120,
+                                owner_amount: int | None = None) -> dict:
         now = int(time.time())
         with self._conn() as c:
             c.execute("BEGIN IMMEDIATE")
             row = c.execute(
                 "SELECT status,requested_decision,resume_attempts,"
-                "resume_lease_expires_at FROM approvals WHERE id=?",
+                "resume_lease_expires_at,payload FROM approvals WHERE id=?",
                 (approval_id,)).fetchone()
             if row is None:
                 return {"claimed": False, "outcome": "not_found"}
             status = row["status"]
             requested = row["requested_decision"]
+            payload = json.loads(row["payload"])
+            stored_amount = payload.get("owner_amount")
+            # The typed amount is part of the decision, so it obeys the same
+            # rule: the same amount replays, a different one conflicts.
+            if (owner_amount is not None and stored_amount is not None
+                    and int(stored_amount) != int(owner_amount)):
+                return {"claimed": False, "outcome": "conflict",
+                        "status": status, "decision": requested or status}
             if status in ("approved", "rejected"):
                 return {"claimed": False,
                         "outcome": "idempotent" if status == decision else "conflict",
@@ -524,6 +535,12 @@ class SqliteStore:
                 "resume_attempts=?,resume_lease_expires_at=?,last_error=NULL "
                 "WHERE id=?",
                 (decision, attempts, now + lease_seconds, approval_id))
+            if owner_amount is not None and stored_amount is None:
+                # Same transaction as the claim: the effect can never read a
+                # payload the claim did not agree to.
+                payload["owner_amount"] = int(owner_amount)
+                c.execute("UPDATE approvals SET payload=? WHERE id=?",
+                          (json.dumps(payload), approval_id))
             return {"claimed": True, "outcome": "claimed", "status": "resuming",
                     "decision": decision, "attempts": attempts}
 
@@ -597,9 +614,16 @@ class SqliteStore:
                     c.execute("UPDATE orders SET status='rejected' WHERE id=?", (order_id,))
             elif kind == "ledger_row" and decision == "approved":
                 row = payload.get("row") or {}
-                amount = int(row.get("amount") or 0)
+                # The owner may supply the amount the model could not read.
+                # The extracted row is never overwritten, so the trail keeps
+                # what the model saw next to what the owner said.
+                owner_amount = payload.get("owner_amount")
+                owner_entered = owner_amount is not None
+                amount = int(owner_amount) if owner_entered else int(row.get("amount") or 0)
                 if amount <= 0:
                     raise ValueError("approved ledger row requires a positive amount")
+                if amount > LEDGER_OWNER_AMOUNT_MAX and owner_entered:
+                    raise ValueError("owner-entered ledger amount exceeds the limit")
                 customer_id = row.get("customer_id") or "walk-in"
                 c.execute(
                     "INSERT OR IGNORE INTO customers (id,name,notes) VALUES (?,?,?)",
@@ -610,7 +634,9 @@ class SqliteStore:
                     "(customer_id,status,total,needs_review,notes,source_event_id) "
                     "VALUES (?,?,?,?,?,?)",
                     (customer_id, "paid" if row.get("paid") else "confirmed",
-                     amount, 0, "ledger row approved by owner",
+                     amount, 0,
+                     "ledger row approved by owner; amount entered by owner"
+                     if owner_entered else "ledger row approved by owner",
                      payload.get("source_event_id")))
                 order_id = cur.lastrowid
                 c.execute(
@@ -618,6 +644,8 @@ class SqliteStore:
                     "(order_id,sku,name,qty,unit_price) VALUES (?,?,?,?,?)",
                     (order_id, None, row.get("description") or "ledger sale", 1, amount))
                 result["order_id"] = order_id
+                result["amount"] = amount
+                result["amount_source"] = "owner" if owner_entered else "extracted"
 
             c.execute(
                 "UPDATE approvals SET effect_applied_at=datetime('now'),effect_result=? "

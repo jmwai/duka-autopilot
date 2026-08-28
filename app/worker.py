@@ -9,6 +9,14 @@ import logging
 from agents.store import get_store
 
 INBOUND_TOPIC = "inbound"
+NIGHTLY_TOPIC = "nightly"
+# The night shift belongs to the shop, not to a customer. It still needs an
+# actor for the event receipt's conflict check and for the publish ordering
+# key, which serialises it behind any other owner work already in flight.
+NIGHTLY_ACTOR = "owner"
+# A batch is a real model call, so the receipt's lease has to outlast a whole
+# bounded run rather than the 120s a single customer turn needs.
+NIGHTLY_LEASE_SECONDS = 900
 MAX_MEDIA_BYTES = 6_000_000
 ALLOWED_IMAGE_MIMES = {"image/jpeg", "image/png", "image/webp"}
 ALLOWED_AUDIO_MIMES = {"audio/ogg", "audio/webm", "audio/wav", "audio/mpeg", "audio/mp4"}
@@ -170,6 +178,51 @@ async def handle_inbound(payload: dict) -> dict:
     return response
 
 
+async def handle_nightly(payload: dict) -> dict:
+    """Run one night shift off the bus so no HTTP request has to wait for it.
+
+    The API answers 202 with the run id; the owner learns the outcome from
+    the event receipt, which is why every exit path below writes one.
+    """
+    store = get_store()
+    run_id = str(payload.get("run_id") or payload.get("event_id") or "").strip()
+    if not run_id or len(run_id) > 200:
+        raise ValueError("run_id is required and must be at most 200 characters")
+
+    claim = store.claim_event(run_id, NIGHTLY_ACTOR, _payload_hash(payload),
+                              lease_seconds=NIGHTLY_LEASE_SECONDS)
+    if not claim["claimed"]:
+        logger.info("nightly run replayed", extra={"run_id": run_id})
+        return {"run_id": run_id, "duplicate": True,
+                "event_status": claim["status"], "result": claim.get("result")}
+
+    max_batches = payload.get("max_batches")
+    try:
+        from agents.nightly import run_nightly
+        report = await run_nightly(
+            fuzzy=payload.get("fuzzy", True) is not False,
+            execution_surface=str(payload.get("execution_surface") or "worker"),
+            max_batches=int(max_batches) if max_batches else None,
+        )
+    except Exception as exc:
+        retryable = _retryable(exc)
+        error = f"{exc.__class__.__name__}: {str(exc)[:300]}"
+        store.fail_event(run_id, error, retryable=retryable)
+        if retryable:
+            logger.warning("nightly run retryable failure", extra={"run_id": run_id})
+            raise RetryableInboundError(error) from exc
+        logger.error("nightly run failed", extra={"run_id": run_id})
+        return {"run_id": run_id, "error": error, "retryable": False}
+
+    response = {"run_id": run_id, "duplicate": False, "report": report}
+    store.complete_event(run_id, response)
+    logger.info("nightly run completed",
+                extra={"run_id": run_id,
+                       "fuzzy_proposals": report.get("fuzzy_proposals")})
+    return response
+
+
 def register() -> None:
     from app.bus import subscribe
     subscribe(INBOUND_TOPIC, handle_inbound)
+    subscribe(NIGHTLY_TOPIC, handle_nightly)

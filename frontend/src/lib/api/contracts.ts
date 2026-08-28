@@ -19,6 +19,33 @@ export const statementSchema = z.object({
   unmatched: z.number().int().nonnegative(),
 });
 
+// One re-entry of the workflow graph: the residue it was handed, what it
+// proposed, and what that batch cost.
+export const fuzzyBatchSchema = z.object({
+  batch: z.number().int().positive(),
+  residue_before: z.number().int().nonnegative(),
+  residue_after: z.number().int().nonnegative(),
+  proposed: z.number().int().nonnegative(),
+  node_path: z.array(z.string()).default([]),
+  input_tokens: z.number().int().nonnegative().default(0),
+  output_tokens: z.number().int().nonnegative().default(0),
+  cost_usd: z.number().nonnegative().default(0),
+  wall_ms: z.number().int().nonnegative().default(0),
+});
+
+export const fuzzyProposalSchema = z.object({
+  approval_id: z.string(),
+  payment_id: z.string(),
+  order_id: z.string(),
+  confidence: z.number().min(0).max(1),
+  rationale: z.string(),
+  payment_ref: z.string().default(""),
+  payer_name: z.string().default(""),
+  payment_amount: z.number().int().nonnegative().default(0),
+  order_total: z.number().int().nonnegative().default(0),
+  customer_name: z.string().default(""),
+});
+
 export const nightlyReportSchema = z.object({
   schema_version: z.number().int().positive().optional(),
   run_id: z.string().optional(),
@@ -37,6 +64,11 @@ export const nightlyReportSchema = z.object({
   residue_start: z.number().int().nonnegative(),
   fuzzy_batches: z.number().int().nonnegative(),
   fuzzy_proposals: z.number().int().nonnegative(),
+  // Reports persisted before the trace existed simply have none of this.
+  fuzzy_batch_trace: z.array(fuzzyBatchSchema).default([]),
+  fuzzy_proposal_sample: z.array(fuzzyProposalSchema).default([]),
+  fuzzy_batch_limit: z.number().int().positive().optional(),
+  fuzzy_stop_reason: z.string().optional(),
   residue_end: z.number().int().nonnegative(),
   model_calls: z.number().int().nonnegative().optional(),
   model_input_tokens: z.number().int().nonnegative().optional(),
@@ -54,6 +86,23 @@ export const nightlyReportSchema = z.object({
       message: "nightly residue cannot grow during one run",
     });
   }
+});
+
+export const nightlyStartSchema = z.object({
+  queued: z.literal(true),
+  run_id: z.string().min(1),
+});
+
+// "pending" means accepted but not yet claimed by the worker — a normal race
+// on a fresh run, not a failure.
+export const nightlyRunStatusSchema = z.object({
+  run_id: z.string(),
+  status: z.enum([
+    "pending", "processing", "completed", "failed_retryable", "failed_permanent",
+  ]),
+  attempts: z.number().int().nonnegative().optional(),
+  report: nightlyReportSchema.nullable().default(null),
+  error: z.string().nullable().default(null),
 });
 
 export const costSummarySchema = z.object({
@@ -253,6 +302,10 @@ export const decisionResponseSchema = z.union([
     decision: z.enum(["approved", "rejected"]),
     customer_id: z.string().nullable().optional(),
     resumed_reply: z.string().nullable().optional(),
+    // Present when the decision wrote a sale into the books.
+    order_id: z.string().nullable().optional(),
+    amount: z.number().int().nonnegative().nullable().optional(),
+    amount_source: z.enum(["owner", "extracted"]).nullable().optional(),
   }),
   z.object({
     ok: z.literal(false),
@@ -310,6 +363,9 @@ export const ledgerUploadResponseSchema = z.object({
 export type DukaVersion = z.infer<typeof versionSchema>;
 export type MorningDigest = z.infer<typeof digestSchema>;
 export type NightlyReport = z.infer<typeof nightlyReportSchema>;
+export type NightlyRunStatus = z.infer<typeof nightlyRunStatusSchema>;
+export type FuzzyBatch = z.infer<typeof fuzzyBatchSchema>;
+export type FuzzyProposal = z.infer<typeof fuzzyProposalSchema>;
 export type CostSummary = z.infer<typeof costSummarySchema>;
 export type Approval = z.infer<typeof approvalSchema>;
 export type DecisionResponse = z.infer<typeof decisionResponseSchema>;

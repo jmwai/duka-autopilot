@@ -10,7 +10,6 @@ test("judge profile opens with meaningful evidence and bilingual history", async
   await expect(page.getByRole("heading", { level: 2, name: /3,874.*settled exactly/ })).toBeVisible();
   await expect(page.getByText(/97\.2% of 3,986 statement rows/)).toBeVisible();
   await expect(page.getByRole("link", { name: "Review 3 decisions" })).toBeVisible();
-  await expect(page.getByText("Local rehearsal", { exact: true })).toBeVisible();
   await expect(page.getByText("Restock draft", { exact: true })).toBeVisible();
   await expect(page.getByText("+2 more bounded decisions wait in the owner queue.")).toBeVisible();
 
@@ -19,6 +18,13 @@ test("judge profile opens with meaningful evidence and bilingual history", async
   await expect(ownerQueue.getByText("Restock draft", { exact: true })).toBeVisible();
   await expect(ownerQueue.getByText("Ledger row", { exact: true })).toBeVisible();
   await expect(ownerQueue.getByText("Uncertain order", { exact: true })).toBeVisible();
+
+  // Release proof is no longer on the brief; Evidence is where it belongs.
+  await page.goto("/evidence");
+  const releaseProof = page.getByRole("region", { name: "Release proof" });
+  await expect(releaseProof.getByText("Local rehearsal", { exact: true })).toBeVisible();
+  await expect(releaseProof).toContainText("not Google Cloud execution evidence");
+
   await page.goto("/");
 
   const desktopA11y = await new AxeBuilder({ page })

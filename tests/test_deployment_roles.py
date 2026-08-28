@@ -88,13 +88,15 @@ def test_worker_readiness_requires_vertex_backend(monkeypatch):
 
 
 def test_worker_push_surface_processes_pubsub_envelope(monkeypatch):
-    from app import worker_api
+    """A push with no topic attribute is inbound work, as it was before the
+    bus carried more than one logical topic."""
+    from app import bus, worker, worker_api
 
     async def fake_handle(payload):
         assert payload["event_id"] == "msg-1"
         return {"event_id": "msg-1", "duplicate": False}
 
-    monkeypatch.setattr(worker_api, "handle_inbound", fake_handle)
+    monkeypatch.setitem(bus._handlers, worker.INBOUND_TOPIC, fake_handle)
     encoded = base64.b64encode(json.dumps({
         "customer_id": "254711000001", "text": "unga mbili",
     }).encode()).decode()
@@ -104,6 +106,25 @@ def test_worker_push_surface_processes_pubsub_envelope(monkeypatch):
         })
     assert response.status_code == 200
     assert response.json()["event_id"] == "msg-1"
+
+
+def test_worker_push_surface_routes_the_nightly_topic(monkeypatch):
+    from app import bus, worker, worker_api
+
+    async def fake_nightly(payload):
+        return {"run_id": payload["run_id"], "duplicate": False}
+
+    monkeypatch.setitem(bus._handlers, worker.NIGHTLY_TOPIC, fake_nightly)
+    encoded = base64.b64encode(json.dumps({
+        "run_id": "run-9", "customer_id": "owner",
+    }).encode()).decode()
+    with TestClient(worker_api.app) as client:
+        response = client.post("/pubsub/push", json={
+            "message": {"data": encoded, "messageId": "msg-2",
+                        "attributes": {bus.TOPIC_ATTRIBUTE: worker.NIGHTLY_TOPIC}},
+        })
+    assert response.status_code == 200
+    assert response.json()["run_id"] == "run-9"
 
 
 @pytest.mark.asyncio

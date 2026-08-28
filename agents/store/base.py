@@ -16,6 +16,11 @@ from typing import Protocol
 
 EntityId = str | int
 
+# A gated ledger row whose amount the model could not read may be completed by
+# the owner typing it. One handwritten shop-counter line is small money, so the
+# ceiling is deliberately low: a typo should bounce, not become a sale.
+LEDGER_OWNER_AMOUNT_MAX = 10_000
+
 
 class Store(Protocol):
     # ---- lifecycle -------------------------------------------------------
@@ -76,7 +81,17 @@ class Store(Protocol):
                        payload: dict) -> None: ...
     def resolve_approval(self, approval_id: EntityId, decision: str) -> None: ...
     def claim_approval_decision(self, approval_id: EntityId, decision: str,
-                                lease_seconds: int = 120) -> dict: ...
+                                lease_seconds: int = 120,
+                                owner_amount: int | None = None) -> dict:
+        """Claim the right to apply one decision, once.
+
+        owner_amount carries an amount the owner typed for a ledger row the
+        model could not read. It is stored with the claim so the effect stays
+        a pure function of the payload: replaying the same amount is
+        idempotent, and a different amount conflicts like a different
+        decision would.
+        """
+        ...
     def complete_approval_decision(self, approval_id: EntityId,
                                    decision: str) -> None: ...
     def fail_approval_decision(self, approval_id: EntityId,

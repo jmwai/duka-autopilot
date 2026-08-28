@@ -14,6 +14,7 @@ import hmac
 import logging
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from functools import lru_cache
 from uuid import uuid4
 
 from google.adk.events.event import Event
@@ -30,6 +31,14 @@ logger = logging.getLogger(__name__)
 # Agent Platform assigns numeric session ids. The store reserves an unbound
 # pointer and this module binds whatever the session service hands back.
 _NUMERIC_SESSION_ID = re.compile(r"^[0-9]+$")
+
+
+@lru_cache(maxsize=1)
+def _workflow_name() -> str:
+    """The graph's own name, imported late to keep the import cycle broken."""
+    from agents.graph import autopilot_workflow
+    return autopilot_workflow.name
+
 
 # USD per 1M tokens - gemini-3.7-flash intro rates (through 2026-12-31),
 # override in .env (standard rates from 2027: 1.50 / 7.50)
@@ -412,6 +421,11 @@ async def _run_turn_locked(customer_id: str, text: str,
                 label = (
                     ni.path.split("/")[-1].split("@")[0]
                     if ni and getattr(ni, "path", None) else event.author)
+                # Events with no node_info fall back to the author, which is the
+                # workflow itself. That is the container, not a node the turn
+                # ran through, and interleaving it hides the actual route.
+                if label == _workflow_name():
+                    label = None
                 if label and (not result.node_path or result.node_path[-1] != label):
                     result.node_path.append(label)
                 usage = getattr(event, "usage_metadata", None)
