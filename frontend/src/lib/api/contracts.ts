@@ -148,6 +148,14 @@ export const createOrderResponseSchema = z.object({
   idempotent: z.boolean(),
 });
 
+export const orderDecisionResponseSchema = z.object({
+  event_id: z.string(),
+  order_id: z.union([z.string(), z.number()]).transform(String),
+  status: z.string(),
+  previous_status: z.string(),
+  idempotent: z.boolean(),
+});
+
 export const inventoryItemSchema = productSchema.extend({
   reorder_point: z.number().int().nonnegative(),
   target_stock: z.number().int().positive(),

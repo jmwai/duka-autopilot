@@ -58,6 +58,13 @@ export function matchBffRoute(method: string, rawSegments: string[]): AllowedRou
       ? { upstreamPath: path, maxBytes: 8_000 }
       : null;
   }
+  // orders/{id}/decision - the owner confirming or cancelling a proposed order.
+  if (method === "POST" && rawSegments.length === 3
+      && rawSegments[0] === "orders" && rawSegments[2] === "decision") {
+    return IDENTIFIER.test(rawSegments[1])
+      ? { upstreamPath: path, maxBytes: 8_000 }
+      : null;
+  }
   return null;
 }
 

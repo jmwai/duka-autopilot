@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import re
 from typing import Literal
 from uuid import uuid4
 
@@ -236,6 +237,56 @@ def create_sale(body: SaleIn, _auth: None = Depends(require_owner)):
     if result["status"] != "completed" or not result.get("result"):
         return JSONResponse({
             "error": "sale event is already processing or unavailable",
+            "event_id": body.event_id,
+            "status": result["status"],
+        }, status_code=409)
+    return {**result["result"], "idempotent": result["idempotent"]}
+
+
+class OrderDecisionIn(BaseModel):
+    event_id: str = Field(
+        min_length=1, max_length=200, pattern=r"^[A-Za-z0-9._~-]+$")
+    decision: Literal["confirm", "cancel"]
+
+
+# An owner decides whether a proposed order stands. Deliberately narrow: only
+# an order still awaiting the customer's payment can be decided, and neither
+# outcome is "paid" - money status comes from payment evidence alone.
+ORDER_DECISION_STATUS = {"confirm": "confirmed", "cancel": "rejected"}
+ORDER_DECIDABLE_FROM = ("pending_confirmation",)
+
+
+@app.post("/orders/{order_id}/decision")
+def decide_order(order_id: str, body: OrderDecisionIn,
+                 _auth: None = Depends(require_owner)):
+    """Confirm or cancel an order the agent proposed. No money moves."""
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", order_id):
+        return JSONResponse({"error": "invalid order id"}, status_code=422)
+    to_status = ORDER_DECISION_STATUS[body.decision]
+    payload_hash = hashlib.sha256(json.dumps({
+        "order_id": order_id, "decision": body.decision,
+    }, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+    result = get_store().decide_order_once(
+        body.event_id, order_id, payload_hash, to_status, ORDER_DECIDABLE_FROM)
+
+    if result["status"] == "missing":
+        return JSONResponse({"error": "order not found"}, status_code=404)
+    if result["status"] == "not_allowed":
+        current = (result.get("result") or {}).get("status")
+        return JSONResponse({
+            "error": f"an order with status {current} cannot be decided here",
+            "order_id": order_id,
+            "status": current,
+        }, status_code=409)
+    if result["status"] == "conflict":
+        return JSONResponse({
+            "error": "decision event ID was already used for another decision",
+            "event_id": body.event_id,
+        }, status_code=409)
+    if result["status"] != "completed" or not result.get("result"):
+        return JSONResponse({
+            "error": "decision is already processing or unavailable",
             "event_id": body.event_id,
             "status": result["status"],
         }, status_code=409)

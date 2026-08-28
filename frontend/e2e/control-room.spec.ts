@@ -180,7 +180,9 @@ test.describe("control room release candidate", () => {
 
     await result.click();
     await expect(result).toHaveAttribute("aria-selected", "true");
-    await expect(page.getByText("Verified bilingual fixtures are pending")).toBeVisible();
+    // The bilingual fixtures are frozen, so the result view shows the expected
+    // ground truth rather than the pending placeholder it used to.
+    await expect(page.getByText("Frozen ground truth")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Page input" })).toBeHidden();
   });
 
@@ -448,7 +450,7 @@ test.describe("control room release candidate", () => {
 
     await page.goto("/inbox");
     await page.getByLabel("Message text").fill("Niletee mkate moja");
-    await page.getByRole("button", { name: "Queue event" }).click();
+    await page.getByRole("button", { name: "Send message" }).click();
     await expect(page.getByText("Handoff uncertain")).toBeVisible();
     const receipt = page.getByText(/queued .* · [a-f0-9]+/);
     const firstReceipt = await receipt.textContent();
@@ -457,6 +459,32 @@ test.describe("control room release candidate", () => {
     const retriedReceipt = await receipt.textContent();
     expect(retriedReceipt).toBe(firstReceipt);
     expect(attempts).toBe(2);
+  });
+
+  test("enter sends the message and shift+enter keeps a newline", async ({ page }) => {
+    const sent: string[] = [];
+    await page.route("**/api/inbound", async (route) => {
+      const payload = route.request().postDataJSON() as { event_id: string; text: string };
+      sent.push(payload.text);
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ queued: true, event_id: payload.event_id }) });
+    });
+
+    await page.goto("/inbox");
+    const composer = page.getByLabel("Message text");
+
+    // Shift+Enter opens a second line instead of sending.
+    await composer.fill("Niletee mkate");
+    await composer.press("Shift+Enter");
+    await composer.pressSequentially("na maziwa");
+    expect(sent).toHaveLength(0);
+    await expect(composer).toHaveValue("Niletee mkate\nna maziwa");
+
+    // Enter sends the whole multi-line message and clears the composer. The
+    // delivery mark is deliberately not asserted - the local worker replies
+    // fast enough that the transient "accepted" label is a race.
+    await composer.press("Enter");
+    await expect(composer).toHaveValue("");
+    expect(sent).toEqual(["Niletee mkate\nna maziwa"]);
   });
 
   test("session rotation reuses one operation after a lost response", async ({ page }) => {
@@ -478,6 +506,9 @@ test.describe("control room release candidate", () => {
     });
 
     await page.goto("/inbox");
+    // Session rotation now lives in the thread details drawer, so the thread
+    // itself stays a conversation.
+    await page.getByRole("button", { name: "Details" }).click();
     await page.getByRole("button", { name: "Start a new day" }).click();
     const dialog = page.getByRole("dialog", { name: "Start a fresh managed session?" });
     await dialog.getByRole("button", { name: "Start new day" }).click();
