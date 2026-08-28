@@ -24,16 +24,64 @@ ROW_CONFIDENCE_GATE = 0.8
 CUSTOMER_ID = re.compile(r"^[A-Za-z0-9_-]{1,100}$")
 
 
+# Values a model writes into `issue` when it means "nothing is wrong". Treating
+# these as a real issue gated every row on the page, however legible.
+_NON_ISSUES = {"", "none", "n/a", "na", "null", "nil", "no issue", "no issues",
+               "clear", "legible", "ok", "okay", "-", "false"}
+
+
 def _text(value: object, fallback: str = "", limit: int = 500) -> str:
     cleaned = str(value or "").strip()
     return (cleaned or fallback)[:limit]
+
+
+def _stated_issue(value: object) -> str:
+    """A model's own issue note, ignoring its ways of saying there is none."""
+    cleaned = _text(value, limit=300)
+    return "" if cleaned.strip().lower().rstrip(".") in _NON_ISSUES else cleaned
+
+
+def _coerce_amount(value: object) -> int | None:
+    """Accept the integer forms a model reasonably emits for whole shillings.
+
+    Only exact whole numbers convert: 390, 390.0 and "390" are the same amount,
+    while 390.5 or "about 390" stay unreadable rather than being rounded into
+    the books.
+    """
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value) if value.is_integer() else None
+    if isinstance(value, str):
+        cleaned = value.strip().replace(",", "").removeprefix("KSh").removeprefix("Ksh").strip()
+        try:
+            number = float(cleaned)
+        except ValueError:
+            return None
+        return int(number) if number.is_integer() else None
+    return None
+
+
+def _coerce_paid(value: object) -> bool | None:
+    """Accept the tick markers a Kenyan ledger page actually uses."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        cleaned = value.strip().lower()
+        if cleaned in {"yes", "y", "true", "paid", "ndio", "ndiyo", "lipa", "amelipa"}:
+            return True
+        if cleaned in {"no", "n", "false", "unpaid", "hapana", "deni"}:
+            return False
+    return None
 
 
 def _normalize_row(raw: object) -> tuple[dict, list[str]]:
     """Keep one malformed model row from blocking valid rows on the page."""
     row = raw if isinstance(raw, dict) else {}
     issues: list[str] = []
-    stated_issue = _text(row.get("issue"), limit=300)
+    stated_issue = _stated_issue(row.get("issue"))
 
     customer_id = row.get("customer_id")
     if customer_id is not None:
@@ -46,8 +94,8 @@ def _normalize_row(raw: object) -> tuple[dict, list[str]]:
     if not description:
         issues.append("description missing")
 
-    raw_amount = row.get("amount")
-    amount = raw_amount if isinstance(raw_amount, int) and not isinstance(raw_amount, bool) else 0
+    coerced_amount = _coerce_amount(row.get("amount"))
+    amount = coerced_amount if coerced_amount and coerced_amount > 0 else 0
     if amount <= 0:
         amount = 0
         if "amount" not in stated_issue.lower():
@@ -65,9 +113,9 @@ def _normalize_row(raw: object) -> tuple[dict, list[str]]:
         confidence = 0.0
         issues.append("confidence invalid")
 
-    raw_paid = row.get("paid")
-    paid = raw_paid if isinstance(raw_paid, bool) else False
-    if not isinstance(raw_paid, bool):
+    coerced_paid = _coerce_paid(row.get("paid"))
+    paid = bool(coerced_paid)
+    if coerced_paid is None:
         issues.append("paid marker invalid")
 
     if stated_issue:

@@ -163,3 +163,61 @@ async def test_digest_includes_nightly_report_when_present():
     d = build_digest()
     assert d["nightly"] is not None
     assert d["nightly"]["exact_matched"] == 2
+
+
+def test_benign_issue_notes_do_not_gate_a_legible_row():
+    """A model writing issue="none" must not gate an otherwise clean row."""
+    from agents.tools.ledger import _normalize_row
+    for benign in ("none", "None.", "n/a", "", "clear", "OK"):
+        row, issues = _normalize_row({
+            "description": "Sugar 1kg", "amount": 390, "paid": True,
+            "confidence": 0.95, "issue": benign,
+        })
+        assert issues == [], f"{benign!r} should not raise an issue"
+        assert row["amount"] == 390 and row["paid"] is True
+
+
+def test_a_real_issue_note_still_gates():
+    from agents.tools.ledger import _normalize_row
+    _, issues = _normalize_row({
+        "description": "Sugar 1kg", "amount": 0, "paid": False,
+        "confidence": 0.2, "issue": "amount unreadable",
+    })
+    assert "amount unreadable" in issues
+
+
+def test_whole_shilling_amounts_are_accepted_in_the_forms_a_model_emits():
+    from agents.tools.ledger import _normalize_row
+    for value in (390, 390.0, "390", " 390 ", "KSh 390", "1,390"):
+        row, issues = _normalize_row({
+            "description": "Unga", "amount": value, "paid": True, "confidence": 0.95,
+        })
+        assert row["amount"] in (390, 1390) and issues == [], f"{value!r} rejected"
+
+
+def test_fractional_or_unparseable_amounts_stay_unreadable():
+    """No value may be invented or rounded into the books."""
+    from agents.tools.ledger import _normalize_row
+    for value in (390.5, "about 390", None, True, "abc"):
+        row, issues = _normalize_row({
+            "description": "Unga", "amount": value, "paid": True, "confidence": 0.95,
+        })
+        assert row["amount"] == 0 and issues, f"{value!r} should not become an amount"
+
+
+def test_swahili_and_english_paid_markers_are_understood():
+    from agents.tools.ledger import _normalize_row
+    for marker, expected in (("NDIO", True), ("ndiyo", True), ("YES", True),
+                             ("HAPANA", False), ("no", False), (True, True)):
+        row, issues = _normalize_row({
+            "description": "Unga", "amount": 390, "paid": marker, "confidence": 0.95,
+        })
+        assert row["paid"] is expected and issues == [], f"{marker!r} misread"
+
+
+def test_an_unrecognised_paid_marker_still_gates():
+    from agents.tools.ledger import _normalize_row
+    _, issues = _normalize_row({
+        "description": "Unga", "amount": 390, "paid": "maybe", "confidence": 0.95,
+    })
+    assert "paid marker invalid" in issues
