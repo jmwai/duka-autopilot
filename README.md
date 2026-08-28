@@ -27,54 +27,95 @@ Built for the [All Things Agentic Hackathon](https://allthingsagentichackathon.d
 2. **Deterministic first.** Reconciliation is an indexed, bulk, plain-code
    pass. The LLM only ever sees the bounded residue engineering could not
    settle. Cost claims are published only after a measured cloud run.
-3. **Humans gate uncertainty.** Refund proposals, low-confidence orders, and
-   fuzzy matches stop in the approval queue. Exact evidence may update the
-   books; Duka never initiates an external transfer.
+3. **Humans gate uncertainty — and resolve it.** Refund proposals,
+   low-confidence orders, gated ledger rows, and fuzzy matches stop in the
+   approval queue. Where the model refuses to guess, the owner can supply the
+   single missing fact — a smudged ledger amount, bounded and recorded as
+   owner-entered, never confused with what the model read. Exact evidence may
+   update the books; Duka never initiates an external transfer.
 4. **Tool invariants survive every modality.** Text, voice, and photo intake
    share catalog validation, authority scoping, confidence gates, idempotency,
    and durable history filtering. The deterministic text screen does not claim
    to understand audio or image semantics.
 
+## See it running
+
+**<https://duka-prod-web-efjhavvylq-ew.a.run.app>** — the deployed control
+room, open with no login so you can act as the shop owner immediately. The
+data is synthetic; nothing there moves real money.
+
+Worth doing in that order: read the **morning brief**, start a run from
+**Night shift** and then walk away to another page until it tells you it
+finished, upload a page on **Ledger desk**, and clear what lands in
+**Decisions**.
+
 ## Run in 5 minutes
 
-For the complete judge-seed, standalone Next.js frontend, browser-test, and
-GCP preparation path, use
-[docs/local-testing-and-gcp-configuration.md](docs/local-testing-and-gcp-configuration.md).
+Two processes: the agent API, and the control room in front of it.
 
 ```bash
 uv sync --extra dev
 cp .env.example .env.local       # ignored local config; safe when .env/ is a virtualenv
 uv run python -m agents.seed     # explicit synthetic demo seed
-uv run uvicorn app.main:app --reload    # open http://localhost:8000
+DUKA_DEMO_OPEN_ACCESS=true uv run uvicorn app.main:app --reload   # API on :8000
 ```
 
-Stress-scale reconciliation (no API key needed — it's deterministic):
+```bash
+cd frontend                      # second terminal; Node >= 24.12, pnpm 11
+pnpm install
+DUKA_API_URL=http://localhost:8000 pnpm dev      # control room on :3000
+```
+
+Open <http://localhost:3000>. (`DUKA_DEMO_OPEN_ACCESS` waives only the
+password check that gets you an owner session; every route, tool, and
+authority boundary behind it is unchanged. Drop it and sign in with
+`DUKA_OWNER_PASSWORD` instead.)
+
+The API is usable on its own. Stress-scale reconciliation needs no API key,
+because it is deterministic:
 
 ```bash
-uv run python -m agents.synth.generate --rows 50000  # reproducible stress data
-curl -X POST "localhost:8000/recon/nightly?fuzzy=false"   # settle ~97% in ~1s
+uv run python -m agents.synth.generate --rows 50000   # reproducible stress data
+curl -X POST "localhost:8000/recon/nightly?fuzzy=false"   # ~97.3% settled, under a second, no model
 curl localhost:8000/digest/morning                # the owner's morning brief
 ```
 
-The async path (what Pub/Sub drives in the cloud):
+Two async paths, both of which return immediately and finish elsewhere —
+in-process locally, over Pub/Sub in the cloud:
 
 ```bash
+# a customer message: accepted, answered by the worker
 curl -X POST localhost:8000/inbound -H 'content-type: application/json' \
   -d '{"customer_id":"254711000001","text":"Nataka unga 2 bales"}'   # 202
 curl localhost:8000/messages/254711000001         # the reply, asynchronously
+
+# the night shift: queued, outlives the request, reports back
+RUN=$(curl -sX POST localhost:8000/recon/nightly/start \
+  -H 'content-type: application/json' -d '{"fuzzy":true}' | jq -r .run_id)
+curl "localhost:8000/recon/nightly/status?run_id=$RUN"   # pending → completed
 ```
 
 Keyless tests (money invariants, scale recon vs generator ground truth,
-async plumbing, screening, ledger gating, digest):
+async plumbing, screening, ledger gating, digest). 178 of the 196 run with
+no credential at all; the other 18 need a Firestore emulator:
 
 ```bash
-uv run pytest tests/
-# Firestore backend parity (needs the emulator; skips cleanly without):
-firebase emulators:exec --project demo-duka --only firestore \
-  ".venv/bin/python -m pytest tests/test_store_firestore.py -q"
+uv run pytest -q                 # 178 passed, 18 skipped
+
+gcloud beta emulators firestore start --host-port=127.0.0.1:8085 &
+FIRESTORE_EMULATOR_HOST=127.0.0.1:8085 FIRESTORE_DATABASE="(default)" \
+  GOOGLE_CLOUD_PROJECT=demo-duka uv run pytest -q      # all 196
 ```
 
-Measured economics (needs model access; writes docs/economics.md):
+Browser tests and the judge-state profile:
+
+```bash
+cd frontend && pnpm check        # lint, types, unit, build, bundle budget
+pnpm test:e2e                    # 33 Playwright cases against a real API
+pnpm test:e2e:judge              # the seeded judging profile
+```
+
+Measured economics (needs model access; writes `economics.md`):
 
 ```bash
 uv run python scripts/measure_nightly.py --rows 50000
@@ -105,7 +146,12 @@ customer (text / voice note / order photo)        owner (ledger photo)
 
 - `agents/` — the ADK workflow graph, tools, deterministic reconciliation
   engine, Store seam, and synthetic statement generator.
-- `app/` — FastAPI channel layer + WhatsApp-look demo UI.
+- `app/` — FastAPI channel layer: the public API, the Pub/Sub worker surface,
+  the event bus seam, and the Cloud Run Job entrypoints.
+- `frontend/` — the Next.js control room the owner actually works in: morning
+  brief, customer inbox, ledger desk, decisions, night shift, and the evidence
+  pages. It talks to the API through a server-side proxy, never from the
+  browser.
 - `tests/` — keyless deterministic suite.
 
 ## The four seams
@@ -126,8 +172,9 @@ not a rewrite.
 
 ## The graph
 
-One ADK workflow serves every modality. Rose nodes are plain code
-(`FunctionNode`s), green nodes are LLM agents, amber is the human gate:
+One ADK workflow serves every modality. In the diagram above each node is
+tagged `CODE` (a `FunctionNode`) or `LLM`, and the human gate is the amber
+one — the tag carries the meaning, not the colour:
 
 - **screen** (code) — injection phrasing, money-path social engineering and
   smuggled payloads are stopped before any LLM sees the message; flagged
@@ -149,8 +196,21 @@ One ADK workflow serves every modality. Rose nodes are plain code
 
 ## The night shift
 
-Cloud Scheduler executes the private nightly Cloud Run Job at 02:00: exact
+Cloud Scheduler executes the private nightly Cloud Run Job at 02:00: an exact
 pass, then fuzzy batches through the same graph until the residue stops
-shrinking, then a restock shelf scan, persisted report, and morning digest —
-deterministically, because nobody wants an LLM between the books and the money
-numbers.
+shrinking, then a restock shelf scan, a persisted report, and the morning
+digest. Every number in that report is produced by code — the model's only
+output is proposals sitting in the owner's queue.
+
+The owner can also start the same pipeline from the control room, and that is
+the part worth watching. It does not run inside the request: the API publishes
+to the bus, answers immediately, and a worker does the work. So you press the
+button, walk off to the inbox, and a couple of minutes later it interrupts you
+wherever you are to say it finished and left three proposals. The run is
+claimed and recorded like any other event, so a redelivery replays the receipt
+instead of reconciling the month twice.
+
+Each batch is capped at 25 residue rows and the loop stops at 40 batches or as
+soon as a batch stops shrinking the pile, whichever comes first. The ceiling is
+what makes the worst night bounded by construction rather than by hoping the
+model gets bored.
