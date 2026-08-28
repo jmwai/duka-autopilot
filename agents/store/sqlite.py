@@ -314,6 +314,54 @@ class SqliteStore:
             return {"status": "completed", "idempotent": False,
                     "result": result}
 
+    def decide_order_once(self, event_id: str, order_id, payload_hash: str,
+                          to_status: str, allowed_from: tuple[str, ...]) -> dict:
+        """Atomically record an owner decision on one order, once."""
+        with self._conn() as c:
+            c.execute("BEGIN IMMEDIATE")
+            receipt_row = c.execute(
+                "SELECT * FROM event_receipts WHERE event_id=?", (event_id,)
+            ).fetchone()
+            if receipt_row is not None:
+                receipt = dict(receipt_row)
+                result = json.loads(receipt["result"]) if receipt["result"] else None
+                if receipt["payload_hash"] != payload_hash:
+                    return {"status": "conflict", "idempotent": False, "result": result}
+                if receipt["status"] == "completed" and result:
+                    return {"status": "completed", "idempotent": True, "result": result}
+                return {"status": receipt["status"], "idempotent": False, "result": result}
+
+            order = c.execute(
+                "SELECT id, customer_id, status FROM orders WHERE id=?", (order_id,)
+            ).fetchone()
+            if order is None:
+                return {"status": "missing", "idempotent": False, "result": None}
+            current = dict(order)["status"]
+            if current not in allowed_from:
+                # Already decided, already settled by a payment, or in the
+                # approvals queue: refuse rather than overwrite the outcome.
+                return {"status": "not_allowed", "idempotent": False,
+                        "result": {"order_id": str(order_id), "status": current}}
+
+            now = int(time.time())
+            c.execute(
+                "INSERT INTO event_receipts "
+                "(event_id,customer_id,payload_hash,status,attempts,lease_expires_at) "
+                "VALUES (?,?,?,?,1,?)",
+                (event_id, dict(order)["customer_id"], payload_hash, "processing", now + 120),
+            )
+            c.execute("UPDATE orders SET status=?,needs_review=0 WHERE id=?",
+                      (to_status, order_id))
+            result = {"event_id": event_id, "order_id": str(order_id),
+                      "status": to_status, "previous_status": current}
+            c.execute(
+                "UPDATE event_receipts SET status='completed', result=?, "
+                "last_error=NULL, lease_expires_at=0, updated_at=datetime('now') "
+                "WHERE event_id=?",
+                (json.dumps(result), event_id),
+            )
+            return {"status": "completed", "idempotent": False, "result": result}
+
     def get_order(self, order_id) -> dict | None:
         rows = self._rows(
             "SELECT id, customer_id, status, total, needs_review, notes, source_event_id, created_at "
@@ -634,10 +682,15 @@ class SqliteStore:
     # ---- active managed-session pointer -----------------------------------
     @staticmethod
     def _session_pointer(customer_id: str, user_id: str, generation: int) -> dict:
+        """Reserve the pointer unbound; the session service assigns the id.
+
+        Empty string rather than NULL keeps the column NOT NULL and keeps the
+        unbound test (`not pointer["session_id"]`) identical in both backends.
+        """
         return {
             "customer_id": customer_id,
             "user_id": user_id,
-            "session_id": f"chat-{user_id}-{generation}",
+            "session_id": "",
             "generation": generation,
         }
 
@@ -662,6 +715,39 @@ class SqliteStore:
             if result["user_id"] != user_id:
                 raise ValueError("stored user-key algorithm does not match runtime")
             return result
+
+    def bind_active_session(self, customer_id: str, user_id: str, generation: int,
+                            session_id: str,
+                            expected_session_id: str = "") -> dict:
+        """Compare-and-set the service-assigned session id onto the pointer.
+
+        Loses deliberately when another binder got there first or when the
+        generation moved on, so a stale binder can never clobber a rotation.
+        """
+        with self._conn() as c:
+            c.execute("BEGIN IMMEDIATE")
+            row = c.execute(
+                "SELECT customer_id,user_id,session_id,generation,updated_at "
+                "FROM session_pointers WHERE customer_id=?", (customer_id,)).fetchone()
+            if row is None:
+                c.execute(
+                    "INSERT INTO session_pointers "
+                    "(customer_id,user_id,session_id,generation) VALUES (?,?,?,?)",
+                    (customer_id, user_id, session_id, generation))
+                return {"bound": True, "pointer": self._session_pointer(
+                    customer_id, user_id, generation) | {"session_id": session_id}}
+            current = dict(row)
+            if current["user_id"] != user_id:
+                raise ValueError("stored user-key algorithm does not match runtime")
+            if current["session_id"] == session_id:
+                return {"bound": True, "pointer": current}
+            if (int(current["generation"]) != generation
+                    or (current["session_id"] or "") != (expected_session_id or "")):
+                return {"bound": False, "pointer": current}
+            c.execute(
+                "UPDATE session_pointers SET session_id=?,updated_at=datetime('now') "
+                "WHERE customer_id=?", (session_id, customer_id))
+            return {"bound": True, "pointer": current | {"session_id": session_id}}
 
     def rotate_active_session(self, customer_id: str, user_id: str) -> dict:
         with self._conn() as c:

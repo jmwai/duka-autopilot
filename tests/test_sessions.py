@@ -38,11 +38,16 @@ async def test_session_rotation_persists_pointer_and_preserves_old_session():
     from app.runner import APP_NAME, _active_session, _ensure_session, new_session, runner
     customer_id = "254711000001"
     initial = _active_session(customer_id)
-    await _ensure_session(
-        initial["user_id"], initial["session_id"],
+    # The store reserves the pointer unbound; the session service names it.
+    assert initial["session_id"] == ""
+    initial_id = await _ensure_session(
+        customer_id, initial,
         {"customer_id": customer_id, "user_key": initial["user_id"]})
+    assert initial_id and not initial_id.startswith("chat-")
+    assert get_store().get_active_session(customer_id)["session_id"] == initial_id
     rotated = await new_session(customer_id, "session-test-rotation-1")
     rotated_id = rotated["session_id"]
+    assert rotated_id != initial_id
     pointer = get_store().get_active_session(customer_id)
     assert pointer["generation"] == 1 and pointer["session_id"] == rotated_id
     replay = await new_session(customer_id, "session-test-rotation-1")
@@ -50,10 +55,113 @@ async def test_session_rotation_persists_pointer_and_preserves_old_session():
     assert get_store().get_active_session(customer_id)["generation"] == 1
     old = await runner.session_service.get_session(
         app_name=APP_NAME, user_id=initial["user_id"],
-        session_id=initial["session_id"])
+        session_id=initial_id)
     new = await runner.session_service.get_session(
         app_name=APP_NAME, user_id=pointer["user_id"], session_id=rotated_id)
     assert old is not None and new is not None
+
+
+@pytest.mark.asyncio
+async def test_session_is_created_once_and_reused_across_turns():
+    """The bound pointer is reused, so a second turn creates no new session."""
+    from app.runner import _active_session, _ensure_session, runner
+    customer_id = "254711000001"
+    created: list[str] = []
+    real_create = runner.session_service.create_session
+
+    async def counting_create(**kwargs):
+        session = await real_create(**kwargs)
+        created.append(session.id)
+        return session
+
+    runner.session_service.create_session = counting_create
+    try:
+        state = {"customer_id": customer_id, "user_key": _active_session(customer_id)["user_id"]}
+        first = await _ensure_session(customer_id, _active_session(customer_id), state)
+        second = await _ensure_session(customer_id, _active_session(customer_id), state)
+    finally:
+        runner.session_service.create_session = real_create
+    assert first == second
+    assert len(created) == 1
+
+
+@pytest.mark.asyncio
+async def test_lost_bind_race_adopts_the_winner_and_drops_the_orphan():
+    """A concurrent binder wins; this turn adopts its id and deletes its own."""
+    from app.runner import _active_session, _ensure_session, runner
+    customer_id = "254711000001"
+    store = get_store()
+    pointer = _active_session(customer_id)
+    deleted: list[str] = []
+    real_create = runner.session_service.create_session
+    real_delete = runner.session_service.delete_session
+
+    async def racing_create(**kwargs):
+        session = await real_create(**kwargs)
+        # A competing instance binds first, while this one holds an unbound id.
+        if not store.get_active_session(customer_id)["session_id"]:
+            store.bind_active_session(
+                customer_id, pointer["user_id"],
+                generation=int(pointer["generation"]),
+                session_id="9999999999", expected_session_id="")
+        return session
+
+    async def recording_delete(**kwargs):
+        deleted.append(kwargs["session_id"])
+        return await real_delete(**kwargs)
+
+    runner.session_service.create_session = racing_create
+    runner.session_service.delete_session = recording_delete
+    try:
+        resolved = await _ensure_session(
+            customer_id, pointer,
+            {"customer_id": customer_id, "user_key": pointer["user_id"]})
+    finally:
+        runner.session_service.create_session = real_create
+        runner.session_service.delete_session = real_delete
+    assert resolved == "9999999999"
+    assert store.get_active_session(customer_id)["session_id"] == "9999999999"
+    assert len(deleted) == 1 and deleted[0] != "9999999999"
+
+
+def test_bind_is_compare_and_set_on_generation_and_expected_id():
+    """A stale binder cannot clobber a pointer another writer already moved."""
+    store = get_store()
+    customer_id = "254711000001"
+    pointer = store.ensure_active_session(customer_id, "u_" + "a" * 32)
+    user_id = pointer["user_id"]
+
+    first = store.bind_active_session(
+        customer_id, user_id, generation=0, session_id="111", expected_session_id="")
+    assert first["bound"] is True
+
+    stale = store.bind_active_session(
+        customer_id, user_id, generation=0, session_id="222", expected_session_id="")
+    assert stale["bound"] is False
+    assert stale["pointer"]["session_id"] == "111"
+
+    wrong_generation = store.bind_active_session(
+        customer_id, user_id, generation=7, session_id="333", expected_session_id="111")
+    assert wrong_generation["bound"] is False
+
+    repeat = store.bind_active_session(
+        customer_id, user_id, generation=0, session_id="111", expected_session_id="")
+    assert repeat["bound"] is True
+
+    with pytest.raises(ValueError):
+        store.bind_active_session(
+            customer_id, "u_" + "b" * 32, generation=0,
+            session_id="444", expected_session_id="111")
+
+
+@pytest.mark.asyncio
+async def test_resume_refund_rejects_a_handle_this_environment_cannot_resolve(monkeypatch):
+    """A pre-service-assigned handle fails terminally, not as a retryable resume."""
+    from app import runner as runner_module
+    monkeypatch.setattr(runner_module, "_cloud_mode", lambda: True)
+    with pytest.raises(ValueError, match="not resolvable"):
+        await runner_module.resume_refund(
+            "254711000001", "chat-u_legacy-0", "inv-1", "int-1", "approve")
 
 
 def test_session_rotation_operation_conflicts_across_customers():

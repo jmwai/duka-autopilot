@@ -47,6 +47,12 @@ class Store(Protocol):
     def unpaid_orders(self) -> list[dict]: ...
     def set_order_status(self, order_id: EntityId, status: str,
                          needs_review: bool | None = None) -> None: ...
+    # Owner decision on an order the agent proposed. Guarded and idempotent by
+    # event ID: it may only move an order out of `allowed_from`, so a decision
+    # can never mark money received - that stays with payment evidence.
+    def decide_order_once(self, event_id: str, order_id: EntityId,
+                          payload_hash: str, to_status: str,
+                          allowed_from: tuple[str, ...]) -> dict: ...
 
     # ---- payments (the M-Pesa statement) ----------------------------------
     def add_payments(self, payments: list[dict]) -> int:
@@ -93,6 +99,11 @@ class Store(Protocol):
     def rotate_active_session(self, customer_id: str, user_id: str) -> dict: ...
     def rotate_active_session_once(self, event_id: str, customer_id: str,
                                    user_id: str) -> dict: ...
+    # The pointer is reserved unbound; the session service assigns the id and
+    # this compare-and-set records it. Returns {"bound": bool, "pointer": dict}.
+    def bind_active_session(self, customer_id: str, user_id: str, generation: int,
+                            session_id: str,
+                            expected_session_id: str = "") -> dict: ...
 
     # ---- per-customer turn serialization ---------------------------------
     def claim_customer_turn(self, customer_id: str, owner: str,

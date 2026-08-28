@@ -136,6 +136,52 @@ async def test_blocked_prior_turn_never_reaches_later_model_request():
 
 
 @pytest.mark.asyncio
+async def test_ledger_photo_survives_the_tool_round_trip():
+    """The page must still be attached on the call that reports the rows.
+
+    ADK replays a tool result as role="user", so the ledger agent's second
+    model call has a later user content than the photo. Keying media retention
+    on position alone stripped the image exactly when it was needed.
+    """
+    from agents.context_safety import sanitize_model_history
+    request = LlmRequest(contents=[
+        types.Content(role="user", parts=[
+            types.Part.from_text(text="Digitize this handwritten ledger page."),
+            types.Part.from_bytes(data=b"ledger-page", mime_type="image/jpeg"),
+        ]),
+        types.Content(role="model", parts=[types.Part.from_function_call(
+            name="get_catalog", args={})]),
+        types.Content(role="user", parts=[types.Part.from_function_response(
+            name="get_catalog", response={"items": []})]),
+    ])
+    await sanitize_model_history(None, request)
+    media = [part for content in request.contents
+             for part in (content.parts or []) if part.inline_data]
+    assert len(media) == 1 and media[0].inline_data.data == b"ledger-page"
+
+
+@pytest.mark.asyncio
+async def test_only_the_current_photo_survives_across_turns():
+    """An earlier page is still dropped; only the turn being answered keeps media."""
+    from agents.context_safety import sanitize_model_history
+    request = LlmRequest(contents=[
+        types.Content(role="user", parts=[
+            types.Part.from_bytes(data=b"yesterday", mime_type="image/jpeg")]),
+        types.Content(role="model", parts=[types.Part.from_text(text="recorded")]),
+        types.Content(role="user", parts=[
+            types.Part.from_text(text="another page"),
+            types.Part.from_bytes(data=b"today", mime_type="image/jpeg"),
+        ]),
+        types.Content(role="user", parts=[types.Part.from_function_response(
+            name="get_catalog", response={"items": []})]),
+    ])
+    await sanitize_model_history(None, request)
+    media = [part.inline_data.data for content in request.contents
+             for part in (content.parts or []) if part.inline_data]
+    assert media == [b"today"]
+
+
+@pytest.mark.asyncio
 async def test_old_inline_media_is_not_replayed():
     from agents.context_safety import sanitize_model_history
     request = LlmRequest(contents=[

@@ -227,6 +227,57 @@ class FirestoreStore:
         q = self._col("orders").where("status", "in", ["confirmed", "pending_confirmation"])
         return [self._doc(s) for s in q.stream()]
 
+    def decide_order_once(self, event_id: str, order_id, payload_hash: str,
+                          to_status: str, allowed_from: tuple[str, ...]) -> dict:
+        """Atomically record an owner decision on one order, once."""
+        from google.cloud import firestore
+
+        receipt_ref = self._col("event_receipts").document(self._event_doc_id(event_id))
+        order_ref = self._col("orders").document(str(order_id))
+        transaction = self.db.transaction()
+
+        @firestore.transactional
+        def decide(txn):
+            snapshot = receipt_ref.get(transaction=txn)
+            if snapshot.exists:
+                receipt = snapshot.to_dict() or {}
+                result = receipt.get("result")
+                if receipt.get("payload_hash") != payload_hash:
+                    return {"status": "conflict", "idempotent": False, "result": result}
+                if receipt.get("status") == "completed" and result:
+                    return {"status": "completed", "idempotent": True, "result": result}
+                return {"status": receipt.get("status", "unavailable"),
+                        "idempotent": False, "result": result}
+
+            order_snapshot = order_ref.get(transaction=txn)
+            if not order_snapshot.exists:
+                return {"status": "missing", "idempotent": False, "result": None}
+            order = order_snapshot.to_dict() or {}
+            current = order.get("status")
+            if current not in allowed_from:
+                # Already decided, already settled by a payment, or in the
+                # approvals queue: refuse rather than overwrite the outcome.
+                return {"status": "not_allowed", "idempotent": False,
+                        "result": {"order_id": str(order_id), "status": current}}
+
+            result = {"event_id": event_id, "order_id": str(order_id),
+                      "status": to_status, "previous_status": current}
+            txn.update(order_ref, {"status": to_status, "needs_review": False})
+            txn.set(receipt_ref, {
+                "event_id": event_id,
+                "customer_id": order.get("customer_id"),
+                "payload_hash": payload_hash,
+                "status": "completed",
+                "attempts": 1,
+                "lease_expires_at": 0,
+                "result": result,
+                "last_error": None,
+                "updated_at": _now(),
+            })
+            return {"status": "completed", "idempotent": False, "result": result}
+
+        return decide(transaction)
+
     def set_order_status(self, order_id, status: str,
                          needs_review: bool | None = None) -> None:
         patch: dict = {"status": status}
@@ -579,10 +630,11 @@ class FirestoreStore:
 
     @staticmethod
     def _session_pointer(customer_id: str, user_id: str, generation: int) -> dict:
+        """Reserve the pointer unbound; the session service assigns the id."""
         return {
             "customer_id": customer_id,
             "user_id": user_id,
-            "session_id": f"chat-{user_id}-{generation}",
+            "session_id": "",
             "generation": generation,
             "updated_at": _now(),
         }
@@ -611,6 +663,36 @@ class FirestoreStore:
             return pointer
 
         return ensure(transaction)
+
+    def bind_active_session(self, customer_id: str, user_id: str, generation: int,
+                            session_id: str,
+                            expected_session_id: str = "") -> dict:
+        """Compare-and-set the service-assigned session id onto the pointer."""
+        from google.cloud import firestore
+
+        ref = self._col("session_pointers").document(self._customer_doc_id(customer_id))
+        transaction = self.db.transaction()
+
+        @firestore.transactional
+        def bind(txn):
+            snap = ref.get(transaction=txn)
+            if not snap.exists:
+                pointer = self._session_pointer(customer_id, user_id, generation)
+                pointer["session_id"] = session_id
+                txn.set(ref, pointer)
+                return {"bound": True, "pointer": pointer}
+            current = snap.to_dict() or {}
+            if current.get("user_id") != user_id:
+                raise ValueError("stored user-key algorithm does not match runtime")
+            if current.get("session_id") == session_id:
+                return {"bound": True, "pointer": current}
+            if (int(current.get("generation", 0)) != generation
+                    or (current.get("session_id") or "") != (expected_session_id or "")):
+                return {"bound": False, "pointer": current}
+            txn.update(ref, {"session_id": session_id, "updated_at": _now()})
+            return {"bound": True, "pointer": current | {"session_id": session_id}}
+
+        return bind(transaction)
 
     def rotate_active_session(self, customer_id: str, user_id: str) -> dict:
         from google.cloud import firestore
