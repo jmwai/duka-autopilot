@@ -1,6 +1,6 @@
 {
   "schema_version": 2,
-  "release_ready": false,
+  "release_ready": true,
   "synthetic_only": true,
   "provider_policy": {
     "generated_media": "google_only",
@@ -9,7 +9,180 @@
       "google_cloud_text_to_speech"
     ]
   },
-  "ledgers": [],
-  "voices": [],
-  "blocked_reason": "Vertex AI and Cloud Text-to-Speech APIs require explicit activation before bilingual release assets can be generated."
+  "ledgers": [
+    {
+      "id": "ledger-en-v2",
+      "language": "en-KE",
+      "label": "English release ledger",
+      "path": "fixtures/demo/ledger-en-v2.png",
+      "mime_type": "image/png",
+      "bytes": 1725202,
+      "sha256": "f0f5d2826cea85e0763150a2d869027d355e70b2f36294b594d044f9a0ceaacf",
+      "width": 848,
+      "height": 1264,
+      "synthetic": true,
+      "source": {
+        "provider": "google_vertex_ai",
+        "project_id": "agent-platform-503913",
+        "location": "global",
+        "model": "gemini-3.1-flash-image",
+        "prompt_path": "fixtures/demo/prompts/ledger-en-v2.txt",
+        "prompt_sha256": "31e791659690d5732cd30fe74f8d62c4f582ffa5ebfd60ddc39cb2d3af5dcbbd",
+        "response_mime_type": "image/png",
+        "usage": {
+          "prompt_tokens": 292,
+          "output_tokens": 1120,
+          "total_tokens": 1412
+        },
+        "generated_utc": "2026-08-28T11:32:07.318492+00:00",
+        "synthetic": true
+      },
+      "ground_truth": {
+        "recorded_rows": 2,
+        "gated_rows": 1,
+        "rows": [
+          {
+            "date": "12/08",
+            "description": "Maize flour 2kg",
+            "quantity": 2,
+            "amount_ksh": 390,
+            "paid": true,
+            "expected_action": "record"
+          },
+          {
+            "date": "12/08",
+            "description": "Cooking oil 1L",
+            "quantity": 1,
+            "amount_ksh": 320,
+            "paid": true,
+            "expected_action": "record"
+          },
+          {
+            "date": "12/08",
+            "description": "Sugar 1kg",
+            "quantity": 1,
+            "amount_ksh": null,
+            "paid": false,
+            "expected_action": "gate",
+            "issue": "amount unreadable"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ledger-sw-v2",
+      "language": "sw-KE",
+      "label": "Kiswahili release ledger",
+      "path": "fixtures/demo/ledger-sw-v2.png",
+      "mime_type": "image/png",
+      "bytes": 1632129,
+      "sha256": "7e2fe295e5798964dc48e281a1cd6e65c6f49db62a3c5bf1400b8def18c20bcc",
+      "width": 848,
+      "height": 1264,
+      "synthetic": true,
+      "source": {
+        "provider": "google_vertex_ai",
+        "project_id": "agent-platform-503913",
+        "location": "global",
+        "model": "gemini-3.1-flash-image",
+        "prompt_path": "fixtures/demo/prompts/ledger-sw-v2.txt",
+        "prompt_sha256": "de821e86369f7195f948681133b856df2c1d89ec28b437484c0d28bcbe045234",
+        "response_mime_type": "image/png",
+        "usage": {
+          "prompt_tokens": 311,
+          "output_tokens": 1120,
+          "total_tokens": 1431
+        },
+        "generated_utc": "2026-08-28T11:32:19.131045+00:00",
+        "synthetic": true
+      },
+      "ground_truth": {
+        "recorded_rows": 2,
+        "gated_rows": 1,
+        "rows": [
+          {
+            "date": "12/08",
+            "description": "Unga Dola 2kg",
+            "quantity": 2,
+            "amount_ksh": 390,
+            "paid": true,
+            "expected_action": "record"
+          },
+          {
+            "date": "12/08",
+            "description": "Mafuta 1L",
+            "quantity": 1,
+            "amount_ksh": 320,
+            "paid": true,
+            "expected_action": "record"
+          },
+          {
+            "date": "12/08",
+            "description": "Sukari 1kg",
+            "quantity": 1,
+            "amount_ksh": null,
+            "paid": false,
+            "expected_action": "gate",
+            "issue": "amount unreadable"
+          }
+        ]
+      }
+    }
+  ],
+  "voices": [
+    {
+      "id": "voice-en-v1",
+      "language": "en-KE",
+      "label": "English usual-order voice note",
+      "path": "fixtures/demo/voice-en-v1.wav",
+      "mime_type": "audio/wav",
+      "bytes": 225210,
+      "sha256": "e5766e809c0963ba4fffa15ff4064c867aad5b18a56bfc378f8e2bae9a2909f3",
+      "duration_seconds": 4.691,
+      "transcript": "Hello, please bring me my usual order tomorrow morning.",
+      "english_translation": "Hello, please bring me my usual order tomorrow morning.",
+      "expected_intent": "usual_order",
+      "synthetic": true,
+      "source": {
+        "provider": "google_cloud_text_to_speech",
+        "project_id": "agent-platform-503913",
+        "location": "eu",
+        "model": "gemini-2.5-flash-tts",
+        "speaker": "Kore",
+        "synthesis_language_code": "en-US",
+        "style_prompt": "Speak as a friendly adult Kenyan shop customer leaving a short voice note. Use a natural conversational pace, clear diction, and a warm, matter-of-fact tone. Do not add or omit any words.",
+        "transcript_sha256": "56a9915ce328840804dfcf49d82ec95547db798351020245903b4747e0bdcc7a",
+        "style_prompt_sha256": "102343210b5b07efaff8d0f79a8901ef195863ef730d698628aca1dc49bc9f64",
+        "generated_utc": "2026-08-28T11:39:51.191631+00:00",
+        "synthetic": true
+      }
+    },
+    {
+      "id": "voice-sw-v1",
+      "language": "sw-KE",
+      "label": "Kiswahili usual-order voice note",
+      "path": "fixtures/demo/voice-sw-v1.wav",
+      "mime_type": "audio/wav",
+      "bytes": 240570,
+      "sha256": "e542f22a0f8a317a8272ddfc1b03ce7c5c5308dea0b16a114e8f0b461080f540",
+      "duration_seconds": 5.011,
+      "transcript": "Habari, niletee vitu vyangu vya kawaida kesho asubuhi.",
+      "english_translation": "Hello, please bring me my usual items tomorrow morning.",
+      "expected_intent": "usual_order",
+      "synthetic": true,
+      "source": {
+        "provider": "google_cloud_text_to_speech",
+        "project_id": "agent-platform-503913",
+        "location": "eu",
+        "model": "gemini-2.5-flash-tts",
+        "speaker": "Kore",
+        "synthesis_language_code": "sw-KE",
+        "style_prompt": "Sema kama mteja mtu mzima wa Kenya anayeacha ujumbe mfupi wa sauti kwa duka. Tumia kasi ya kawaida, matamshi wazi, na sauti ya kirafiki. Usiongeze wala kuondoa maneno yoyote.",
+        "transcript_sha256": "0ba2eb3117211612d21e25172036614c971a7d016590881f72e7f0c56af4133e",
+        "style_prompt_sha256": "e30af7470550a87323a19349bb434341c52ea84a14d4dfb7095c01c09f4d38c8",
+        "generated_utc": "2026-08-28T11:39:55.825830+00:00",
+        "synthetic": true
+      }
+    }
+  ]
 }

@@ -106,6 +106,8 @@ def _validate_voice(item: dict[str, Any]) -> None:
         _fail(f"{item['id']} does not use the approved Gemini TTS contract")
     if source.get("speaker") != "Kore":
         _fail(f"{item['id']} is missing the approved Google TTS speaker")
+    if not str(source.get("synthesis_language_code", "")).strip():
+        _fail(f"{item['id']} must record the locale it was synthesized in")
     if source.get("transcript_sha256") != hashlib.sha256(
         item["transcript"].encode("utf-8")
     ).hexdigest():

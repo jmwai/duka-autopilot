@@ -27,6 +27,9 @@ const googleVoiceSourceSchema = z.object({
   location: z.literal("eu"),
   model: z.literal("gemini-2.5-flash-tts"),
   speaker: z.literal("Kore"),
+  // The locale actually synthesized, which is not always the content locale:
+  // the Gemini voice serves Kenyan English through en-US.
+  synthesis_language_code: z.string().min(2),
   style_prompt: z.string().min(1),
   transcript_sha256: z.string().regex(/^[a-f0-9]{64}$/),
   style_prompt_sha256: z.string().regex(/^[a-f0-9]{64}$/),
