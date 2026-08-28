@@ -36,6 +36,6 @@ backend.hcl
 backend.*.hcl
 !backend.hcl.example
 *.tfplan
-docs/*.md
-docs/evidence/
+documents/*.md
+documents/evidence/
 screenshots/
