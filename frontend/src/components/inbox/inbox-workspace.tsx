@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   CircleCheck,
-  Image as ImageIcon,
+  Info,
   LoaderCircle,
   Mic2,
   Paperclip,
@@ -11,7 +11,6 @@ import {
   RotateCcw,
   Search,
   Send,
-  ShieldCheck,
   Square,
   UserRound,
   X,
@@ -20,6 +19,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
+  Fragment,
   FormEvent,
   useEffect,
   useMemo,
@@ -28,14 +28,13 @@ import {
 } from "react";
 import { toast } from "sonner";
 
-import { AuthorityRail } from "@/components/control-room/authority-rail";
 import { OperationRecovery } from "@/components/control-room/operation-recovery";
-import { PageHeader } from "@/components/control-room/page-header";
 import { EvidenceSource, ProofSheet } from "@/components/control-room/proof-sheet";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import {
   BrowserApiError,
   browserApi,
@@ -72,10 +71,15 @@ import { cn } from "@/lib/utils";
 import { ExecutionReceipt } from "./execution-receipt";
 import {
   Bubble,
-  ChannelBadge,
+  BubbleFoot,
+  ChannelMark,
+  DayDivider,
+  DeliveryMark,
   Message,
+  MessageText,
   MessageScroller,
   QueuedReceipt,
+  SystemNote,
 } from "./message";
 
 type MediaAttachment = AcceptedMedia & {
@@ -83,6 +87,8 @@ type MediaAttachment = AcceptedMedia & {
   blob: Blob;
   name: string;
   fixture: DemoVoiceFixture | null;
+  /** Owned by the chooser, which creates and revokes it in event handlers. */
+  previewUrl: string;
 };
 
 type InboundPayload = {
@@ -116,15 +122,32 @@ function displayTime(value?: string) {
   }).format(date);
 }
 
+function messageDate(value?: string) {
+  if (!value) return null;
+  const date = new Date(value.includes("T") ? value : value.replace(" ", "T") + "Z");
+  return Number.isNaN(date.valueOf()) ? null : date;
+}
+
+/** "Today" / "Yesterday" / a written date, for the divider between day groups. */
+function dayLabel(value?: string) {
+  const date = messageDate(value);
+  if (!date) return null;
+  const startOf = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).valueOf();
+  const days = Math.round((startOf(new Date()) - startOf(date)) / 86_400_000);
+  if (days === 0) return "Today";
+  if (days === 1) return "Yesterday";
+  return new Intl.DateTimeFormat("en-KE", {
+    day: "numeric", month: "long", ...(days > 365 ? { year: "numeric" } : {}),
+  }).format(date);
+}
+
 function eventPreview(text: string, attachment: MediaAttachment | null) {
   if (text.trim()) return text.trim();
   return attachment?.kind === "voice" ? "[voice message]" : "[photo message]";
 }
 
 function AttachmentPreview({ attachment }: { attachment: MediaAttachment }) {
-  const [url] = useState(() => URL.createObjectURL(attachment.blob));
-
-  useEffect(() => () => URL.revokeObjectURL(url), [url]);
+  const url = attachment.previewUrl;
 
   if (attachment.kind === "photo") {
     return (
@@ -168,6 +191,7 @@ export function InboxWorkspace({ initialCustomers, initialCustomerId, initialEve
   const [rotationEventId, setRotationEventId] = useState(() => `session-${crypto.randomUUID().replaceAll("-", "")}`);
   const [rotationFailure, setRotationFailure] = useState<{ message: string; requestId?: string } | null>(null);
   const [loadingVoiceId, setLoadingVoiceId] = useState<string | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -253,7 +277,17 @@ export function InboxWorkspace({ initialCustomers, initialCustomerId, initialEve
   function selectCustomer(customerId: string) {
     setSelectedCustomerId(customerId);
     setText("");
-    setAttachment(null);
+    clearAttachment();
+  }
+
+  // Created and released in event handlers: an effect cleanup in the preview
+  // is re-run by StrictMode's dev remount, which revoked the URL and left the
+  // photo and audio elements pointing at a dead blob.
+  function clearAttachment() {
+    setAttachment((current) => {
+      if (current) URL.revokeObjectURL(current.previewUrl);
+      return null;
+    });
   }
 
   function chooseAttachment(blob: Blob, name: string, fixture: DemoVoiceFixture | null = null) {
@@ -263,7 +297,13 @@ export function InboxWorkspace({ initialCustomers, initialCustomerId, initialEve
       toast.error(error ?? "That media type is not supported.");
       return;
     }
-    setAttachment({ ...media, id: crypto.randomUUID(), blob, name, fixture });
+    setAttachment((current) => {
+      if (current) URL.revokeObjectURL(current.previewUrl);
+      return {
+        ...media, id: crypto.randomUUID(), blob, name, fixture,
+        previewUrl: URL.createObjectURL(blob),
+      };
+    });
   }
 
   async function loadFrozenVoice(fixture: DemoVoiceFixture) {
@@ -308,8 +348,8 @@ export function InboxWorkspace({ initialCustomers, initialCustomerId, initialEve
     }
   }
 
-  async function sendEvent(formEvent: FormEvent<HTMLFormElement>) {
-    formEvent.preventDefault();
+  async function sendEvent(formEvent?: FormEvent<HTMLFormElement>) {
+    formEvent?.preventDefault();
     const cleanText = text.trim();
     if (!selectedCustomer || (!cleanText && !attachment) || encoding || recording) return;
     setEncoding(true);
@@ -343,7 +383,7 @@ export function InboxWorkspace({ initialCustomers, initialCustomerId, initialEve
       };
       setPendingEvents((current) => [...current, pending]);
       setText("");
-      setAttachment(null);
+      clearAttachment();
       void dispatchEvent(pending);
     } catch (error) {
       toast.error(explainError(error));
@@ -420,37 +460,15 @@ export function InboxWorkspace({ initialCustomers, initialCustomerId, initialEve
   }
 
   return (
-    <>
-      <PageHeader
-        eyebrow="Live operations"
-        title="Customer inbox"
-        description="Queue the messy message as it arrived. The worker persists its own receipt, runs the ADK workflow, and replies asynchronously."
-        action={
-          <Button
-            type="button"
-            variant="outline"
-            disabled={!selectedCustomer}
-            onClick={openRotation}
-          >
-            <RotateCcw aria-hidden="true" />
-            Start a new day
-          </Button>
-        }
-      />
-
-      <AuthorityRail
-        className="mb-4"
-        steps={[
-          { lane: "exact", title: "Event accepted once", detail: "The event ID and asynchronous queue handoff are deterministic." },
-          { lane: "gemini", title: "Messy meaning interpreted", detail: "Voice and photo understanding stays bounded by validated tools." },
-          { lane: "owner", title: "Consequence stops", detail: "Ambiguous or consequential work enters the owner queue." },
-        ]}
-      />
+    // data-fullbleed lets the shell drop its gutters so the thread can own the
+    // viewport; the bottom padding below clears the fixed mobile nav.
+    <div data-fullbleed className="flex h-[calc(100svh-4rem)] flex-col p-3 pb-[6.5rem] md:p-4 md:pb-4">
+      <h1 className="sr-only">Customer inbox</h1>
 
       {initialEventId ? <div role="status" className="mb-4 flex flex-col gap-2 rounded-xl border border-exact/30 bg-exact/5 p-3 text-xs leading-5 sm:flex-row sm:items-center sm:justify-between"><span>Following source event <span className="break-all font-mono font-semibold">{initialEventId}</span> into this customer thread.</span><Button asChild variant="ghost" size="sm"><Link href="/evidence#trace">Continue to causal evidence</Link></Button></div> : null}
 
-      <div className="grid min-h-[42rem] gap-4 lg:grid-cols-[16rem_minmax(0,1fr)] xl:grid-cols-[16rem_minmax(0,1fr)_18rem]">
-        <Card className="hidden overflow-hidden lg:block">
+      <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[18rem_minmax(0,1fr)]">
+        <Card className="hidden min-h-0 flex-col overflow-hidden py-0 lg:flex">
           <CardHeader className="border-b">
             <CardTitle>Customers</CardTitle>
             <label className="relative mt-3 block">
@@ -464,11 +482,15 @@ export function InboxWorkspace({ initialCustomers, initialCustomerId, initialEve
               />
             </label>
           </CardHeader>
-          <div className="max-h-[38rem] overflow-y-auto p-2">
+          <div className="min-h-0 flex-1 overflow-y-auto p-2">
             {filteredCustomers.map((customer) => {
-              const queued = pendingEvents.filter(
-                (event) => event.customerId === customer.id && event.status !== "failed",
-              ).length;
+              // Only events still genuinely outstanding; a delivered reply
+              // must clear the badge rather than let it grow all session.
+              const queued = pendingEvents.filter((event) => (
+                event.customerId === customer.id
+                && event.status !== "failed"
+                && !hasCompletedReply(messages, event.eventId)
+              )).length;
               return (
                 <button
                   key={customer.id}
@@ -490,42 +512,43 @@ export function InboxWorkspace({ initialCustomers, initialCustomerId, initialEve
           </div>
         </Card>
 
-        <Card className="flex min-w-0 flex-col overflow-hidden">
-          <div className="flex min-h-16 items-center justify-between gap-3 border-b px-4 sm:px-5">
-            <div className="min-w-0">
-              <label htmlFor="mobile-customer" className="sr-only">Customer thread</label>
-              <select
-                id="mobile-customer"
-                value={selectedCustomerId}
-                onChange={(event) => selectCustomer(event.target.value)}
-                className="max-w-full rounded-md bg-transparent py-1 pr-8 font-semibold focus-visible:outline-2 lg:hidden"
-              >
-                {initialCustomers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}
-              </select>
-              <p className="hidden truncate font-semibold lg:block">{selectedCustomer?.name ?? "No customer selected"}</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">Synthetic customer thread · latest 50 messages</p>
+        <Card className="flex min-w-0 flex-col overflow-hidden py-0">
+          {/* The in-brand equivalent of WhatsApp's coloured bar: identity on the
+              left, live poll state and everything non-chat behind one control. */}
+          <div className="flex min-h-16 items-center justify-between gap-3 bg-sidebar px-4 text-sidebar-foreground paper-noise sm:px-5">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="grid size-9 shrink-0 place-items-center rounded-full bg-sidebar-accent text-sidebar-foreground">
+                <UserRound aria-hidden="true" className="size-4.5" />
+              </span>
+              <div className="min-w-0">
+                <label htmlFor="mobile-customer" className="sr-only">Customer thread</label>
+                <select
+                  id="mobile-customer"
+                  value={selectedCustomerId}
+                  onChange={(event) => selectCustomer(event.target.value)}
+                  className="max-w-full rounded-md bg-transparent py-1 pr-8 font-semibold text-sidebar-foreground focus-visible:outline-2 lg:hidden"
+                >
+                  {filteredCustomers.map((customer) => <option key={customer.id} value={customer.id} className="text-foreground">{customer.name}</option>)}
+                </select>
+                <p className="hidden truncate font-semibold lg:block">{selectedCustomer?.name ?? "No customer selected"}</p>
+                <p className="flex items-center gap-1.5 text-xs text-sidebar-muted" aria-live="polite">
+                  {messagesQuery.isFetching ? <LoaderCircle aria-hidden="true" className="size-3 animate-spin" /> : <CircleCheck aria-hidden="true" className="size-3" />}
+                  {messagesQuery.isFetching ? "Checking" : "Caught up"}
+                  <span aria-hidden="true">·</span>
+                  Synthetic thread
+                </p>
+              </div>
             </div>
-            <div className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground" aria-live="polite">
-              {messagesQuery.isFetching ? <LoaderCircle aria-hidden="true" className="size-3.5 animate-spin" /> : <CircleCheck aria-hidden="true" className="size-3.5 text-exact" />}
-              {messagesQuery.isFetching ? "Checking" : "Caught up"}
-              <ProofSheet
-                title="Selected thread proof"
-                description="Validated outcome, execution receipt, and release evidence for this customer thread."
-                outcome={latestEventId ? `The latest completed worker reply carries event ${latestEventId.slice(0, 12)}….` : "No completed execution receipt is visible in this thread yet."}
-                reason="The browser records queue acceptance separately from worker completion. A node path appears only when the persisted outbound reply returns validated execution metadata."
-                facts={[
-                  ...(latestEventId ? [{ label: "Event ID", value: latestEventId }] : []),
-                  ...(latestNodePath.length ? [{ label: "Node path", value: latestNodePath.join(" → ") }] : []),
-                ]}
-                sources={[
-                  { label: "Validated thread read", detail: messagesQuery.isError ? "The API read failed" : `${messages.length} persisted message${messages.length === 1 ? "" : "s"}`, state: messagesQuery.isError ? "not-proven" : messagesQuery.isPending ? "pending" : "proven" },
-                  { label: "Worker execution receipt", detail: latestEventId ? `Event ${latestEventId}` : "No completed receipt selected", state: latestEventId ? "proven" : "pending" },
-                  { label: "Google bilingual fixture set", detail: fixtureManifest?.release_ready ? "English and Kiswahili release voices verified" : fixtureManifest?.blocked_reason ?? "Release fixtures pending", state: fixtureManifest?.release_ready ? "proven" : "pending" },
-                ]}
-                limitations={["A queue acceptance is not presented as a completed agent action.", "Fixture provenance proves the media source, not the business outcome."]}
-                trigger={<Button type="button" size="sm" variant="ghost">Proof</Button>}
-              />
-            </div>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="shrink-0 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground"
+              onClick={() => setDetailsOpen(true)}
+            >
+              <Info aria-hidden="true" />
+              Details
+            </Button>
           </div>
 
           <MessageScroller>
@@ -553,54 +576,69 @@ export function InboxWorkspace({ initialCustomers, initialCustomerId, initialEve
                     <Mic2 aria-hidden="true" className="size-5" />
                   </span>
                   <p className="mt-4 font-semibold">The counter is quiet.</p>
-                  <p className="mt-1 max-w-sm text-sm leading-6 text-muted-foreground">Send English or Kiswahili text, a voice note, or a ledger photograph.</p>
                 </div>
               </div>
             ) : null}
-            {messages.map((message: DukaMessage) => (
-              <Message key={message.id} direction={message.direction}>
-                <ChannelBadge channel={message.channel} />
-                <Bubble direction={message.direction}>
-                  <p className="whitespace-pre-wrap break-words">{message.text}</p>
-                  {message.direction === "out" ? <ExecutionReceipt meta={message.meta} /> : null}
-                </Bubble>
-                {displayTime(message.created_at) ? (
-                  <p className={cn("mt-1 px-1 text-[0.65rem] text-muted-foreground", message.direction === "in" && "text-right")}>
-                    {displayTime(message.created_at)}
-                  </p>
-                ) : null}
-              </Message>
-            ))}
+            {messages.map((message: DukaMessage, index: number) => {
+              const previous = index > 0 ? messages[index - 1] : null;
+              const label = dayLabel(message.created_at);
+              const showDay = Boolean(label) && label !== dayLabel(previous?.created_at);
+              return (
+                <Fragment key={message.id}>
+                  {showDay && label ? <DayDivider label={label} /> : null}
+                  <Message direction={message.direction}>
+                    <Bubble direction={message.direction}>
+                      <p className="whitespace-pre-wrap break-words">
+                        <ChannelMark channel={message.channel} />
+                        <MessageText text={message.text} />
+                      </p>
+                      {message.direction === "out" ? <ExecutionReceipt meta={message.meta} /> : null}
+                      <BubbleFoot
+                        time={displayTime(message.created_at)}
+                        muted={message.direction === "in"}
+                      />
+                    </Bubble>
+                  </Message>
+                </Fragment>
+              );
+            })}
             {selectedPending.map((event) => {
-              const persisted = hasInboundReceipt(messages, event.eventId);
-              if (persisted) {
+              // The durable receipt landed but the reply has not: the only
+              // moment that proves the handoff was persisted, not just accepted.
+              if (hasInboundReceipt(messages, event.eventId)) {
                 return (
-                  <div key={event.eventId} className="flex items-center justify-center gap-2 py-1 text-xs text-muted-foreground" role="status">
-                    <LoaderCircle aria-hidden="true" className="size-3.5 animate-spin" />
-                    Worker is processing event {event.eventId.slice(0, 10)}…
-                  </div>
+                  <SystemNote key={event.eventId}>
+                    <LoaderCircle aria-hidden="true" className="size-3 animate-spin" />
+                    <span role="status">Worker is processing event {event.eventId.slice(0, 10)}…</span>
+                  </SystemNote>
                 );
               }
+              const state = event.status === "sending" ? "sending" : event.status === "queued" ? "queued" : "failed";
+              const label = event.status === "sending"
+                ? "Handing off…"
+                : event.status === "queued" ? "Accepted · waiting for worker" : "Handoff uncertain";
               return (
-                <Message key={event.eventId} direction="in">
-                  <ChannelBadge channel={event.channel} />
-                  <Bubble direction={event.status === "failed" ? "pending" : "in"}>
-                    <p className="whitespace-pre-wrap break-words">{event.preview}</p>
-                    <QueuedReceipt eventId={event.eventId} queuedAt={displayTime(event.queuedAt) ?? "now"} />
-                    <p className="mt-1 text-[0.7rem] font-semibold">
-                      {event.status === "sending" ? "Handing off…" : event.status === "queued" ? "Accepted · waiting for worker" : "Handoff uncertain"}
+                <Message key={event.eventId} direction={event.status === "failed" ? "pending" : "out"}>
+                  <Bubble direction={event.status === "failed" ? "pending" : "out"}>
+                    <p className="whitespace-pre-wrap break-words">
+                      <ChannelMark channel={event.channel} />
+                      {event.preview}
                     </p>
+                    <QueuedReceipt eventId={event.eventId} queuedAt={displayTime(event.queuedAt) ?? "now"} />
                     {event.status === "failed" ? (
                       <OperationRecovery
                         compact
                         className="mt-2 bg-card/65"
                         title="Queue handoff is uncertain"
-                        description="The worker may still have received this event. Retrying preserves the same business ID so no second effect can be created."
+                        description="Retrying reuses the same event ID, so no second effect can be created."
                         operationId={event.eventId}
                         retryLabel="Retry same event ID"
                         onRetry={() => void dispatchEvent(event)}
                       />
                     ) : null}
+                    <BubbleFoot muted={event.status === "failed"}>
+                      <DeliveryMark state={state} label={label} />
+                    </BubbleFoot>
                   </Bubble>
                 </Message>
               );
@@ -625,18 +663,15 @@ export function InboxWorkspace({ initialCustomers, initialCustomerId, initialEve
                     ) : null}
                   </div>
                 </div>
-                <Button type="button" size="icon" variant="ghost" aria-label="Remove attachment" onClick={() => setAttachment(null)}>
+                <Button type="button" size="icon" variant="ghost" aria-label="Remove attachment" onClick={clearAttachment}>
                   <X aria-hidden="true" />
                 </Button>
               </div>
             ) : null}
             {!attachment ? (
-              <div className="mb-3 rounded-lg border bg-card p-3">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-xs font-semibold">Try a verified voice example</p>
-                    <p className="mt-0.5 text-xs leading-5 text-muted-foreground">Release audio · provider and integrity checked before attachment</p>
-                  </div>
+              <div className="mb-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs text-muted-foreground">Verified voice</span>
                   <div className="flex flex-wrap gap-2">
                     {([
                       ["English", englishVoice],
@@ -657,7 +692,7 @@ export function InboxWorkspace({ initialCustomers, initialCustomerId, initialEve
                   </div>
                 </div>
                 {fixtureManifestQuery.isError ? (
-                  <p role="alert" className="mt-2 text-xs leading-5 text-foreground">The release fixture manifest could not be verified. No voice file may be presented as release evidence until the approved Google fixtures pass integrity checks.</p>
+                  <p role="alert" className="mt-2 text-xs leading-5 text-foreground">The fixture manifest could not be verified, so no voice file may be shown as release evidence.</p>
                 ) : !fixtureManifest?.release_ready && fixtureManifest?.blocked_reason ? (
                   <p className="mt-2 text-xs leading-5 text-muted-foreground">{fixtureManifest.blocked_reason}</p>
                 ) : null}
@@ -670,6 +705,18 @@ export function InboxWorkspace({ initialCustomers, initialCustomerId, initialEve
               onChange={(event) => setText(event.target.value)}
               maxLength={MAX_MESSAGE_CHARACTERS}
               rows={3}
+              // Enter sends, as in any chat app; Shift+Enter opens a line.
+              onKeyDown={(event) => {
+                if (event.key !== "Enter" || event.shiftKey) return;
+                // Mid-IME-composition Enter commits the candidate word and must
+                // reach the textarea untouched. The per-event flag is used
+                // rather than composition handlers with a ref, which stays
+                // stuck if compositionend is ever missed.
+                if (event.nativeEvent.isComposing) return;
+                event.preventDefault();
+                if (encoding || recording || (!text.trim() && !attachment)) return;
+                void sendEvent();
+              }}
               placeholder="Type exactly what the customer sent…"
               className="w-full resize-none rounded-lg border bg-card px-3.5 py-3 text-sm leading-6 shadow-sm placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
             />
@@ -701,47 +748,86 @@ export function InboxWorkspace({ initialCustomers, initialCustomerId, initialEve
               <span className="ml-auto text-xs text-muted-foreground">{text.length.toLocaleString()} / {MAX_MESSAGE_CHARACTERS.toLocaleString()}</span>
               <Button type="submit" disabled={encoding || recording || (!text.trim() && !attachment)}>
                 {encoding ? <LoaderCircle aria-hidden="true" className="animate-spin" /> : <Send aria-hidden="true" />}
-                {encoding ? "Preparing…" : "Queue event"}
+                {encoding ? "Preparing…" : "Send message"}
               </Button>
             </div>
-            <p className="mt-2 text-xs leading-5 text-muted-foreground">One attachment, maximum 6 MB decoded. Media is sent only when you choose “Queue event.”</p>
+            <p className="mt-2 text-xs leading-5 text-muted-foreground">One attachment, 6 MB max · sent only when you send the message</p>
           </form>
         </Card>
 
-        <aside className="hidden space-y-4 xl:block">
-          <Card>
-            <CardHeader><CardTitle className="flex items-center gap-2"><ShieldCheck aria-hidden="true" className="size-4 text-primary" /> Selected evidence</CardTitle></CardHeader>
-            <CardContent className="space-y-2">
+      </div>
+
+      {/* Everything that is not the conversation: provenance, evidence, the
+          fixture loaders and the session control. */}
+      <Sheet open={detailsOpen} onOpenChange={setDetailsOpen}>
+        <SheetContent side="right" className="w-[min(96vw,26rem)] overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>{selectedCustomer?.name ?? "Thread"} details</SheetTitle>
+            <SheetDescription>Synthetic thread · latest 50 messages</SheetDescription>
+          </SheetHeader>
+
+          <div className="space-y-5 px-4 pb-6">
+            <section className="space-y-2">
+              <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Evidence</h3>
               <EvidenceSource label="Thread read" detail={messagesQuery.isError ? "Validated read failed" : `${messages.length} persisted messages`} state={messagesQuery.isError ? "not-proven" : messagesQuery.isPending ? "pending" : "proven"} />
               <EvidenceSource label="Worker receipt" detail={latestEventId ? `Event ${latestEventId.slice(0, 12)}…` : "Waiting for a completed reply"} state={latestEventId ? "proven" : "pending"} />
-              <EvidenceSource label="Bilingual voices" detail={fixtureManifest?.release_ready ? "English and Kiswahili Google fixtures" : "Google release fixtures pending"} state={fixtureManifest?.release_ready ? "proven" : "pending"} />
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader><CardTitle>Try the counter</CardTitle></CardHeader>
-            <CardContent className="space-y-3 text-sm text-muted-foreground">
-              {fixtureManifest?.release_ready ? (
-                releaseVoices.map((fixture) => (
+              <EvidenceSource label="Bilingual voices" detail={fixtureManifest?.release_ready ? "English and Kiswahili Google fixtures" : fixtureManifest?.blocked_reason ?? "Google release fixtures pending"} state={fixtureManifest?.release_ready ? "proven" : "pending"} />
+              <ProofSheet
+                title="Selected thread proof"
+                description="Outcome, execution receipt and release evidence for this thread."
+                outcome={latestEventId ? `The latest completed worker reply carries event ${latestEventId.slice(0, 12)}….` : "No completed execution receipt is visible in this thread yet."}
+                reason="Queue acceptance is recorded separately from worker completion. A node path appears only once the persisted reply returns validated execution metadata."
+                facts={[
+                  ...(latestEventId ? [{ label: "Event ID", value: latestEventId }] : []),
+                  ...(latestNodePath.length ? [{ label: "Node path", value: latestNodePath.join(" → ") }] : []),
+                ]}
+                sources={[
+                  { label: "Validated thread read", detail: messagesQuery.isError ? "The API read failed" : `${messages.length} persisted message${messages.length === 1 ? "" : "s"}`, state: messagesQuery.isError ? "not-proven" : messagesQuery.isPending ? "pending" : "proven" },
+                  { label: "Worker execution receipt", detail: latestEventId ? `Event ${latestEventId}` : "No completed receipt selected", state: latestEventId ? "proven" : "pending" },
+                  { label: "Google bilingual fixture set", detail: fixtureManifest?.release_ready ? "English and Kiswahili release voices verified" : fixtureManifest?.blocked_reason ?? "Release fixtures pending", state: fixtureManifest?.release_ready ? "proven" : "pending" },
+                ]}
+                limitations={["A queue acceptance is not presented as a completed agent action.", "Fixture provenance proves the media source, not the business outcome."]}
+                trigger={<Button type="button" size="sm" variant="outline" className="w-full">Proof</Button>}
+              />
+            </section>
+
+            {releaseVoices.length ? (
+              <section className="space-y-2">
+                <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Verified voice examples</h3>
+                {releaseVoices.map((fixture) => (
                   <button
                     key={fixture.id}
                     type="button"
-                    className="flex w-full gap-2 rounded-lg p-2 text-left transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50"
+                    className="flex w-full gap-2 rounded-lg border p-2.5 text-left text-sm transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-50"
                     disabled={Boolean(loadingVoiceId) || encoding || recording}
-                    onClick={() => void loadFrozenVoice(fixture)}
+                    onClick={() => { void loadFrozenVoice(fixture); setDetailsOpen(false); }}
                   >
                     <Mic2 aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-gemini" />
-                    <span><span className="font-semibold text-foreground">{fixture.language === "en-KE" ? "English" : "Kiswahili"}</span><span className="block">“{fixture.transcript}”</span></span>
+                    <span>
+                      <span className="font-semibold">{fixture.language === "en-KE" ? "English" : "Kiswahili"}</span>
+                      <span className="block text-muted-foreground">“{fixture.transcript}”</span>
+                    </span>
                   </button>
-                ))
-              ) : (
-                <p className="flex gap-2"><Mic2 aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-muted-foreground" /> Verified English and Kiswahili Google voice fixtures are pending.</p>
-              )}
-              <p className="flex gap-2"><ImageIcon aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-gemini" /> English and Kiswahili ledger fixtures live in Ledger Desk.</p>
-              <p className="flex gap-2"><ShieldCheck aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-attention" /> A refund request that must stop for the owner.</p>
-            </CardContent>
-          </Card>
-        </aside>
-      </div>
+                ))}
+              </section>
+            ) : null}
+
+            <section className="space-y-2">
+              <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Session</h3>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                disabled={!selectedCustomer}
+                onClick={() => { setDetailsOpen(false); openRotation(); }}
+              >
+                <RotateCcw aria-hidden="true" />
+                Start a new day
+              </Button>
+            </section>
+          </div>
+        </SheetContent>
+      </Sheet>
 
       <Dialog open={rotationOpen} onOpenChange={(open) => { if (!rotating) setRotationOpen(open); }}>
         <DialogContent>
@@ -749,7 +835,7 @@ export function InboxWorkspace({ initialCustomers, initialCustomerId, initialEve
           <DialogHeader>
             <DialogTitle>Start a fresh managed session?</DialogTitle>
             <DialogDescription>
-              {selectedCustomer?.name} gets a clean conversational session. The audit thread stays visible, pending refund invocations remain resumable in their original session, and only allowlisted trusted usuals may return through Memory Bank—not raw chat history, prices, payment references, or authority claims.
+              {selectedCustomer?.name} gets a clean session. The audit thread stays visible and pending refunds remain resumable. Only allowlisted usuals return through Memory Bank — never raw history, prices, payment references or authority claims.
             </DialogDescription>
           </DialogHeader>
           {rotationFailure ? (
@@ -775,6 +861,6 @@ export function InboxWorkspace({ initialCustomers, initialCustomerId, initialEve
           </div>
         </DialogContent>
       </Dialog>
-    </>
+    </div>
   );
 }
