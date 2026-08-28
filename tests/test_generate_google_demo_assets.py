@@ -27,7 +27,10 @@ def _args(**overrides: object) -> argparse.Namespace:
 
 
 def test_preflight_freezes_google_only_bilingual_four_call_plan():
-    plan = generator.preflight(_args())
+    # overwrite=True keeps this about the plan's shape; the refusal to replace
+    # an existing candidate has its own test below. Without it this assertion
+    # would pass or fail purely on whether the release fixtures are on disk.
+    plan = generator.preflight(_args(overwrite=True))
 
     assert plan["project_id"] == "agent-platform-503913"
     assert plan["dry_run"] is True

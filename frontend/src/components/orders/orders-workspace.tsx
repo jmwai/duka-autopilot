@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, ArrowDownUp, ChevronLeft, ChevronRight, CirclePlus, LoaderCircle, PackageOpen, Plus, Search, ShoppingBag, Trash2 } from "lucide-react";
+import { AlertTriangle, ArrowDownUp, Ban, ChevronLeft, ChevronRight, CircleCheck, CirclePlus, LoaderCircle, PackageOpen, Plus, Search, ShoppingBag, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -15,17 +15,29 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { BrowserApiError, browserApi } from "@/lib/api/browser-client";
-import { createOrderResponseSchema, ordersSchema, type Order } from "@/lib/api/contracts";
+import { createOrderResponseSchema, orderDecisionResponseSchema, ordersSchema, type Order } from "@/lib/api/contracts";
 import type { OrdersData } from "@/lib/api/orders";
 
 const PAGE_SIZE = 12;
 
+// The stored status stays `pending_confirmation` - reconciliation queries and
+// the durable topology depend on it. Only the owner-facing wording changes:
+// the order is waiting on the customer's payment, not on a click.
+const STATUS_LABELS: Record<string, string> = {
+  pending_confirmation: "Awaiting payment",
+  needs_review: "Needs review",
+  confirmed: "Confirmed",
+  rejected: "Cancelled",
+  paid: "Paid",
+};
+
 function statusLabel(status: string) {
-  return status.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+  return STATUS_LABELS[status]
+    ?? status.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function statusBadge(status: string) {
-  if (status === "paid") return <Badge variant="exact">Paid</Badge>;
+  if (status === "paid") return <Badge variant="exact">{statusLabel(status)}</Badge>;
   if (status === "needs_review" || status === "pending_confirmation") return <Badge variant="attention">{statusLabel(status)}</Badge>;
   return <Badge variant="outline">{statusLabel(status)}</Badge>;
 }
@@ -37,7 +49,55 @@ function dateLabel(value?: string) {
   return new Intl.DateTimeFormat("en-KE", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Africa/Nairobi" }).format(date);
 }
 
-function OrderDetail({ order }: { order: Order }) {
+function OrderDecision({ order, onDecided }: { order: Order; onDecided: () => void }) {
+  const [busy, setBusy] = useState<"confirm" | "cancel" | null>(null);
+  // One event ID per order decision, reused across retries so a lost response
+  // cannot produce a second effect.
+  const [eventId] = useState(() => `decision-${crypto.randomUUID().replaceAll("-", "")}`);
+
+  if (order.status !== "pending_confirmation") return null;
+
+  async function decide(decision: "confirm" | "cancel") {
+    setBusy(decision);
+    try {
+      const result = await browserApi("orders/" + order.id + "/decision", orderDecisionResponseSchema, {
+        method: "POST",
+        body: JSON.stringify({ event_id: eventId, decision }),
+      });
+      toast.success(result.status === "confirmed"
+        ? `Order #${order.id} confirmed. No payment was recorded.`
+        : `Order #${order.id} cancelled.`);
+      onDecided();
+    } catch (error) {
+      toast.error(error instanceof BrowserApiError ? error.message : "The decision could not be saved.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <section className="space-y-3 rounded-xl border bg-muted/30 p-4">
+      <div>
+        <h3 className="text-sm font-semibold">Owner decision</h3>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+          Confirming records that the order stands. It does not mark it paid — that follows the payment.
+        </p>
+      </div>
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <Button type="button" disabled={Boolean(busy)} onClick={() => void decide("confirm")}>
+          {busy === "confirm" ? <LoaderCircle aria-hidden="true" className="animate-spin" /> : <CircleCheck aria-hidden="true" />}
+          Confirm order
+        </Button>
+        <Button type="button" variant="outline" disabled={Boolean(busy)} onClick={() => void decide("cancel")}>
+          {busy === "cancel" ? <LoaderCircle aria-hidden="true" className="animate-spin" /> : <Ban aria-hidden="true" />}
+          Cancel order
+        </Button>
+      </div>
+    </section>
+  );
+}
+
+function OrderDetail({ order, onDecided }: { order: Order; onDecided: () => void }) {
   return (
     <div className="space-y-6">
       <section className="rounded-xl border bg-muted/30 p-4">
@@ -47,6 +107,8 @@ function OrderDetail({ order }: { order: Order }) {
         </div>
         <p className="mt-3 text-xs text-muted-foreground">{dateLabel(order.created_at)}</p>
       </section>
+
+      <OrderDecision order={order} onDecided={onDecided} />
 
       <section>
         <h3 className="text-sm font-semibold">Grounded line items</h3>
@@ -255,7 +317,7 @@ export function OrdersWorkspace({ data, initialOrderId }: { data: OrdersData; in
         </>
       ) : <EmptyState title="No orders match" description="Clear the search or status filter, or record a catalog-grounded sale." action={<Button variant="outline" onClick={() => { setQuery(""); setStatus("all"); setPage(1); }}>Clear filters</Button>} />}
 
-      <Sheet open={Boolean(selected)} onOpenChange={(open) => { if (!open) setSelected(null); }}><SheetContent side="right" className="w-[min(96vw,34rem)] overflow-y-auto"><SheetHeader><SheetTitle>Order details</SheetTitle><SheetDescription>Grounded items, status, effect boundary, and available evidence.</SheetDescription></SheetHeader>{selected ? <OrderDetail order={selected} /> : null}</SheetContent></Sheet>
+      <Sheet open={Boolean(selected)} onOpenChange={(open) => { if (!open) setSelected(null); }}><SheetContent side="right" className="w-[min(96vw,34rem)] overflow-y-auto"><SheetHeader><SheetTitle>Order details</SheetTitle><SheetDescription>Grounded items, status, effect boundary, and available evidence.</SheetDescription></SheetHeader>{selected ? <OrderDetail order={selected} onDecided={() => { setSelected(null); void refreshOrders(); }} /> : null}</SheetContent></Sheet>
       <ManualSaleDialog open={saleOpen} onOpenChange={setSaleOpen} data={data} onCreated={refreshOrders} />
       <p className="mt-7 text-center text-xs text-muted-foreground">Names and prices are re-derived by the backend. “Paid” records an internal status only.</p>
     </>

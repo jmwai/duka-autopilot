@@ -1,8 +1,10 @@
 # Duka Autopilot
 
-**The autonomous night shift for an independent Kenyan shop.** Customers order
+Duka means Shop in Swahili.
+
+Duka Autopilot is **the autonomous night shift for an independent African shop.** Customers order
 by text or Swahili voice notes; owners photograph handwritten ledgers;
-payments arrive as M-Pesa statements. Agents do the heavy lifting in the
+payments arrive as mobile money statements. Agents do the heavy lifting in the
 background, exact evidence is settled deterministically, and the owner wakes to
 a compressed exception queue.
 
@@ -72,7 +74,7 @@ uv run python scripts/measure_nightly.py --rows 50000
 
 ## Architecture
 
-![Duka Autopilot architecture](docs/architecture.svg)
+![Duka Autopilot architecture](docs/architecture-diagram.svg)
 
 Full notes: [docs/architecture.md](docs/architecture.md) — the Store, Bus,
 Sessions, and Memory seams, the graph, and its trust boundaries.
@@ -123,18 +125,6 @@ customer (text / voice note / order photo)        owner (ledger photo)
 - [ ] Deploy: Cloud Run services and Job + Pub/Sub + Firestore + Scheduler +
       managed Sessions/Memory Bank context, traces, and measured economics
 - [ ] Submit: Loom video, reviewed transcript/guide, Devpost form, and blog
-
-## Disclosure of pre-existing code
-
-This project was built during the hackathon submission period. It
-incorporates disclosed pre-existing code from
-[my-duka-agent](https://github.com/jamesmwai/my-duka-agent), an open demo the
-author built for a conference talk (Google I/O Extended Pwani 2026): the demo
-data model and seed, the exact-match reconciliation logic (since rebuilt for
-scale), the workflow graph shape, and the WhatsApp-look demo UI. Ported files
-say so in their docstrings. Everything else — the Store seam and backends,
-the indexed bulk reconciliation engine, the synthetic statement generator,
-the async/cloud/multimodal phases — is new hackathon-period work.
 
 ## License
 

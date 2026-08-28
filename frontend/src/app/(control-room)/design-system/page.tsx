@@ -1,7 +1,6 @@
 import { Activity, Banknote, Boxes, ClipboardCheck } from "lucide-react";
 import { notFound } from "next/navigation";
 
-import { AuthorityRail } from "@/components/control-room/authority-rail";
 import { Metric, KshValue } from "@/components/control-room/metric";
 import { PageHeader } from "@/components/control-room/page-header";
 import { DegradedBanner, EmptyState, FailureState, PageSkeleton, PendingState } from "@/components/control-room/product-states";
@@ -23,11 +22,6 @@ export default function DesignSystemPage() {
         <section>
           <h2 className="mb-3 text-lg font-bold">Authority</h2>
           <div className="mb-3 flex flex-wrap gap-2"><TrustBadge lane="exact" /><TrustBadge lane="gemini" /><TrustBadge lane="owner" /><EnvironmentBadge environment="local" /><ReleaseStamp sha="c585801adc00b843" /></div>
-          <AuthorityRail steps={[
-            { lane: "exact", title: "Routine evidence settled", detail: "Deterministic invariants update internal books.", value: "48,402" },
-            { lane: "gemini", title: "Messy residue interpreted", detail: "Gemini extracts or proposes inside a bounded batch.", value: "1,354" },
-            { lane: "owner", title: "Consequence waits", detail: "An owner approves or rejects the named effect.", value: "3" },
-          ]} />
         </section>
 
         <section>

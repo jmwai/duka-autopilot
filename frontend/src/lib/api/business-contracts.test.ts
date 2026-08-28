@@ -13,6 +13,16 @@ describe("Owner product API contracts", () => {
     expect(orders[1].id).toBe("opaque");
   });
 
+  it("accepts ledger-derived order lines that carry no catalog SKU", () => {
+    // A handwritten ledger row is a free-text line and an amount; the API
+    // returns sku: null for it. Rejecting that fails the entire order list.
+    const orders = ordersSchema.parse([
+      { id: "ledger-1", customer_id: "walk-in", status: "paid", total: 210, items: [{ sku: null, name: "soda x3", qty: 1, unit_price: 210 }] },
+    ]);
+    expect(orders[0].items[0].sku).toBeNull();
+    expect(orders[0].items[0].name).toBe("soda x3");
+  });
+
   it("rejects non-integer inventory arithmetic", () => {
     const valid = { sku: "SOAP", name: "Soap", unit: "bar", unit_price: 85, stock: 7, reorder_point: 10, target_stock: 30, low: true, suggested_qty: 23 };
     expect(inventorySchema.safeParse([valid]).success).toBe(true);

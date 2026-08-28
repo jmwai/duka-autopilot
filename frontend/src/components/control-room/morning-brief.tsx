@@ -12,12 +12,10 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 
-import { AuthorityRail } from "@/components/control-room/authority-rail";
 import { KshValue, Metric } from "@/components/control-room/metric";
 import { PageHeader } from "@/components/control-room/page-header";
 import { DegradedBanner } from "@/components/control-room/product-states";
 import { ProofSheet } from "@/components/control-room/proof-sheet";
-import { ReleaseStrip } from "@/components/control-room/release-strip";
 import { TrustBadge } from "@/components/control-room/trust-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -47,7 +45,6 @@ export function MorningBrief({ data }: { data: MorningBriefData }) {
   const nightly = digest.digest.nightly;
   const settledRate = statement.total ? statement.matched_exact / statement.total : 0;
   const settledPercent = new Intl.NumberFormat("en", { style: "percent", maximumFractionDigits: 1 }).format(settledRate);
-  const residue = statement.unmatched + statement.fuzzy_proposed;
   const environment = version.environment || "unknown";
   const releaseProven = Boolean(version.release_sha && version.release_sha !== "unknown");
   const nightlyObserved = Boolean(nightly?.finished_at || nightly?.run_id);
@@ -77,14 +74,6 @@ export function MorningBrief({ data }: { data: MorningBriefData }) {
           description="These books remain visible, but Duka is not presenting an old run as today’s completed work. Open Night Shift to inspect or run the next approved check."
         />
       ) : null}
-
-      <ReleaseStrip
-        environment={environment}
-        releaseSha={version.release_sha}
-        model={version.model}
-        modelLocation={version.model_location}
-        runId={nightly?.run_id}
-      />
 
       <section className="paper-noise relative mb-5 overflow-hidden rounded-2xl bg-sidebar px-4 py-5 text-sidebar-foreground shadow-sm sm:px-7 sm:py-7">
         <div className="relative z-10 grid gap-7 lg:grid-cols-[minmax(0,1fr)_minmax(19rem,0.48fr)] lg:items-end">
@@ -142,16 +131,6 @@ export function MorningBrief({ data }: { data: MorningBriefData }) {
           </div>
         </div>
       </section>
-
-      <AuthorityRail
-        className="mb-5"
-        compactOnMobile
-        steps={[
-          { lane: "exact", title: "Routine evidence settled", detail: "Reference, amount, and chronology satisfied deterministic invariants.", value: statement.matched_exact.toLocaleString() },
-          { lane: "gemini", title: "Ambiguity stayed bounded", detail: "The model may extract or propose; it cannot declare uncertain money paid.", value: residue.toLocaleString() },
-          { lane: "owner", title: "Consequences stopped here", detail: "Only the exact effect written in the decision queue can be authorized.", value: approvals.length.toLocaleString() },
-        ]}
-      />
 
       <section aria-label="Morning outcomes" className="mb-6 grid grid-cols-2 gap-3 xl:grid-cols-4">
         <Metric className="p-3 sm:p-5" label="Settled exactly" value={statement.matched_exact.toLocaleString()} detail={`${settledPercent} of statement rows`} icon={CheckCircle2} tone="exact" />
@@ -217,7 +196,6 @@ export function MorningBrief({ data }: { data: MorningBriefData }) {
         </div>
       </div>
 
-      <p className="mt-7 text-center text-xs text-muted-foreground">Synthetic judging environment · No external M-Pesa transfer or supplier order is initiated.</p>
     </>
   );
 }

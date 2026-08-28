@@ -44,8 +44,15 @@ LEDGERS = {
     },
 }
 
+# ``synthesis_language_code`` is the locale the Gemini voice accepts, which is
+# not always the content locale: the Kore voice serves Kenyan English through
+# en-US, while Kiswahili is supported natively as sw-KE. The manifest keeps the
+# content locale, so the fixture still describes the speaker it represents.
+# Filenames carry the plain language suffix because the manifest schema requires
+# the id, language and path to agree (``voice-(en|sw)-v\d+``).
 VOICES = {
     "en-KE": {
+        "synthesis_language_code": "en-US",
         "text": "Hello, please bring me my usual order tomorrow morning.",
         "english_translation": "Hello, please bring me my usual order tomorrow morning.",
         "prompt": (
@@ -53,9 +60,10 @@ VOICES = {
             "voice note. Use a natural conversational pace, clear diction, and "
             "a warm, matter-of-fact tone. Do not add or omit any words."
         ),
-        "output": FIXTURE_DIR / "voice-usual-en-v1.wav",
+        "output": FIXTURE_DIR / "voice-en-v1.wav",
     },
     "sw-KE": {
+        "synthesis_language_code": "sw-KE",
         "text": "Habari, niletee vitu vyangu vya kawaida kesho asubuhi.",
         "english_translation": "Hello, please bring me my usual items tomorrow morning.",
         "prompt": (
@@ -63,7 +71,7 @@ VOICES = {
             "kwa duka. Tumia kasi ya kawaida, matamshi wazi, na sauti ya kirafiki. "
             "Usiongeze wala kuondoa maneno yoyote."
         ),
-        "output": FIXTURE_DIR / "voice-usual-sw-v1.wav",
+        "output": FIXTURE_DIR / "voice-sw-v1.wav",
     },
 }
 
@@ -207,7 +215,7 @@ def generate_voices(
             request={
                 "input": texttospeech.SynthesisInput(text=fixture["text"], prompt=fixture["prompt"]),
                 "voice": texttospeech.VoiceSelectionParams(
-                    language_code=language,
+                    language_code=fixture["synthesis_language_code"],
                     name=speaker,
                     model_name=model,
                 ),
@@ -233,6 +241,10 @@ def generate_voices(
                         "location": location,
                         "model": model,
                         "speaker": speaker,
+                        # The Gemini voice serves Kenyan English through en-US,
+                        # so record the locale actually synthesized rather than
+                        # letting the content locale imply it.
+                        "synthesis_language_code": fixture["synthesis_language_code"],
                         "style_prompt": fixture["prompt"],
                         "transcript_sha256": _sha256(
                             fixture["text"].encode("utf-8")),

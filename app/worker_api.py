@@ -12,9 +12,12 @@ from app.environment import load_environment
 load_environment()
 
 from agents.store import get_store
+from app.bus import TOPIC_ATTRIBUTE, get_handler
 from app.http_security import RequestSecurityMiddleware
-from app.worker import RetryableInboundError, handle_inbound
+from app.worker import INBOUND_TOPIC, RetryableInboundError, register
 from app.observability import bind_context, extracted_context, instrument_fastapi, tracer
+
+register()  # subscribe every topic handler before the first push arrives
 
 app = FastAPI(title="Duka Autopilot Worker")
 app.add_middleware(RequestSecurityMiddleware, role="worker")
@@ -67,15 +70,25 @@ async def pubsub_push(envelope: dict):
         "event_id", attributes.get("event_id") or message.get("messageId"))
     payload["pubsub_message_id"] = message.get("messageId")
     payload["delivery_attempt"] = envelope.get("deliveryAttempt")
+    # Every logical topic arrives on one subscription; the attribute says
+    # which handler owns it. Messages published before this attribute existed
+    # are inbound work.
+    topic = str(attributes.get(TOPIC_ATTRIBUTE) or INBOUND_TOPIC)
+    try:
+        handler = get_handler(topic)
+    except KeyError:
+        return JSONResponse({"error": f"no handler for topic '{topic}'"},
+                            status_code=400)
     with extracted_context(attributes), bind_context(
             event_id=payload.get("event_id"),
             pubsub_message_id=message.get("messageId"),
             delivery_attempt=envelope.get("deliveryAttempt")):
         try:
-            with tracer().start_as_current_span("duka.inbound.process") as span:
+            with tracer().start_as_current_span(f"duka.{topic}.process") as span:
                 span.set_attribute("messaging.system", "gcp_pubsub")
                 span.set_attribute("messaging.operation.name", "process")
-                result = await handle_inbound(payload)
+                span.set_attribute("duka.topic", topic)
+                result = await handler(payload)
         except RetryableInboundError as exc:
             return JSONResponse(
                 {"ok": False, "retryable": True, "error": str(exc)},

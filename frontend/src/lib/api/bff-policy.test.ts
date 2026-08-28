@@ -32,4 +32,13 @@ describe("BFF route policy", () => {
     expect(acceptedContentType(new Request("http://duka.test", { headers: { "content-type": "application/json; charset=utf-8" } }))).toBe(true);
     expect(acceptedContentType(new Request("http://duka.test", { headers: { "content-type": "text/plain" } }))).toBe(false);
   });
+
+  it("allows an owner order decision and rejects a malformed order id", () => {
+    expect(matchBffRoute("POST", ["orders", "42", "decision"])?.upstreamPath)
+      .toBe("orders/42/decision");
+    expect(matchBffRoute("POST", ["orders", "42", "decision"])?.maxBytes).toBe(8_000);
+    expect(matchBffRoute("POST", ["orders", "../42", "decision"])).toBeNull();
+    expect(matchBffRoute("POST", ["orders", "42", "delete"])).toBeNull();
+    expect(matchBffRoute("GET", ["orders", "42", "decision"])).toBeNull();
+  });
 });

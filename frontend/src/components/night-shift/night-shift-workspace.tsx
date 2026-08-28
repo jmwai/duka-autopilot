@@ -1,22 +1,26 @@
 "use client";
 
 import {
+  ArrowRight,
   CheckCircle2,
   CloudCog,
   Coins,
   FileCheck2,
+  Hand,
   LoaderCircle,
+  PackageSearch,
   Play,
   Rows3,
   ShieldCheck,
+  Sparkles,
   Timer,
 } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
-import { AuthorityRail } from "@/components/control-room/authority-rail";
 import { Metric } from "@/components/control-room/metric";
+import { TrustBadge } from "@/components/control-room/trust-badge";
 import { OperationRecovery } from "@/components/control-room/operation-recovery";
 import { PageHeader } from "@/components/control-room/page-header";
 import { PendingState } from "@/components/control-room/product-states";
@@ -26,16 +30,22 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { nightlyReportSchema, type NightlyReport } from "@/lib/api/contracts";
+import { nightlyReportSchema, nightlyStartSchema, type FuzzyProposal, type NightlyReport } from "@/lib/api/contracts";
 import { BrowserApiError, browserApi } from "@/lib/api/browser-client";
 import type { NightShiftData } from "@/lib/api/night-shift";
-import { formatCost } from "@/lib/format/money";
+import { formatCost, formatKsh } from "@/lib/format/money";
+import {
+  PENDING_RUN_EVENT,
+  readPendingRun,
+  writePendingRun,
+} from "@/lib/night-shift/pending-run";
 import {
   formatRunTime,
   LOCAL_BASELINE,
   NIGHTLY_BOUNDS,
   observedSettlePercent,
   reportReleaseState,
+  stopReasonLabel,
 } from "@/lib/night-shift/night-shift";
 
 function metric(value: number) {
@@ -46,35 +56,208 @@ function duration(value: number) {
   return value < 1_000 ? `${value.toLocaleString()} ms` : `${(value / 1_000).toFixed(2)} s`;
 }
 
-function RunConfirmation({ busy, failure, onCancel, onConfirm }: {
+type RunMode = "full" | "exact";
+
+function RunConfirmation({ mode, busy, failure, onCancel, onConfirm }: {
+  mode: RunMode;
   busy: boolean;
   failure: { message: string; requestId?: string } | null;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  const full = mode === "full";
   return (
     <AlertDialogContent>
-      <span className="grid size-11 place-items-center rounded-xl bg-exact/10 text-exact"><Rows3 aria-hidden="true" className="size-5" /></span>
+      <span className={`grid size-11 place-items-center rounded-xl ${full ? "bg-gemini/10 text-gemini" : "bg-exact/10 text-exact"}`}>
+        {full ? <Sparkles aria-hidden="true" className="size-5" /> : <Rows3 aria-hidden="true" className="size-5" />}
+      </span>
       <AlertDialogHeader>
-        <AlertDialogTitle>Run the local exact pass?</AlertDialogTitle>
+        <AlertDialogTitle>{full ? "Run the night shift now?" : "Run the exact pass only?"}</AlertDialogTitle>
         <AlertDialogDescription>
-          This invokes the deterministic indexed pass with fuzzy review disabled. It may link exact payments in the local books, persist a new report, and draft one restock proposal.
+          {full
+            ? `The deterministic pass settles what it can, then hands the residue to Gemini in batches of ${NIGHTLY_BOUNDS.residueBatch}. Every match Gemini finds becomes a proposal in your approval queue. Nothing is marked paid and no money moves. This runs in the background, so you can close this and carry on.`
+            : "This invokes the deterministic indexed pass with fuzzy review disabled. It may link exact payments in the local books, persist a new report, and draft one restock proposal."}
         </AlertDialogDescription>
       </AlertDialogHeader>
-      <div className="rounded-lg border border-owner/40 bg-owner/10 p-3 text-xs leading-5"><span className="font-semibold">Evidence boundary:</span> this is not Gemini evidence, Cloud Run Job evidence, or proof that Cloud Scheduler fired. Re-running an already-settled dataset is not a comparable benchmark.</div>
+      <div className="rounded-lg border border-owner/40 bg-owner/10 p-3 text-xs leading-5">
+        <span className="font-semibold">Evidence boundary:</span>{" "}
+        {full
+          ? "a run you start here is queued from this console and executed by the worker. It produces real Gemini evidence, but it is not Cloud Run Job evidence and not proof that Cloud Scheduler fired."
+          : "this is not Gemini evidence, Cloud Run Job evidence, or proof that Cloud Scheduler fired. Re-running an already-settled dataset is not a comparable benchmark."}
+      </div>
       {failure ? (
         <OperationRecovery
           compact
-          title="The exact pass result could not be confirmed."
+          title={full ? "The night shift result could not be confirmed." : "The exact pass result could not be confirmed."}
           description={`${failure.message} Review the persisted report after retry; no Scheduler or Gemini success is inferred from this error.`}
           requestId={failure.requestId}
         />
       ) : null}
       <AlertDialogFooter>
         <AlertDialogCancel onClick={onCancel} disabled={busy}>Cancel</AlertDialogCancel>
-        <AlertDialogAction onClick={(event) => { event.preventDefault(); onConfirm(); }} disabled={busy}>{busy ? <LoaderCircle aria-hidden="true" className="animate-spin" /> : <Play aria-hidden="true" />}{busy ? "Running exact pass…" : "Run exact pass"}</AlertDialogAction>
+        <AlertDialogAction onClick={(event) => { event.preventDefault(); onConfirm(); }} disabled={busy}>
+          {busy ? <LoaderCircle aria-hidden="true" className="animate-spin" /> : <Play aria-hidden="true" />}
+          {busy ? (full ? "Starting…" : "Running exact pass…") : (full ? "Run night shift" : "Run exact pass")}
+        </AlertDialogAction>
       </AlertDialogFooter>
     </AlertDialogContent>
+  );
+}
+
+function percent(value: number) {
+  return `${Math.round(value * 100)}%`;
+}
+
+function Stage({ lane, icon: Icon, title, facts, boundary, children }: {
+  lane: "exact" | "gemini" | "owner";
+  icon: typeof CheckCircle2;
+  title: string;
+  facts: React.ReactNode;
+  boundary: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <li className="relative">
+      <span className="absolute -left-[2.19rem] top-0 grid size-6 place-items-center rounded-full border bg-card text-muted-foreground">
+        <Icon aria-hidden="true" className="size-3.5" />
+      </span>
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="font-semibold">{title}</p>
+        <TrustBadge lane={lane} />
+      </div>
+      <p className="mt-1 text-sm">{facts}</p>
+      <p className="mt-1 text-xs leading-5 text-muted-foreground">{boundary}</p>
+      {children}
+    </li>
+  );
+}
+
+/** Every batch is one re-entry of the same graph the owner triggers by chat. */
+function BatchTrace({ report }: { report: NightlyReport }) {
+  if (!report.fuzzy_batch_trace.length) return null;
+  return (
+    <div className="mt-3 overflow-hidden rounded-lg border">
+      <div className="max-h-64 overflow-auto">
+        <table className="w-full text-xs">
+          <thead className="sticky top-0 bg-muted text-muted-foreground">
+            <tr>
+              <th className="p-2 text-left font-medium">Batch</th>
+              <th className="p-2 text-left font-medium">Residue</th>
+              <th className="p-2 text-left font-medium">Proposed</th>
+              <th className="p-2 text-left font-medium">Graph path</th>
+              <th className="p-2 text-right font-medium">Tokens in/out</th>
+              <th className="p-2 text-right font-medium">Cost</th>
+            </tr>
+          </thead>
+          <tbody>
+            {report.fuzzy_batch_trace.map((batch) => (
+              <tr key={batch.batch} className="border-t">
+                <td className="numeric p-2">{batch.batch}</td>
+                <td className="numeric whitespace-nowrap p-2">{metric(batch.residue_before)} → {metric(batch.residue_after)}</td>
+                <td className="numeric p-2">{metric(batch.proposed)}</td>
+                <td className="whitespace-nowrap p-2 font-mono text-[0.68rem]">{batch.node_path.join(" → ") || "not recorded"}</td>
+                <td className="numeric whitespace-nowrap p-2 text-right">{metric(batch.input_tokens)} / {metric(batch.output_tokens)}</td>
+                <td className="numeric p-2 text-right">{formatCost(batch.cost_usd)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function StageLadder({ report }: { report: NightlyReport }) {
+  const total = report.total_considered ?? report.statement.total;
+  const reviewed = report.fuzzy_batches > 0;
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>One run, four inspectable stages</CardTitle>
+        <CardDescription>Autonomy where evidence is exact. Gemini where reality is messy. A human where consequences matter.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <ol className="relative ml-3 space-y-6 border-l pl-6">
+          <Stage
+            lane="exact"
+            icon={CheckCircle2}
+            title="Exact pass"
+            facts={<><span className="numeric font-semibold">{metric(report.exact_matched)}</span> of <span className="numeric">{metric(total)}</span> rows settled in <span className="numeric">{duration(report.exact_wall_ms)}</span></>}
+            boundary="Indexed code, no model call. Amount, customer and time window must all agree, so this pass costs nothing and cannot be wrong about a match."
+          />
+          <Stage
+            lane="gemini"
+            icon={Sparkles}
+            title="Bounded review"
+            facts={reviewed
+              ? <>
+                  <span className="numeric font-semibold">{metric(report.residue_start)}</span> rows handed over · <span className="numeric">{metric(report.fuzzy_batches)}</span> graph re-entr{report.fuzzy_batches === 1 ? "y" : "ies"} · <span className="numeric">{formatCost(report.cost_usd)}</span>
+                  {report.fuzzy_stop_reason === "batch_limit" && report.residue_end > 0
+                    ? <span className="text-muted-foreground"> · <span className="numeric">{metric(report.residue_end)}</span> still waiting for the next run</span>
+                    : null}
+                </>
+              : <>Not run — <span className="numeric">{metric(report.residue_start)}</span> row{report.residue_start === 1 ? "" : "s"} of residue went straight to the owner</>}
+            boundary={reviewed
+              ? `Stopped: ${stopReasonLabel(report.fuzzy_stop_reason).toLowerCase()}. Each batch is capped at ${NIGHTLY_BOUNDS.residueBatch} rows${report.fuzzy_batch_limit && report.fuzzy_batch_limit < NIGHTLY_BOUNDS.batchCeiling ? `, this run was allowed ${report.fuzzy_batch_limit}` : ""} and the loop can never exceed ${NIGHTLY_BOUNDS.batchCeiling}.`
+              : `${stopReasonLabel(report.fuzzy_stop_reason)}, so no model saw any row and this run spent nothing on tokens.`}
+          >
+            <BatchTrace report={report} />
+          </Stage>
+          <Stage
+            lane="owner"
+            icon={Hand}
+            title="Owner queue"
+            facts={<><span className="numeric font-semibold">{metric(report.fuzzy_proposals)}</span> proposal{report.fuzzy_proposals === 1 ? "" : "s"} filed · <span className="numeric">{formatKsh(0)}</span> moved</>}
+            boundary="Gemini's only write is a proposal. Marking an order paid stays an owner action, so an uncertain match cannot become money."
+          />
+          <Stage
+            lane="exact"
+            icon={PackageSearch}
+            title="Restock scan"
+            facts={<><span className="numeric font-semibold">{metric(report.restock_low_count)}</span> product{report.restock_low_count === 1 ? "" : "s"} below reorder point · {report.restock_proposed ? "one draft filed" : "no new draft"}</>}
+            boundary="The same run checks the shelves in plain code. A restock draft is a proposal too — it waits with everything else."
+          />
+        </ol>
+        <div className="mt-5 flex justify-end">
+          <Button asChild variant="outline" size="sm"><Link href="/evidence#trace">Follow this run to Evidence <FileCheck2 aria-hidden="true" /></Link></Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ProposalList({ proposals, filed }: { proposals: FuzzyProposal[]; filed: number }) {
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div><CardTitle>What Gemini proposed</CardTitle><CardDescription>Each row is a link waiting for you, with the reason the model gave for suggesting it.</CardDescription></div>
+          <TrustBadge lane="gemini" />
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {proposals.map((proposal) => (
+          <div key={proposal.approval_id} className="rounded-lg border p-3">
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <p className="text-sm font-semibold">
+                <span className="numeric">{formatKsh(proposal.payment_amount)}</span> from {proposal.payer_name || "an unnamed payer"}
+                <ArrowRight aria-hidden="true" className="mx-2 inline size-3.5 align-[-0.1em] text-muted-foreground" />
+                Order #{proposal.order_id}{proposal.customer_name ? ` · ${proposal.customer_name}` : ""}
+              </p>
+              <Badge variant="gemini">{percent(proposal.confidence)} confident</Badge>
+            </div>
+            <p className="mt-2 text-sm leading-6">“{proposal.rationale || "No rationale was recorded."}”</p>
+            <p className="mt-2 font-mono text-[0.68rem] text-muted-foreground">
+              {proposal.payment_ref || "no reference"} · order total {formatKsh(proposal.order_total)}
+            </p>
+          </div>
+        ))}
+        {filed > proposals.length ? (
+          <p className="text-xs text-muted-foreground">{metric(filed - proposals.length)} further proposal{filed - proposals.length === 1 ? "" : "s"} from this run are in the queue but not listed here.</p>
+        ) : null}
+        <Button asChild variant="outline" size="sm"><Link href="/approvals">Decide in the approval queue <ArrowRight aria-hidden="true" /></Link></Button>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -110,6 +293,9 @@ function LiveReport({ report, data }: { report: NightlyReport; data: NightShiftD
               <div className="mt-4 h-3 overflow-hidden rounded-full bg-muted" role="progressbar" aria-label="Deterministic settlement rate" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(report.settle_rate * 10000) / 100}>
                 <div className="h-full rounded-full bg-exact" style={{ width: settleWidth }} />
               </div>
+              <p className="mt-3 text-xs leading-5 text-muted-foreground">
+                Across the whole statement: <span className="numeric font-semibold text-foreground">{metric(report.statement.matched_exact)}</span> of <span className="numeric">{metric(report.statement.total)}</span> settled exactly, <span className="numeric">{metric(report.statement.fuzzy_proposed)}</span> proposed for approval, <span className="numeric">{metric(report.statement.unmatched)}</span> still unmatched. A run that settles nothing new has found nothing left to settle.
+              </p>
               <div className="mt-5 grid gap-3 sm:grid-cols-3">
                 <div className="rounded-lg bg-muted p-3"><p className="text-xs text-muted-foreground">Exact pass</p><p className="numeric mt-1 font-semibold">{duration(report.exact_wall_ms)}</p></div>
                 <div className="rounded-lg bg-muted p-3"><p className="text-xs text-muted-foreground">Whole pipeline</p><p className="numeric mt-1 font-semibold">{duration(report.wall_ms)}</p></div>
@@ -118,18 +304,11 @@ function LiveReport({ report, data }: { report: NightlyReport; data: NightShiftD
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader><CardTitle>One run, four inspectable stages</CardTitle><CardDescription>Autonomy where evidence is exact. Gemini where reality is messy. A human where consequences matter.</CardDescription></CardHeader>
-            <CardContent>
-              <AuthorityRail steps={[
-                { lane: "exact", title: "Indexed exact pass", detail: `${metric(report.exact_matched)} rows linked on phone, integer amount, and a 48-hour window.`, value: duration(report.exact_wall_ms) },
-                { lane: "gemini", title: "Bounded residue review", detail: `${metric(report.residue_start)} ambiguous rows entered; Gemini cannot mark them paid.`, value: `${report.fuzzy_batches}/${NIGHTLY_BOUNDS.batchCeiling}` },
-                { lane: "owner", title: "Consequences wait", detail: `${metric(report.fuzzy_proposals)} proposals require exact-effect confirmation.`, value: metric(report.fuzzy_proposals) },
-                { lane: "exact", title: "Receipt persisted", detail: `Run ${report.run_id ?? "without an attributed ID"} became the morning handoff; configured services alone are not proof.`, value: report.status === "completed" ? "saved" : "legacy" },
-              ]} />
-              <div className="mt-3 flex justify-end"><Button asChild variant="outline" size="sm"><Link href="/evidence#trace">Follow this run to Evidence <FileCheck2 aria-hidden="true" /></Link></Button></div>
-            </CardContent>
-          </Card>
+          <StageLadder report={report} />
+
+          {report.fuzzy_proposal_sample.length ? (
+            <ProposalList proposals={report.fuzzy_proposal_sample} filed={report.fuzzy_proposals} />
+          ) : null}
         </div>
 
         <div className="space-y-5">
@@ -185,24 +364,59 @@ function Baseline() {
 
 export function NightShiftWorkspace({ data }: { data: NightShiftData }) {
   const [report, setReport] = useState(data.digest.digest.nightly);
-  const [confirming, setConfirming] = useState(false);
+  const [confirming, setConfirming] = useState<RunMode | null>(null);
   const [running, setRunning] = useState(false);
+  const [pendingRunId, setPendingRunId] = useState<string | null>(null);
   const [failure, setFailure] = useState<{ message: string; requestId?: string } | null>(null);
   const local = data.version.environment === "local";
   const releaseState = report ? reportReleaseState(report, data.version) : "unattributed";
 
-  async function runExact() {
-    if (!local || running) return;
+  // The watcher in the shell owns the run; this only mirrors it, so arriving
+  // on the page mid-run — or reloading it — still shows what is happening.
+  useEffect(() => {
+    function sync() {
+      setPendingRunId(readPendingRun()?.runId ?? null);
+    }
+    sync();
+    window.addEventListener(PENDING_RUN_EVENT, sync);
+    return () => window.removeEventListener(PENDING_RUN_EVENT, sync);
+  }, []);
+
+  async function run(mode: RunMode) {
+    if (running) return;
     setRunning(true);
     setFailure(null);
+    const full = mode === "full";
     try {
-      const result = await browserApi("recon/nightly?fuzzy=false", nightlyReportSchema, { method: "POST", body: "{}" });
+      if (full) {
+        // The pipeline goes to the worker, so this request only hands it over.
+        // The watcher in the shell reports the outcome wherever the owner is.
+        const queued = await browserApi("recon/nightly/start", nightlyStartSchema, {
+          method: "POST",
+          body: JSON.stringify({ fuzzy: true }),
+        });
+        writePendingRun({ runId: queued.run_id, startedAt: Date.now() });
+        setPendingRunId(queued.run_id);
+        setConfirming(null);
+        toast.success("Night shift started", {
+          description: "Carry on with your work — you will be told here when it finishes.",
+        });
+        return;
+      }
+      const result = await browserApi("recon/nightly?fuzzy=false", nightlyReportSchema, {
+        method: "POST",
+        body: "{}",
+      });
       setReport(result);
-      setConfirming(false);
-      toast.success("Local exact report persisted. This is not Scheduler proof.");
+      setConfirming(null);
+      toast.success(local
+        ? "Local exact report persisted. This is not Scheduler proof."
+        : "Exact report persisted. This is not Scheduler proof.");
     } catch (error) {
       setFailure({
-        message: error instanceof BrowserApiError ? error.message : "The local exact pass did not complete.",
+        message: error instanceof BrowserApiError
+          ? error.message
+          : full ? "The night shift could not be started." : "The exact pass did not complete.",
         requestId: error instanceof BrowserApiError ? error.requestId : undefined,
       });
     } finally {
@@ -216,10 +430,27 @@ export function NightShiftWorkspace({ data }: { data: NightShiftData }) {
         eyebrow="Autonomous work"
         title="Night shift"
         description="The routine majority settles in indexed code. Only bounded residue reaches Gemini, and every uncertain money decision stops with the owner."
-        action={local
-          ? <Button onClick={() => setConfirming(true)}><Play aria-hidden="true" /> Run local exact check</Button>
-          : <Button variant="outline" disabled title="Trigger the real Cloud Run Job from Cloud Scheduler or the reviewed proof workflow"><CloudCog aria-hidden="true" /> Cloud Job only</Button>}
+        action={
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => setConfirming("full")} disabled={pendingRunId !== null}>
+              {pendingRunId ? <LoaderCircle aria-hidden="true" className="animate-spin" /> : <Play aria-hidden="true" />}
+              {pendingRunId ? "Running…" : "Run night shift"}
+            </Button>
+            <Button variant="outline" onClick={() => setConfirming("exact")} disabled={pendingRunId !== null}><Rows3 aria-hidden="true" /> Exact pass only</Button>
+          </div>
+        }
       />
+
+      {pendingRunId ? (
+        <div role="status" className="mb-5 flex flex-wrap items-center gap-3 rounded-xl border border-gemini/40 bg-gemini/5 p-4 text-sm">
+          <LoaderCircle aria-hidden="true" className="size-4 shrink-0 animate-spin text-gemini" />
+          <div>
+            <p className="font-semibold">The night shift is running in the background.</p>
+            <p className="mt-0.5 text-muted-foreground">Go and do something else — you will be told as soon as it finishes, wherever you are in Duka. Nothing is marked paid while it runs.</p>
+          </div>
+          <span className="ml-auto font-mono text-[0.68rem] text-muted-foreground">run {pendingRunId.slice(0, 10)}</span>
+        </div>
+      ) : null}
 
       <section className="paper-noise mb-5 overflow-hidden rounded-2xl bg-sidebar p-5 text-sidebar-foreground shadow-sm sm:p-6">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
@@ -260,8 +491,16 @@ export function NightShiftWorkspace({ data }: { data: NightShiftData }) {
       )}
       <Baseline />
       <p className="mt-7 text-center text-xs text-muted-foreground">The Loom must show Cloud Scheduler or the reviewed proof workflow starting the real Cloud Run Job. This page alone is not scheduler evidence.</p>
-      <AlertDialog open={confirming} onOpenChange={(open) => { if (!running) setConfirming(open); }}>
-        {confirming ? <RunConfirmation busy={running} failure={failure} onCancel={() => { if (!running) setConfirming(false); }} onConfirm={() => void runExact()} /> : null}
+      <AlertDialog open={confirming !== null} onOpenChange={(open) => { if (!running && !open) setConfirming(null); }}>
+        {confirming ? (
+          <RunConfirmation
+            mode={confirming}
+            busy={running}
+            failure={failure}
+            onCancel={() => { if (!running) setConfirming(null); }}
+            onConfirm={() => void run(confirming)}
+          />
+        ) : null}
       </AlertDialog>
     </>
   );

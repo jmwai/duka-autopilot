@@ -7,12 +7,14 @@ protected context resource configured by ``AGENT_CONTEXT_ID``.
 from __future__ import annotations
 
 import os
+import re
 import time
 import hashlib
 import hmac
 import logging
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+from functools import lru_cache
 from uuid import uuid4
 
 from google.adk.events.event import Event
@@ -25,6 +27,18 @@ from app.observability import bind_context, tracer
 
 SESSION_TTL = os.environ.get("DUKA_SESSION_TTL", "7776000s")  # 90 days
 logger = logging.getLogger(__name__)
+
+# Agent Platform assigns numeric session ids. The store reserves an unbound
+# pointer and this module binds whatever the session service hands back.
+_NUMERIC_SESSION_ID = re.compile(r"^[0-9]+$")
+
+
+@lru_cache(maxsize=1)
+def _workflow_name() -> str:
+    """The graph's own name, imported late to keep the import cycle broken."""
+    from agents.graph import autopilot_workflow
+    return autopilot_workflow.name
+
 
 # USD per 1M tokens - gemini-3.7-flash intro rates (through 2026-12-31),
 # override in .env (standard rates from 2027: 1.50 / 7.50)
@@ -111,6 +125,42 @@ def _active_session(customer_id: str) -> dict:
     return get_store().ensure_active_session(customer_id, _user_id(customer_id))
 
 
+def _session_id_is_resolvable(session_id: str) -> bool:
+    """Agent Platform names its own sessions; a non-numeric name 400s, not 404s.
+
+    ADK only swallows a 404 when reading a session, so an id this service never
+    issued raises instead of reporting "absent". Screening the shape here keeps
+    a stale pointer from wedging every turn for that customer.
+    """
+    if not session_id:
+        return False
+    if not _cloud_mode():
+        return True
+    return bool(_NUMERIC_SESSION_ID.fullmatch(session_id))
+
+
+def _unresolvable_session_error(error: Exception) -> bool:
+    """True when a read failed because the id itself is unusable, not absent.
+
+    ADK raises ValueError for an id it rejects locally; Agent Platform answers
+    400 for a name it never issued. Both mean "rebind", while 401/403/5xx are
+    real faults that must surface.
+    """
+    if isinstance(error, ValueError):
+        return True
+    return getattr(error, "code", None) == 400
+
+
+async def _delete_session_quietly(user_id: str, session_id: str) -> None:
+    """Drop a session we created but lost the race to bind. Never fatal."""
+    try:
+        await runner.session_service.delete_session(
+            app_name=APP_NAME, user_id=user_id, session_id=session_id)
+    except Exception:  # noqa: BLE001 - an orphan expires with the session TTL
+        logger.warning(
+            "could not delete unbound session", extra={"session_id": session_id})
+
+
 class CustomerTurnBusyError(RuntimeError):
     """A retryable signal that another instance owns this customer's turn."""
 
@@ -144,29 +194,68 @@ async def new_session(customer_id: str, event_id: str) -> dict:
         if rotation["status"] != "completed" or not rotation.get("pointer"):
             raise RuntimeError("session rotation is already processing or unavailable")
         pointer = rotation["pointer"]
-        with bind_context(
-                customer_key=user_id, session_id=pointer["session_id"]):
+        # The pointer is reserved unbound, so resolve the real id before it is
+        # bound into the trace context or returned to the caller.
+        session_id = await _ensure_session(
+            customer_id, pointer,
+            state={"customer_id": customer_id, "user_key": user_id,
+                   "actor_role": "customer"})
+        with bind_context(customer_key=user_id, session_id=session_id):
             with tracer().start_as_current_span("duka.session.rotate") as span:
                 span.set_attribute("duka.session.generation", pointer["generation"])
-                await _ensure_session(
-                    user_id, pointer["session_id"],
-                    state={"customer_id": customer_id, "user_key": user_id,
-                           "actor_role": "customer"})
         return {
             "event_id": event_id,
-            "session_id": pointer["session_id"],
+            "session_id": session_id,
             "idempotent": rotation["idempotent"],
         }
 
 
-async def _ensure_session(user_id: str, session_id: str, state: dict) -> None:
+async def _ensure_session(customer_id: str, pointer: dict, state: dict,
+                          _depth: int = 0) -> str:
+    """Return a session id that this environment can actually resolve.
+
+    The store reserves the pointer unbound; the session service assigns the id.
+    Binding is a compare-and-set, so a concurrent binder cannot be clobbered -
+    the loser adopts the winner and drops the session it created.
+    """
     svc = runner.session_service
-    existing = await svc.get_session(app_name=APP_NAME, user_id=user_id, session_id=session_id)
-    if existing is None:
-        kwargs = {"ttl": SESSION_TTL} if _cloud_mode() else {}
-        await svc.create_session(
-            app_name=APP_NAME, user_id=user_id, session_id=session_id,
-            state=state, **kwargs)
+    user_id = pointer["user_id"]
+    stored = pointer.get("session_id") or ""
+
+    if _session_id_is_resolvable(stored):
+        try:
+            if await svc.get_session(
+                    app_name=APP_NAME, user_id=user_id, session_id=stored):
+                return stored
+        except Exception as error:  # noqa: BLE001 - narrowed just below
+            if not _unresolvable_session_error(error):
+                raise
+            logger.warning("stored session id was rejected; rebinding",
+                           extra={"session_id": stored})
+
+    kwargs = {"ttl": SESSION_TTL} if _cloud_mode() else {}
+    created = await svc.create_session(
+        app_name=APP_NAME, user_id=user_id, state=state, **kwargs)
+    if not created.id or not _session_id_is_resolvable(created.id):
+        raise RuntimeError(
+            f"session service returned an unusable session id {created.id!r}")
+    # Logged before the bind so a crash in the gap leaves a reconcilable trace.
+    logger.info("created managed session", extra={"session_id": created.id})
+
+    bound = get_store().bind_active_session(
+        customer_id, user_id, generation=int(pointer["generation"]),
+        session_id=created.id, expected_session_id=stored)
+    if bound["bound"]:
+        return created.id
+
+    await _delete_session_quietly(user_id, created.id)
+    winner = bound["pointer"].get("session_id") or ""
+    if winner:
+        return winner
+    if _depth:
+        raise RuntimeError("managed session could not be bound")
+    return await _ensure_session(
+        customer_id, _active_session(customer_id), state, _depth=1)
 
 
 async def resume_refund(customer_id: str, session_id: str, invocation_id: str,
@@ -176,6 +265,10 @@ async def resume_refund(customer_id: str, session_id: str, invocation_id: str,
     The decision travels as a function_response part whose id is the
     interrupt_id - the Runner turns that into ctx.resume_inputs for the
     rerun of the gate node. Returns the customer-facing confirmation text."""
+    if not _session_id_is_resolvable(session_id):
+        # A handle from before sessions were service-assigned can never be
+        # resumed. Fail terminally rather than as a retryable resume error.
+        raise ValueError("stored session handle is not resolvable in this environment")
     with _customer_turn_lease(customer_id):
         message = types.Content(role="user", parts=[types.Part(
             function_response=types.FunctionResponse(
@@ -290,9 +383,8 @@ async def _run_turn_locked(customer_id: str, text: str,
     through the same screened, gated graph."""
     pointer = _active_session(customer_id)
     user_id = pointer["user_id"]
-    session_id = pointer["session_id"]
-    await _ensure_session(
-        user_id, session_id,
+    session_id = await _ensure_session(
+        customer_id, pointer,
         state={"customer_id": customer_id, "user_key": user_id,
                "actor_role": actor_role})
 
@@ -329,6 +421,11 @@ async def _run_turn_locked(customer_id: str, text: str,
                 label = (
                     ni.path.split("/")[-1].split("@")[0]
                     if ni and getattr(ni, "path", None) else event.author)
+                # Events with no node_info fall back to the author, which is the
+                # workflow itself. That is the container, not a node the turn
+                # ran through, and interleaving it hides the actual route.
+                if label == _workflow_name():
+                    label = None
                 if label and (not result.node_path or result.node_path[-1] != label):
                     result.node_path.append(label)
                 usage = getattr(event, "usage_metadata", None)

@@ -80,6 +80,7 @@ function readyManifest() {
         location: "eu",
         model: "gemini-2.5-flash-tts",
         speaker: "Kore",
+        synthesis_language_code: "en-US",
         style_prompt: "A natural shop customer voice note.",
         transcript_sha256: hash,
         style_prompt_sha256: hash,

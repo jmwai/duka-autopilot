@@ -10,7 +10,6 @@ import {
   FileCheck2,
   Image as ImageIcon,
   LoaderCircle,
-  LockKeyhole,
   ShieldAlert,
   Sparkles,
   X,
@@ -20,9 +19,7 @@ import { useRouter } from "next/navigation";
 import { DragEvent, FormEvent, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { AuthorityRail } from "@/components/control-room/authority-rail";
 import { PageHeader } from "@/components/control-room/page-header";
-import { EvidenceSource } from "@/components/control-room/proof-sheet";
 import { ExecutionReceipt } from "@/components/inbox/execution-receipt";
 import { DocumentStage, type SelectedLedgerDocument } from "@/components/ledger/document-stage";
 import { FrozenTruthComparison } from "@/components/ledger/frozen-truth-comparison";
@@ -77,9 +74,20 @@ function OutcomeRows({ ledger }: { ledger: LedgerResult }) {
               </Button>
             </div>
           ) : (
-            <p className="mt-3 font-mono text-[0.68rem] text-muted-foreground">
-              {row.order_id ? <Link href={`/orders?order=${encodeURIComponent(row.order_id)}`} className="font-semibold text-primary underline-offset-4 hover:underline">Open order {row.order_id}</Link> : "Order recorded"}
-            </p>
+            /* The sale is already in the books; say so like it matters rather
+               than hiding it in a footnote. */
+            <div className="mt-3 flex flex-col gap-3 rounded-lg bg-card p-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm">
+                <span className="font-semibold">Sale recorded:</span>{" "}
+                {row.amount === null ? "amount recorded" : formatKsh(row.amount)} for {row.customer_name}
+                {row.paid ? ", marked paid" : ", payment still owed"}.
+              </p>
+              {row.order_id ? (
+                <Button asChild size="sm" variant="outline" className="shrink-0">
+                  <Link href={`/orders?order=${encodeURIComponent(row.order_id)}`}>Open order #{row.order_id} <ArrowRight aria-hidden="true" /></Link>
+                </Button>
+              ) : null}
+            </div>
           )}
         </article>
       ))}
@@ -97,7 +105,6 @@ function ObservedResult({ response, fixture }: {
         <CardContent className="p-6">
           <AlertTriangle aria-hidden="true" className="size-5 text-destructive" />
           <p className="mt-3 font-semibold">The deterministic receipt is missing.</p>
-          <p className="mt-1 text-sm leading-6 text-muted-foreground">Duka returned prose, but this screen will not infer row outcomes from model text. The page must be reviewed before any demo claim.</p>
         </CardContent>
       </Card>
     );
@@ -115,7 +122,6 @@ function ObservedResult({ response, fixture }: {
               {matches === true ? <Badge variant="exact">Matches frozen truth</Badge> : null}
               {matches === false ? <Badge variant="attention">Truth mismatch</Badge> : null}
             </div>
-            <CardDescription className="mt-1">Deterministic outcomes captured from `record_ledger_rows`, not parsed from prose.</CardDescription>
           </div>
           <div className="grid grid-cols-2 gap-2 text-center">
             <div className="rounded-lg border bg-card px-4 py-2"><p className="numeric text-xl font-bold text-exact">{ledger.recorded}</p><p className="text-[0.68rem] text-muted-foreground">recorded</p></div>
@@ -127,7 +133,7 @@ function ObservedResult({ response, fixture }: {
         {matches === false ? (
           <div className="flex gap-3 rounded-xl border border-attention/50 bg-attention/10 p-4 text-sm leading-6">
             <AlertTriangle aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
-            <p>The observed counts do not match the frozen two-record/one-gate truth. Do not use this run as submission evidence.</p>
+            <p>The observed rows do not match the frozen expected result.</p>
           </div>
         ) : null}
         <OutcomeRows ledger={ledger} />
@@ -162,13 +168,34 @@ export function LedgerDesk() {
   const englishFixture = releaseFixtures.find((fixture) => fixture.language === "en-KE") ?? null;
   const swahiliFixture = releaseFixtures.find((fixture) => fixture.language === "sw-KE") ?? null;
 
+  // The preview URL is created and released here, in event handlers, rather
+  // than inside the preview component: an effect cleanup there is re-run by
+  // StrictMode's dev remount, which revoked the URL and broke the <img> src.
+  function clearSelection() {
+    setSelected((current) => {
+      if (current) URL.revokeObjectURL(current.previewUrl);
+      return null;
+    });
+    setResponse(null);
+    setError(null);
+  }
+
   function chooseFile(file: File, fixture: DemoLedgerFixture | null = null) {
     const validation = validateLedgerImage(file.type, file.size);
     if (validation) {
       toast.error(validation);
       return;
     }
-    setSelected({ id: crypto.randomUUID(), eventId: `ledger-${crypto.randomUUID().replaceAll("-", "")}`, file, fixture });
+    setSelected((current) => {
+      if (current) URL.revokeObjectURL(current.previewUrl);
+      return {
+        id: crypto.randomUUID(),
+        eventId: `ledger-${crypto.randomUUID().replaceAll("-", "")}`,
+        file,
+        fixture,
+        previewUrl: URL.createObjectURL(file),
+      };
+    });
     setResponse(null);
     setError(null);
     setMobileTab("source");
@@ -231,17 +258,8 @@ export function LedgerDesk() {
       <PageHeader
         eyebrow="Paper to books"
         title="Ledger desk"
-        description="Gemini reads the handwriting. Deterministic code decides each row separately, so one smudge cannot block the clear entries—or sneak into the books."
+        description="Gemini reads the handwriting; each row is then checked on its own, so one smudge cannot block the clear entries."
         action={<Button asChild variant="outline"><Link href="/approvals"><ShieldAlert aria-hidden="true" /> Review gated rows</Link></Button>}
-      />
-
-      <AuthorityRail
-        className="mb-5"
-        steps={[
-          { lane: "gemini", title: "Handwriting becomes proposals", detail: "Gemini reads the page but does not commit a row." },
-          { lane: "exact", title: "Every row is validated", detail: "Amount, confidence, identity, and effect are checked separately." },
-          { lane: "owner", title: "Only doubtful rows stop", detail: "Clear entries continue; unreadable values remain blank." },
-        ]}
       />
 
       <Tabs value={mobileTab} onValueChange={(value) => setMobileTab(value as "source" | "result")} className="items-start gap-5 xl:grid xl:grid-cols-[0.85fr_1.15fr]">
@@ -267,7 +285,7 @@ export function LedgerDesk() {
                         <p className="truncate text-sm font-semibold">{selected.file.name}</p>
                         <p className="mt-1 text-xs text-muted-foreground">{normalizeMime(selected.file.type)} · {formatMediaBytes(selected.file.size)} · event {selected.eventId.slice(0, 16)}…</p>
                       </div>
-                      <Button type="button" size="icon" variant="ghost" aria-label="Remove selected ledger" onClick={() => { setSelected(null); setResponse(null); setError(null); }} disabled={submitting}><X aria-hidden="true" /></Button>
+                      <Button type="button" size="icon" variant="ghost" aria-label="Remove selected ledger" onClick={clearSelection} disabled={submitting}><X aria-hidden="true" /></Button>
                     </div>
                   </>
                 ) : (
@@ -275,7 +293,6 @@ export function LedgerDesk() {
                     <div>
                       <span className="mx-auto grid size-12 place-items-center rounded-xl bg-card text-primary shadow-sm"><CloudUpload aria-hidden="true" className="size-5" /></span>
                       <p className="mt-4 font-semibold">Drop a ledger photograph here</p>
-                      <p className="mt-1 text-sm leading-6 text-muted-foreground">Nothing is uploaded until you explicitly run the reader.</p>
                     </div>
                   </div>
                 )}
@@ -300,11 +317,10 @@ export function LedgerDesk() {
                 </div>
                 {fixtureManifestQuery.isError ? (
                   <div role="alert" className="rounded-lg border border-attention/40 bg-attention/10 p-3 text-xs leading-5">
-                    The release fixture manifest could not be verified. Owner upload remains available, but no frozen fixture may be presented as evidence.
+                    The fixture manifest could not be verified. Owner upload still works.
                   </div>
                 ) : null}
                 <Button type="submit" size="lg" className="w-full" disabled={!selected || submitting}>{submitting ? <LoaderCircle aria-hidden="true" className="animate-spin" /> : <Sparkles aria-hidden="true" />}{submitting ? "Reading and gating rows…" : "Read this ledger page"}</Button>
-                <p className="flex gap-2 text-xs leading-5 text-muted-foreground"><LockKeyhole aria-hidden="true" className="mt-0.5 size-3.5 shrink-0" />This synchronous owner action is idempotent by event ID. A replay cannot record the page twice.</p>
               </form>
             </CardContent>
           </Card>
@@ -312,37 +328,22 @@ export function LedgerDesk() {
 
         <TabsContent value="result" forceMount className="w-full space-y-5 data-[state=inactive]:hidden xl:data-[state=inactive]:block">
           {submitting ? (
-            <Card><CardContent className="grid min-h-64 place-items-center p-8 text-center"><div><span className="mx-auto grid size-12 place-items-center rounded-xl bg-gemini/10 text-gemini"><LoaderCircle aria-hidden="true" className="size-5 animate-spin" /></span><p className="mt-4 font-semibold">Reading every handwritten row</p><p className="mt-1 max-w-md text-sm leading-6 text-muted-foreground">Gemini extracts proposals first. The deterministic tool then commits clear positive amounts and gates each doubtful row independently.</p></div></CardContent></Card>
+            <Card><CardContent className="grid min-h-64 place-items-center p-8 text-center"><div><span className="mx-auto grid size-12 place-items-center rounded-xl bg-gemini/10 text-gemini"><LoaderCircle aria-hidden="true" className="size-5 animate-spin" /></span><p className="mt-4 font-semibold">Reading every handwritten row</p></div></CardContent></Card>
           ) : response ? (
             <>
               <FrozenTruthComparison
                 fixture={selected?.fixture ?? null}
                 observed={response.ledger}
-                blockedReason={selected?.fixture ? undefined : "This owner upload has no frozen expected truth. Only the observed deterministic receipt may describe its outcome."}
+                blockedReason={selected?.fixture ? undefined : "Owner upload — no frozen expected result."}
               />
               <ObservedResult response={response} fixture={selected?.fixture ?? null} />
             </>
           ) : (
             <FrozenTruthComparison
               fixture={selected ? selected.fixture : englishFixture}
-              blockedReason={selected && !selected.fixture
-                ? "This is an owner upload, so it has no frozen expected truth. Only the observed tool receipt may describe its outcome."
-                : manifest?.blocked_reason}
+              blockedReason={selected && !selected.fixture ? "Owner upload — no frozen expected result." : manifest?.blocked_reason}
             />
           )}
-          <Card>
-            <CardHeader><CardTitle>Release integrity</CardTitle><CardDescription>The demo image is copied into the standalone image only after its source hash and byte count match the frozen manifest.</CardDescription></CardHeader>
-            <CardContent className="grid gap-2 sm:grid-cols-2">
-              <EvidenceSource
-                label="Bilingual Google fixtures"
-                detail={selected?.fixture
-                  ? `${selected.fixture.language === "en-KE" ? "English" : "Kiswahili"} · ${selected.fixture.source.model} · ${selected.fixture.sha256.slice(0, 16)}…`
-                  : manifest?.release_ready ? "English and Kiswahili release set" : manifest?.blocked_reason ?? "Pending Google generation"}
-                state={selected?.fixture || manifest?.release_ready ? "proven" : "pending"}
-              />
-              <EvidenceSource label="External financial effect" detail="None · internal books and proposals only" state="proven" />
-            </CardContent>
-          </Card>
         </TabsContent>
       </Tabs>
     </>

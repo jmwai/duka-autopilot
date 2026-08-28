@@ -14,6 +14,7 @@ const EXACT_GET = new Set([
   "orders",
   "approvals",
   "recon/report",
+  "recon/nightly/status",
   "digest/morning",
   "metrics/costs",
   "evidence/release",
@@ -30,6 +31,7 @@ const EXACT_POST = new Set([
   "recon/run",
   "recon/exact",
   "recon/nightly",
+  "recon/nightly/start",
   "restock/check",
   "memory/drain",
 ]);
@@ -55,6 +57,13 @@ export function matchBffRoute(method: string, rawSegments: string[]): AllowedRou
   }
   if (method === "POST" && rawSegments.length === 2 && rawSegments[0] === "approvals") {
     return OPAQUE_ID.test(rawSegments[1])
+      ? { upstreamPath: path, maxBytes: 8_000 }
+      : null;
+  }
+  // orders/{id}/decision - the owner confirming or cancelling a proposed order.
+  if (method === "POST" && rawSegments.length === 3
+      && rawSegments[0] === "orders" && rawSegments[2] === "decision") {
+    return IDENTIFIER.test(rawSegments[1])
       ? { upstreamPath: path, maxBytes: 8_000 }
       : null;
   }

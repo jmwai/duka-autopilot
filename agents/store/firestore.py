@@ -23,6 +23,8 @@ import time
 from hashlib import sha256
 from datetime import datetime, timezone
 
+from agents.store.base import LEDGER_OWNER_AMOUNT_MAX
+
 
 def _now() -> str:
     # Microseconds preserve the write order of sequential channel messages.
@@ -227,6 +229,57 @@ class FirestoreStore:
         q = self._col("orders").where("status", "in", ["confirmed", "pending_confirmation"])
         return [self._doc(s) for s in q.stream()]
 
+    def decide_order_once(self, event_id: str, order_id, payload_hash: str,
+                          to_status: str, allowed_from: tuple[str, ...]) -> dict:
+        """Atomically record an owner decision on one order, once."""
+        from google.cloud import firestore
+
+        receipt_ref = self._col("event_receipts").document(self._event_doc_id(event_id))
+        order_ref = self._col("orders").document(str(order_id))
+        transaction = self.db.transaction()
+
+        @firestore.transactional
+        def decide(txn):
+            snapshot = receipt_ref.get(transaction=txn)
+            if snapshot.exists:
+                receipt = snapshot.to_dict() or {}
+                result = receipt.get("result")
+                if receipt.get("payload_hash") != payload_hash:
+                    return {"status": "conflict", "idempotent": False, "result": result}
+                if receipt.get("status") == "completed" and result:
+                    return {"status": "completed", "idempotent": True, "result": result}
+                return {"status": receipt.get("status", "unavailable"),
+                        "idempotent": False, "result": result}
+
+            order_snapshot = order_ref.get(transaction=txn)
+            if not order_snapshot.exists:
+                return {"status": "missing", "idempotent": False, "result": None}
+            order = order_snapshot.to_dict() or {}
+            current = order.get("status")
+            if current not in allowed_from:
+                # Already decided, already settled by a payment, or in the
+                # approvals queue: refuse rather than overwrite the outcome.
+                return {"status": "not_allowed", "idempotent": False,
+                        "result": {"order_id": str(order_id), "status": current}}
+
+            result = {"event_id": event_id, "order_id": str(order_id),
+                      "status": to_status, "previous_status": current}
+            txn.update(order_ref, {"status": to_status, "needs_review": False})
+            txn.set(receipt_ref, {
+                "event_id": event_id,
+                "customer_id": order.get("customer_id"),
+                "payload_hash": payload_hash,
+                "status": "completed",
+                "attempts": 1,
+                "lease_expires_at": 0,
+                "result": result,
+                "last_error": None,
+                "updated_at": _now(),
+            })
+            return {"status": "completed", "idempotent": False, "result": result}
+
+        return decide(transaction)
+
     def set_order_status(self, order_id, status: str,
                          needs_review: bool | None = None) -> None:
         patch: dict = {"status": status}
@@ -356,7 +409,8 @@ class FirestoreStore:
              "resolved_at": _now()})
 
     def claim_approval_decision(self, approval_id, decision: str,
-                                lease_seconds: int = 120) -> dict:
+                                lease_seconds: int = 120,
+                                owner_amount: int | None = None) -> dict:
         from google.cloud import firestore
 
         ref = self._col("approvals").document(str(approval_id))
@@ -371,6 +425,16 @@ class FirestoreStore:
             approval = snap.to_dict() or {}
             status = approval.get("status")
             requested = approval.get("requested_decision")
+            # Approval payloads are stored as JSON text here, the same as the
+            # SQLite column, so they have to be decoded before being read.
+            payload = json.loads(approval.get("payload") or "{}")
+            stored_amount = payload.get("owner_amount")
+            # The typed amount is part of the decision, so it obeys the same
+            # rule: the same amount replays, a different one conflicts.
+            if (owner_amount is not None and stored_amount is not None
+                    and int(stored_amount) != int(owner_amount)):
+                return {"claimed": False, "outcome": "conflict",
+                        "status": status, "decision": requested or status}
             if status in ("approved", "rejected"):
                 return {"claimed": False,
                         "outcome": "idempotent" if status == decision else "conflict",
@@ -384,12 +448,18 @@ class FirestoreStore:
                 return {"claimed": False, "outcome": "in_progress",
                         "status": status, "decision": requested}
             attempts = int(approval.get("resume_attempts") or 0) + 1
-            txn.update(ref, {
+            update = {
                 "status": "resuming", "requested_decision": decision,
                 "resume_attempts": attempts,
                 "resume_lease_expires_at": now + lease_seconds,
                 "last_error": None,
-            })
+            }
+            if owner_amount is not None and stored_amount is None:
+                # Same transaction as the claim: the effect can never read a
+                # payload the claim did not agree to.
+                update["payload"] = json.dumps(
+                    {**payload, "owner_amount": int(owner_amount)})
+            txn.update(ref, update)
             return {"claimed": True, "outcome": "claimed", "status": "resuming",
                     "decision": decision, "attempts": attempts}
 
@@ -465,9 +535,16 @@ class FirestoreStore:
                 writes.append(("update", order_ref, patch))
             elif kind == "ledger_row" and decision == "approved":
                 row = payload.get("row") or {}
-                amount = int(row.get("amount") or 0)
+                # The owner may supply the amount the model could not read.
+                # The extracted row is never overwritten, so the trail keeps
+                # what the model saw next to what the owner said.
+                owner_amount = payload.get("owner_amount")
+                owner_entered = owner_amount is not None
+                amount = int(owner_amount) if owner_entered else int(row.get("amount") or 0)
                 if amount <= 0:
                     raise ValueError("approved ledger row requires a positive amount")
+                if amount > LEDGER_OWNER_AMOUNT_MAX and owner_entered:
+                    raise ValueError("owner-entered ledger amount exceeds the limit")
                 customer_id = row.get("customer_id") or "walk-in"
                 customer_ref = self._col("customers").document(customer_id)
                 customer_exists = customer_ref.get(transaction=txn).exists
@@ -483,7 +560,8 @@ class FirestoreStore:
                     "customer_name": row.get("customer_name") or customer_id,
                     "status": "paid" if row.get("paid") else "confirmed",
                     "total": amount, "needs_review": False,
-                    "notes": "ledger row approved by owner",
+                    "notes": ("ledger row approved by owner; amount entered by owner"
+                              if owner_entered else "ledger row approved by owner"),
                     "source_event_id": payload.get("source_event_id"),
                     "items": [{
                         "sku": None,
@@ -493,6 +571,8 @@ class FirestoreStore:
                     "created_at": _now(),
                 }))
                 result["order_id"] = order_ref.id
+                result["amount"] = amount
+                result["amount_source"] = "owner" if owner_entered else "extracted"
 
             for operation, ref, data in writes:
                 if operation == "set":
@@ -579,10 +659,11 @@ class FirestoreStore:
 
     @staticmethod
     def _session_pointer(customer_id: str, user_id: str, generation: int) -> dict:
+        """Reserve the pointer unbound; the session service assigns the id."""
         return {
             "customer_id": customer_id,
             "user_id": user_id,
-            "session_id": f"chat-{user_id}-{generation}",
+            "session_id": "",
             "generation": generation,
             "updated_at": _now(),
         }
@@ -611,6 +692,36 @@ class FirestoreStore:
             return pointer
 
         return ensure(transaction)
+
+    def bind_active_session(self, customer_id: str, user_id: str, generation: int,
+                            session_id: str,
+                            expected_session_id: str = "") -> dict:
+        """Compare-and-set the service-assigned session id onto the pointer."""
+        from google.cloud import firestore
+
+        ref = self._col("session_pointers").document(self._customer_doc_id(customer_id))
+        transaction = self.db.transaction()
+
+        @firestore.transactional
+        def bind(txn):
+            snap = ref.get(transaction=txn)
+            if not snap.exists:
+                pointer = self._session_pointer(customer_id, user_id, generation)
+                pointer["session_id"] = session_id
+                txn.set(ref, pointer)
+                return {"bound": True, "pointer": pointer}
+            current = snap.to_dict() or {}
+            if current.get("user_id") != user_id:
+                raise ValueError("stored user-key algorithm does not match runtime")
+            if current.get("session_id") == session_id:
+                return {"bound": True, "pointer": current}
+            if (int(current.get("generation", 0)) != generation
+                    or (current.get("session_id") or "") != (expected_session_id or "")):
+                return {"bound": False, "pointer": current}
+            txn.update(ref, {"session_id": session_id, "updated_at": _now()})
+            return {"bound": True, "pointer": current | {"session_id": session_id}}
+
+        return bind(transaction)
 
     def rotate_active_session(self, customer_id: str, user_id: str) -> dict:
         from google.cloud import firestore

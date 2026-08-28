@@ -7,6 +7,22 @@ export const NIGHTLY_BOUNDS = {
   stopPolicy: "Stop when residue is empty or a batch makes no progress",
 } as const;
 
+// Why the batch loop ended. The backend decides this; anything it sends that
+// we do not recognise is reported verbatim rather than guessed at.
+const STOP_REASONS: Record<string, string> = {
+  disabled: "Fuzzy review was switched off for this run",
+  not_entered: "No residue was left for review",
+  residue_cleared: "Residue reached zero",
+  no_progress: "A batch proposed nothing new",
+  batch_ceiling: `Hit the ${NIGHTLY_BOUNDS.batchCeiling} batch ceiling`,
+  batch_limit: "Reached the batch limit for a run started here",
+};
+
+export function stopReasonLabel(reason: string | undefined) {
+  if (!reason) return "Not recorded in this report";
+  return STOP_REASONS[reason] ?? reason;
+}
+
 export const LOCAL_BASELINE = {
   label: "Historical local synthetic baseline",
   measuredAt: "2026-08-26T12:48:20.031686+00:00",

@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { DesktopNavigation, MobileNavigation } from "@/components/control-room/navigation";
 import { LogoutButton } from "@/components/control-room/logout-button";
 import { ControlRoomTopBar } from "@/components/control-room/top-bar";
+import { NightRunWatcher } from "@/components/night-shift/night-run-watcher";
 import {
   Sidebar,
   SidebarContent,
@@ -64,12 +65,18 @@ export async function ControlRoomShell({ children }: { children: React.ReactNode
           <span className="font-bold">Duka Autopilot · Duka la Amani</span>
           <span className="ml-3 text-muted-foreground">Evidence reflects the release identifiers visible on this page. External payment and supplier effects are not executed.</span>
         </aside>
-        <div className="mx-auto w-full max-w-[96rem] flex-1 px-4 pb-28 pt-6 md:px-7 md:pb-12 md:pt-8 xl:px-9">
+        {/* A page that needs the whole viewport - the inbox thread - marks its
+            root with data-fullbleed and this container drops its gutters. The
+            page then owns its own bottom offset for the fixed mobile nav. */}
+        <div className="mx-auto w-full max-w-[96rem] flex-1 px-4 pb-28 pt-6 md:px-7 md:pb-12 md:pt-8 xl:px-9 has-[[data-fullbleed]]:max-w-none has-[[data-fullbleed]]:px-0 has-[[data-fullbleed]]:pb-0 has-[[data-fullbleed]]:pt-0">
           {children}
         </div>
       </SidebarInset>
 
       <MobileNavigation />
+      {/* Mounted here, not on the night shift page, so a run the owner started
+          still reports back after they have moved on to another screen. */}
+      <NightRunWatcher />
     </SidebarProvider>
   );
 }

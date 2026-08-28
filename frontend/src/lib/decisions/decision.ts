@@ -15,7 +15,25 @@ export type DecisionPresentation = {
   canApprove: boolean;
   identifiers: string[];
   evidence: string[];
+  /** The owner must type the amount before this can be approved — set only
+   *  for a ledger row whose amount the model could not read. */
+  needsAmount?: boolean;
 };
+
+/** Matches the server's ceiling on an owner-entered ledger amount. */
+export const OWNER_AMOUNT_MAX = 10_000;
+
+export function ownerAmountError(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return "Enter the amount from the page.";
+  if (!/^\d+$/.test(trimmed)) return "Enter whole shillings, digits only.";
+  const value = Number(trimmed);
+  if (value < 1) return "The amount must be at least KSh 1.";
+  if (value > OWNER_AMOUNT_MAX) {
+    return `That is over the KSh ${OWNER_AMOUNT_MAX.toLocaleString("en-KE")} limit for one ledger line.`;
+  }
+  return null;
+}
 
 function text(payload: Record<string, unknown>, key: string) {
   const value = payload[key];
@@ -108,11 +126,12 @@ export function decisionPresentation(approval: Approval): DecisionPresentation {
         stopped: text(payload, "reason") ?? "The row did not pass deterministic ledger validation.",
         approveEffect: positiveAmount
           ? "Record one internal sale using this positive amount and the observed paid marker. No external payment is initiated."
-          : "Approval is unavailable because no positive amount can be recorded safely. Reject the row to keep it out of the books; corrected-entry support is not implemented.",
+          : "Duka could not read the amount and will not guess one. Type what the page says and it records one internal sale for that amount, kept in the books as owner-entered. No external payment is initiated.",
         rejectEffect: "Resolve the gate without creating a sale or changing the books.",
-        approveLabel: "Record row",
+        approveLabel: positiveAmount ? "Record row" : "Enter amount and record",
         rejectLabel: "Reject row",
-        canApprove: positiveAmount,
+        canApprove: true,
+        needsAmount: !positiveAmount,
         identifiers: [rowCustomer],
         evidence: [score, text(payload, "page_note")].filter(Boolean) as string[],
       };

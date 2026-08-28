@@ -19,6 +19,8 @@ import time
 from contextlib import contextmanager
 from pathlib import Path
 
+from agents.store.base import LEDGER_OWNER_AMOUNT_MAX
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS products (
     sku TEXT PRIMARY KEY,
@@ -314,6 +316,54 @@ class SqliteStore:
             return {"status": "completed", "idempotent": False,
                     "result": result}
 
+    def decide_order_once(self, event_id: str, order_id, payload_hash: str,
+                          to_status: str, allowed_from: tuple[str, ...]) -> dict:
+        """Atomically record an owner decision on one order, once."""
+        with self._conn() as c:
+            c.execute("BEGIN IMMEDIATE")
+            receipt_row = c.execute(
+                "SELECT * FROM event_receipts WHERE event_id=?", (event_id,)
+            ).fetchone()
+            if receipt_row is not None:
+                receipt = dict(receipt_row)
+                result = json.loads(receipt["result"]) if receipt["result"] else None
+                if receipt["payload_hash"] != payload_hash:
+                    return {"status": "conflict", "idempotent": False, "result": result}
+                if receipt["status"] == "completed" and result:
+                    return {"status": "completed", "idempotent": True, "result": result}
+                return {"status": receipt["status"], "idempotent": False, "result": result}
+
+            order = c.execute(
+                "SELECT id, customer_id, status FROM orders WHERE id=?", (order_id,)
+            ).fetchone()
+            if order is None:
+                return {"status": "missing", "idempotent": False, "result": None}
+            current = dict(order)["status"]
+            if current not in allowed_from:
+                # Already decided, already settled by a payment, or in the
+                # approvals queue: refuse rather than overwrite the outcome.
+                return {"status": "not_allowed", "idempotent": False,
+                        "result": {"order_id": str(order_id), "status": current}}
+
+            now = int(time.time())
+            c.execute(
+                "INSERT INTO event_receipts "
+                "(event_id,customer_id,payload_hash,status,attempts,lease_expires_at) "
+                "VALUES (?,?,?,?,1,?)",
+                (event_id, dict(order)["customer_id"], payload_hash, "processing", now + 120),
+            )
+            c.execute("UPDATE orders SET status=?,needs_review=0 WHERE id=?",
+                      (to_status, order_id))
+            result = {"event_id": event_id, "order_id": str(order_id),
+                      "status": to_status, "previous_status": current}
+            c.execute(
+                "UPDATE event_receipts SET status='completed', result=?, "
+                "last_error=NULL, lease_expires_at=0, updated_at=datetime('now') "
+                "WHERE event_id=?",
+                (json.dumps(result), event_id),
+            )
+            return {"status": "completed", "idempotent": False, "result": result}
+
     def get_order(self, order_id) -> dict | None:
         rows = self._rows(
             "SELECT id, customer_id, status, total, needs_review, notes, source_event_id, created_at "
@@ -446,18 +496,27 @@ class SqliteStore:
             (decision, decision, approval_id))
 
     def claim_approval_decision(self, approval_id, decision: str,
-                                lease_seconds: int = 120) -> dict:
+                                lease_seconds: int = 120,
+                                owner_amount: int | None = None) -> dict:
         now = int(time.time())
         with self._conn() as c:
             c.execute("BEGIN IMMEDIATE")
             row = c.execute(
                 "SELECT status,requested_decision,resume_attempts,"
-                "resume_lease_expires_at FROM approvals WHERE id=?",
+                "resume_lease_expires_at,payload FROM approvals WHERE id=?",
                 (approval_id,)).fetchone()
             if row is None:
                 return {"claimed": False, "outcome": "not_found"}
             status = row["status"]
             requested = row["requested_decision"]
+            payload = json.loads(row["payload"])
+            stored_amount = payload.get("owner_amount")
+            # The typed amount is part of the decision, so it obeys the same
+            # rule: the same amount replays, a different one conflicts.
+            if (owner_amount is not None and stored_amount is not None
+                    and int(stored_amount) != int(owner_amount)):
+                return {"claimed": False, "outcome": "conflict",
+                        "status": status, "decision": requested or status}
             if status in ("approved", "rejected"):
                 return {"claimed": False,
                         "outcome": "idempotent" if status == decision else "conflict",
@@ -476,6 +535,12 @@ class SqliteStore:
                 "resume_attempts=?,resume_lease_expires_at=?,last_error=NULL "
                 "WHERE id=?",
                 (decision, attempts, now + lease_seconds, approval_id))
+            if owner_amount is not None and stored_amount is None:
+                # Same transaction as the claim: the effect can never read a
+                # payload the claim did not agree to.
+                payload["owner_amount"] = int(owner_amount)
+                c.execute("UPDATE approvals SET payload=? WHERE id=?",
+                          (json.dumps(payload), approval_id))
             return {"claimed": True, "outcome": "claimed", "status": "resuming",
                     "decision": decision, "attempts": attempts}
 
@@ -549,9 +614,16 @@ class SqliteStore:
                     c.execute("UPDATE orders SET status='rejected' WHERE id=?", (order_id,))
             elif kind == "ledger_row" and decision == "approved":
                 row = payload.get("row") or {}
-                amount = int(row.get("amount") or 0)
+                # The owner may supply the amount the model could not read.
+                # The extracted row is never overwritten, so the trail keeps
+                # what the model saw next to what the owner said.
+                owner_amount = payload.get("owner_amount")
+                owner_entered = owner_amount is not None
+                amount = int(owner_amount) if owner_entered else int(row.get("amount") or 0)
                 if amount <= 0:
                     raise ValueError("approved ledger row requires a positive amount")
+                if amount > LEDGER_OWNER_AMOUNT_MAX and owner_entered:
+                    raise ValueError("owner-entered ledger amount exceeds the limit")
                 customer_id = row.get("customer_id") or "walk-in"
                 c.execute(
                     "INSERT OR IGNORE INTO customers (id,name,notes) VALUES (?,?,?)",
@@ -562,7 +634,9 @@ class SqliteStore:
                     "(customer_id,status,total,needs_review,notes,source_event_id) "
                     "VALUES (?,?,?,?,?,?)",
                     (customer_id, "paid" if row.get("paid") else "confirmed",
-                     amount, 0, "ledger row approved by owner",
+                     amount, 0,
+                     "ledger row approved by owner; amount entered by owner"
+                     if owner_entered else "ledger row approved by owner",
                      payload.get("source_event_id")))
                 order_id = cur.lastrowid
                 c.execute(
@@ -570,6 +644,8 @@ class SqliteStore:
                     "(order_id,sku,name,qty,unit_price) VALUES (?,?,?,?,?)",
                     (order_id, None, row.get("description") or "ledger sale", 1, amount))
                 result["order_id"] = order_id
+                result["amount"] = amount
+                result["amount_source"] = "owner" if owner_entered else "extracted"
 
             c.execute(
                 "UPDATE approvals SET effect_applied_at=datetime('now'),effect_result=? "
@@ -634,10 +710,15 @@ class SqliteStore:
     # ---- active managed-session pointer -----------------------------------
     @staticmethod
     def _session_pointer(customer_id: str, user_id: str, generation: int) -> dict:
+        """Reserve the pointer unbound; the session service assigns the id.
+
+        Empty string rather than NULL keeps the column NOT NULL and keeps the
+        unbound test (`not pointer["session_id"]`) identical in both backends.
+        """
         return {
             "customer_id": customer_id,
             "user_id": user_id,
-            "session_id": f"chat-{user_id}-{generation}",
+            "session_id": "",
             "generation": generation,
         }
 
@@ -662,6 +743,39 @@ class SqliteStore:
             if result["user_id"] != user_id:
                 raise ValueError("stored user-key algorithm does not match runtime")
             return result
+
+    def bind_active_session(self, customer_id: str, user_id: str, generation: int,
+                            session_id: str,
+                            expected_session_id: str = "") -> dict:
+        """Compare-and-set the service-assigned session id onto the pointer.
+
+        Loses deliberately when another binder got there first or when the
+        generation moved on, so a stale binder can never clobber a rotation.
+        """
+        with self._conn() as c:
+            c.execute("BEGIN IMMEDIATE")
+            row = c.execute(
+                "SELECT customer_id,user_id,session_id,generation,updated_at "
+                "FROM session_pointers WHERE customer_id=?", (customer_id,)).fetchone()
+            if row is None:
+                c.execute(
+                    "INSERT INTO session_pointers "
+                    "(customer_id,user_id,session_id,generation) VALUES (?,?,?,?)",
+                    (customer_id, user_id, session_id, generation))
+                return {"bound": True, "pointer": self._session_pointer(
+                    customer_id, user_id, generation) | {"session_id": session_id}}
+            current = dict(row)
+            if current["user_id"] != user_id:
+                raise ValueError("stored user-key algorithm does not match runtime")
+            if current["session_id"] == session_id:
+                return {"bound": True, "pointer": current}
+            if (int(current["generation"]) != generation
+                    or (current["session_id"] or "") != (expected_session_id or "")):
+                return {"bound": False, "pointer": current}
+            c.execute(
+                "UPDATE session_pointers SET session_id=?,updated_at=datetime('now') "
+                "WHERE customer_id=?", (session_id, customer_id))
+            return {"bound": True, "pointer": current | {"session_id": session_id}}
 
     def rotate_active_session(self, customer_id: str, user_id: str) -> dict:
         with self._conn() as c:

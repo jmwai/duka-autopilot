@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import re
 from typing import Literal
 from uuid import uuid4
 
@@ -24,6 +25,7 @@ from fastapi.responses import FileResponse, JSONResponse  # noqa: E402
 from pydantic import BaseModel, Field  # noqa: E402
 
 from agents.store import get_store  # noqa: E402
+from agents.store.base import LEDGER_OWNER_AMOUNT_MAX  # noqa: E402
 from app.auth import (  # noqa: E402
     clear_owner_cookie,
     require_channel,
@@ -44,7 +46,7 @@ STATIC = Path(__file__).parent / "static"
 def _startup() -> None:
     get_store().init()
     from app.worker import register
-    register()  # subscribe the inbound handler to the bus
+    register()  # subscribe every topic handler to the bus
 
 
 # ---------- customer chat ----------
@@ -118,7 +120,8 @@ async def pubsub_push(envelope: dict):
     import base64 as b64
     import json as jsonlib
 
-    from app.worker import RetryableInboundError, handle_inbound
+    from app.bus import TOPIC_ATTRIBUTE, get_handler
+    from app.worker import INBOUND_TOPIC, RetryableInboundError
     msg = (envelope or {}).get("message") or {}
     if not msg.get("data"):
         return JSONResponse({"error": "empty push envelope"}, status_code=400)
@@ -132,8 +135,14 @@ async def pubsub_push(envelope: dict):
     payload.setdefault("event_id", attributes.get("event_id") or msg.get("messageId"))
     payload["pubsub_message_id"] = msg.get("messageId")
     payload["delivery_attempt"] = envelope.get("deliveryAttempt")
+    topic = str(attributes.get(TOPIC_ATTRIBUTE) or INBOUND_TOPIC)
     try:
-        result = await handle_inbound(payload)
+        handler = get_handler(topic)
+    except KeyError:
+        return JSONResponse({"error": f"no handler for topic '{topic}'"},
+                            status_code=400)
+    try:
+        result = await handler(payload)
     except RetryableInboundError as exc:
         return JSONResponse({"ok": False, "retryable": True, "error": str(exc)},
                             status_code=503)
@@ -242,6 +251,56 @@ def create_sale(body: SaleIn, _auth: None = Depends(require_owner)):
     return {**result["result"], "idempotent": result["idempotent"]}
 
 
+class OrderDecisionIn(BaseModel):
+    event_id: str = Field(
+        min_length=1, max_length=200, pattern=r"^[A-Za-z0-9._~-]+$")
+    decision: Literal["confirm", "cancel"]
+
+
+# An owner decides whether a proposed order stands. Deliberately narrow: only
+# an order still awaiting the customer's payment can be decided, and neither
+# outcome is "paid" - money status comes from payment evidence alone.
+ORDER_DECISION_STATUS = {"confirm": "confirmed", "cancel": "rejected"}
+ORDER_DECIDABLE_FROM = ("pending_confirmation",)
+
+
+@app.post("/orders/{order_id}/decision")
+def decide_order(order_id: str, body: OrderDecisionIn,
+                 _auth: None = Depends(require_owner)):
+    """Confirm or cancel an order the agent proposed. No money moves."""
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", order_id):
+        return JSONResponse({"error": "invalid order id"}, status_code=422)
+    to_status = ORDER_DECISION_STATUS[body.decision]
+    payload_hash = hashlib.sha256(json.dumps({
+        "order_id": order_id, "decision": body.decision,
+    }, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+    result = get_store().decide_order_once(
+        body.event_id, order_id, payload_hash, to_status, ORDER_DECIDABLE_FROM)
+
+    if result["status"] == "missing":
+        return JSONResponse({"error": "order not found"}, status_code=404)
+    if result["status"] == "not_allowed":
+        current = (result.get("result") or {}).get("status")
+        return JSONResponse({
+            "error": f"an order with status {current} cannot be decided here",
+            "order_id": order_id,
+            "status": current,
+        }, status_code=409)
+    if result["status"] == "conflict":
+        return JSONResponse({
+            "error": "decision event ID was already used for another decision",
+            "event_id": body.event_id,
+        }, status_code=409)
+    if result["status"] != "completed" or not result.get("result"):
+        return JSONResponse({
+            "error": "decision is already processing or unavailable",
+            "event_id": body.event_id,
+            "status": result["status"],
+        }, status_code=409)
+    return {**result["result"], "idempotent": result["idempotent"]}
+
+
 @app.get("/orders")
 def orders(_auth: None = Depends(require_owner)):
     return get_store().list_orders(limit=100)
@@ -276,6 +335,32 @@ def approvals(_auth: None = Depends(require_owner)):
 
 class Decision(BaseModel):
     decision: str  # approved | rejected
+    # Only for a gated ledger row whose amount the model could not read.
+    amount: int | None = Field(default=None, ge=1, le=LEDGER_OWNER_AMOUNT_MAX)
+
+
+def _ledger_amount_error(approval: dict, body: Decision) -> str | None:
+    """Owner-entered amounts complete an unreadable row - nothing else.
+
+    Refusing an amount where the model already read one keeps the books
+    honest about which number came from where, and keeps this endpoint from
+    becoming a general way to edit a sale.
+    """
+    row = (approval.get("payload") or {}).get("row") or {}
+    extracted = row.get("amount")
+    readable = isinstance(extracted, int) and not isinstance(extracted, bool) and extracted > 0
+    if body.amount is not None:
+        if approval.get("kind") != "ledger_row":
+            return "amount applies only to a ledger row"
+        if body.decision != "approved":
+            return "amount applies only when approving"
+        if readable:
+            return "this row already has an extracted amount and cannot be re-entered"
+        return None
+    if (approval.get("kind") == "ledger_row" and body.decision == "approved"
+            and not readable):
+        return "this row has no readable amount; supply one to record it"
+    return None
 
 
 @app.post("/approvals/{approval_id}")
@@ -289,8 +374,12 @@ async def decide(approval_id: str, body: Decision,
     a = store.get_approval(approval_id)
     if not a:
         return JSONResponse({"error": "approval not found"}, status_code=404)
+    amount_error = _ledger_amount_error(a, body)
+    if amount_error:
+        return JSONResponse({"error": amount_error}, status_code=422)
     with bind_context(approval_id=approval_id):
-        claim = store.claim_approval_decision(approval_id, body.decision)
+        claim = store.claim_approval_decision(
+            approval_id, body.decision, owner_amount=body.amount)
     if not claim["claimed"]:
         if claim["outcome"] == "not_found":
             return JSONResponse({"error": "approval not found"}, status_code=404)
@@ -314,6 +403,7 @@ async def decide(approval_id: str, body: Decision,
 
     payload = a["payload"]
     resumed_reply = None
+    effect: dict = {}
     try:
         if a["kind"] == "refund":
             if not (a.get("invocation_id") and payload.get("interrupt_id")
@@ -335,7 +425,7 @@ async def decide(approval_id: str, body: Decision,
                       "decision": body.decision},
                 dedupe_key=f"approval:{approval_id}:{body.decision}:reply")
         else:
-            store.apply_approval_effect(approval_id, body.decision)
+            effect = store.apply_approval_effect(approval_id, body.decision) or {}
 
         store.complete_approval_decision(approval_id, body.decision)
         logger.info(
@@ -358,6 +448,10 @@ async def decide(approval_id: str, body: Decision,
         "ok": True, "idempotent": False, "kind": a["kind"],
         "decision": body.decision, "customer_id": payload.get("customer_id"),
         "resumed_reply": resumed_reply,
+        # Present when the decision wrote a sale, so the owner can go see it.
+        "order_id": str(effect["order_id"]) if effect.get("order_id") else None,
+        "amount": effect.get("amount"),
+        "amount_source": effect.get("amount_source"),
     }
 
 
@@ -470,12 +564,67 @@ def recon_exact(_auth: None = Depends(require_owner)):
 
 @app.post("/recon/nightly")
 async def recon_nightly(fuzzy: bool = True,
+                        batches: int | None = Query(default=None, ge=1),
                         _auth: None = Depends(require_owner)):
     """The full nightly pipeline (Cloud Scheduler's target in the cloud):
     exact pass + batched fuzzy passes + persisted report. fuzzy=false keeps
-    it keyless (deterministic pass and report only)."""
+    it keyless (deterministic pass and report only). batches caps the fuzzy
+    loop so a caller bound by the request timeout can still finish; the
+    pipeline clamps it to its own ceiling."""
     from agents.nightly import run_nightly
-    return await run_nightly(fuzzy=fuzzy, execution_surface="api")
+    return await run_nightly(fuzzy=fuzzy, execution_surface="api",
+                             max_batches=batches)
+
+
+class NightlyStartIn(BaseModel):
+    fuzzy: bool = True
+    batches: int | None = Field(default=None, ge=1)
+
+
+@app.post("/recon/nightly/start", status_code=202)
+async def recon_nightly_start(body: NightlyStartIn,
+                              _auth: None = Depends(require_owner)):
+    """Queue a night shift and answer immediately with its run id.
+
+    The pipeline outlives this request, so the owner is free to leave the
+    page; /recon/nightly/status is how the outcome is collected."""
+    from app.bus import get_bus
+    from app.worker import NIGHTLY_ACTOR, NIGHTLY_TOPIC
+
+    run_id = uuid4().hex
+    payload = {
+        "event_id": run_id,
+        "run_id": run_id,
+        "customer_id": NIGHTLY_ACTOR,
+        "fuzzy": body.fuzzy,
+        "max_batches": body.batches,
+        "execution_surface": "api_background",
+    }
+    with bind_context(event_id=run_id):
+        with tracer().start_as_current_span("duka.nightly.enqueue") as span:
+            span.set_attribute("messaging.destination.name", NIGHTLY_TOPIC)
+            await get_bus().publish(NIGHTLY_TOPIC, payload)
+    return {"queued": True, "run_id": run_id}
+
+
+@app.get("/recon/nightly/status")
+def recon_nightly_status(run_id: str = Query(min_length=1, max_length=200),
+                         _auth: None = Depends(require_owner)):
+    """Report one queued run. A run that has been accepted but not yet
+    claimed by the worker has no receipt, which is 'pending' rather than an
+    error - the caller polls until it resolves or its own deadline passes."""
+    receipt = get_store().get_event(run_id)
+    if receipt is None:
+        return {"run_id": run_id, "status": "pending", "report": None,
+                "error": None}
+    result = receipt.get("result") or {}
+    return {
+        "run_id": run_id,
+        "status": receipt.get("status"),
+        "attempts": receipt.get("attempts"),
+        "report": result.get("report"),
+        "error": receipt.get("last_error"),
+    }
 
 
 @app.get("/recon/report")

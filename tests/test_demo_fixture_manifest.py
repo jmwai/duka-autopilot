@@ -98,6 +98,7 @@ def _manifest(root: Path) -> dict:
                     "location": "eu",
                     "model": "gemini-2.5-flash-tts",
                     "speaker": "Kore",
+                    "synthesis_language_code": "en-US" if language == "en-KE" else language,
                     "style_prompt": style_prompt,
                     "transcript_sha256": hashlib.sha256(transcript.encode()).hexdigest(),
                     "style_prompt_sha256": hashlib.sha256(style_prompt.encode()).hexdigest(),

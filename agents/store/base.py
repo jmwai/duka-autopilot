@@ -16,6 +16,11 @@ from typing import Protocol
 
 EntityId = str | int
 
+# A gated ledger row whose amount the model could not read may be completed by
+# the owner typing it. One handwritten shop-counter line is small money, so the
+# ceiling is deliberately low: a typo should bounce, not become a sale.
+LEDGER_OWNER_AMOUNT_MAX = 10_000
+
 
 class Store(Protocol):
     # ---- lifecycle -------------------------------------------------------
@@ -47,6 +52,12 @@ class Store(Protocol):
     def unpaid_orders(self) -> list[dict]: ...
     def set_order_status(self, order_id: EntityId, status: str,
                          needs_review: bool | None = None) -> None: ...
+    # Owner decision on an order the agent proposed. Guarded and idempotent by
+    # event ID: it may only move an order out of `allowed_from`, so a decision
+    # can never mark money received - that stays with payment evidence.
+    def decide_order_once(self, event_id: str, order_id: EntityId,
+                          payload_hash: str, to_status: str,
+                          allowed_from: tuple[str, ...]) -> dict: ...
 
     # ---- payments (the M-Pesa statement) ----------------------------------
     def add_payments(self, payments: list[dict]) -> int:
@@ -70,7 +81,17 @@ class Store(Protocol):
                        payload: dict) -> None: ...
     def resolve_approval(self, approval_id: EntityId, decision: str) -> None: ...
     def claim_approval_decision(self, approval_id: EntityId, decision: str,
-                                lease_seconds: int = 120) -> dict: ...
+                                lease_seconds: int = 120,
+                                owner_amount: int | None = None) -> dict:
+        """Claim the right to apply one decision, once.
+
+        owner_amount carries an amount the owner typed for a ledger row the
+        model could not read. It is stored with the claim so the effect stays
+        a pure function of the payload: replaying the same amount is
+        idempotent, and a different amount conflicts like a different
+        decision would.
+        """
+        ...
     def complete_approval_decision(self, approval_id: EntityId,
                                    decision: str) -> None: ...
     def fail_approval_decision(self, approval_id: EntityId,
@@ -93,6 +114,11 @@ class Store(Protocol):
     def rotate_active_session(self, customer_id: str, user_id: str) -> dict: ...
     def rotate_active_session_once(self, event_id: str, customer_id: str,
                                    user_id: str) -> dict: ...
+    # The pointer is reserved unbound; the session service assigns the id and
+    # this compare-and-set records it. Returns {"bound": bool, "pointer": dict}.
+    def bind_active_session(self, customer_id: str, user_id: str, generation: int,
+                            session_id: str,
+                            expected_session_id: str = "") -> dict: ...
 
     # ---- per-customer turn serialization ---------------------------------
     def claim_customer_turn(self, customer_id: str, owner: str,

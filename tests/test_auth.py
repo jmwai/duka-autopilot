@@ -262,3 +262,87 @@ def test_owner_approval_queue_hides_durable_resume_handles():
     assert "session_id" not in approval["payload"]
     assert "interrupt_id" not in approval["payload"]
     assert "invocation_id" not in approval
+
+
+def test_owner_can_confirm_or_cancel_a_proposed_order_but_never_mark_it_paid():
+    """The owner decides whether a proposed order stands; money is separate."""
+    from fastapi.testclient import TestClient
+
+    from agents.store import get_store
+    from app.main import app
+
+    store = get_store()
+    order = store.create_order(
+        "254711000001",
+        [{"sku": "UNGA-2KG", "name": "Unga wa Dola 2kg", "qty": 1, "unit_price": 195}],
+        status="pending_confirmation",
+    )
+    order_id = order["id"] if isinstance(order, dict) else order
+
+    with TestClient(app, base_url="https://testserver") as client:
+        assert client.post(f"/orders/{order_id}/decision", json={
+            "event_id": "decide-1", "decision": "confirm"}).status_code == 401
+        assert client.post("/auth/login", json={
+            "password": "correct-horse-battery-staple"}).status_code == 200
+
+        confirmed = client.post(f"/orders/{order_id}/decision", json={
+            "event_id": "decide-1", "decision": "confirm"})
+        assert confirmed.status_code == 200
+        body = confirmed.json()
+        assert body["status"] == "confirmed"
+        assert body["previous_status"] == "pending_confirmation"
+        assert body["idempotent"] is False
+
+        # A replay of the same decision returns the stored outcome.
+        replay = client.post(f"/orders/{order_id}/decision", json={
+            "event_id": "decide-1", "decision": "confirm"})
+        assert replay.status_code == 200 and replay.json()["idempotent"] is True
+
+        # A different decision under the same event ID is a conflict.
+        assert client.post(f"/orders/{order_id}/decision", json={
+            "event_id": "decide-1", "decision": "cancel"}).status_code == 409
+
+        # An already-decided order cannot be decided again.
+        again = client.post(f"/orders/{order_id}/decision", json={
+            "event_id": "decide-2", "decision": "cancel"})
+        assert again.status_code == 409
+        assert again.json()["status"] == "confirmed"
+
+    assert store.get_order(order_id)["status"] == "confirmed"
+
+
+def test_a_paid_order_cannot_be_reopened_by_an_owner_decision():
+    """Payment evidence outranks the owner's decision surface."""
+    from fastapi.testclient import TestClient
+
+    from agents.store import get_store
+    from app.main import app
+
+    store = get_store()
+    order = store.create_order(
+        "254711000001",
+        [{"sku": "UNGA-2KG", "name": "Unga wa Dola 2kg", "qty": 1, "unit_price": 195}],
+        status="paid",
+    )
+    order_id = order["id"] if isinstance(order, dict) else order
+
+    with TestClient(app, base_url="https://testserver") as client:
+        assert client.post("/auth/login", json={
+            "password": "correct-horse-battery-staple"}).status_code == 200
+        blocked = client.post(f"/orders/{order_id}/decision", json={
+            "event_id": "decide-paid", "decision": "cancel"})
+    assert blocked.status_code == 409
+    assert store.get_order(order_id)["status"] == "paid"
+
+
+def test_an_order_decision_rejects_an_unknown_order_and_a_bad_decision():
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+    with TestClient(app, base_url="https://testserver") as client:
+        assert client.post("/auth/login", json={
+            "password": "correct-horse-battery-staple"}).status_code == 200
+        assert client.post("/orders/999999/decision", json={
+            "event_id": "decide-missing", "decision": "confirm"}).status_code == 404
+        assert client.post("/orders/1/decision", json={
+            "event_id": "decide-bad", "decision": "mark_paid"}).status_code == 422

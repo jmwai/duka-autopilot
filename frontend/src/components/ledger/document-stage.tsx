@@ -2,7 +2,6 @@
 
 import { FileCheck2 } from "lucide-react";
 import Image from "next/image";
-import { useEffect, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import type { DemoLedgerFixture } from "@/lib/fixtures/demo";
@@ -12,11 +11,11 @@ export type SelectedLedgerDocument = {
   eventId: string;
   file: File;
   fixture: DemoLedgerFixture | null;
+  /** Owned by the chooser, which creates and revokes it in event handlers. */
+  previewUrl: string;
 };
 
 export function DocumentStage({ selected }: { selected: SelectedLedgerDocument }) {
-  const [url] = useState(() => URL.createObjectURL(selected.file));
-  useEffect(() => () => URL.revokeObjectURL(url), [url]);
   const width = selected.fixture?.width ?? 1024;
   const height = selected.fixture?.height ?? 1536;
 
@@ -25,7 +24,7 @@ export function DocumentStage({ selected }: { selected: SelectedLedgerDocument }
       <div className="relative overflow-hidden rounded-lg bg-card shadow-sm">
         <Image
           unoptimized
-          src={url}
+          src={selected.previewUrl}
           width={width}
           height={height}
           alt="Selected handwritten ledger page"
@@ -37,9 +36,6 @@ export function DocumentStage({ selected }: { selected: SelectedLedgerDocument }
           </Badge>
         ) : null}
       </div>
-      <figcaption className="px-1 pb-1 pt-2 text-[0.68rem] leading-5 text-muted-foreground">
-        Source document · no row value is inferred by this preview.
-      </figcaption>
     </figure>
   );
 }
