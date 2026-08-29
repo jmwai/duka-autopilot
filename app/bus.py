@@ -33,7 +33,12 @@ Handler = Callable[[dict], Awaitable[dict]]
 # The single Pub/Sub topic every logical topic is delivered through.
 TRANSPORT_TOPIC = "inbound"
 # Message attribute naming the logical topic, so the worker can route.
-TOPIC_ATTRIBUTE = "topic"
+#
+# The prefix is load-bearing. Attributes are handed to the publisher client as
+# **kwargs, so an attribute named after one of its own parameters - topic,
+# data, ordering_key, retry, timeout - raises TypeError at publish time and
+# takes every event with it. Keep this namespaced.
+TOPIC_ATTRIBUTE = "duka_topic"
 
 _handlers: dict[str, Handler] = {}
 
