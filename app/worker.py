@@ -133,7 +133,8 @@ async def handle_inbound(payload: dict) -> dict:
         error = f"{exc.__class__.__name__}: {str(exc)[:300]}"
         store.fail_event(event_id, error, retryable=retryable)
         if retryable:
-            logger.warning("inbound event retryable failure", extra={"event_id": event_id})
+            logger.warning("inbound event retryable failure",
+                           extra={"event_id": event_id, "error": error})
             raise RetryableInboundError(error) from exc
         store.add_message(
             customer_id, "out",
@@ -209,7 +210,8 @@ async def handle_nightly(payload: dict) -> dict:
         error = f"{exc.__class__.__name__}: {str(exc)[:300]}"
         store.fail_event(run_id, error, retryable=retryable)
         if retryable:
-            logger.warning("nightly run retryable failure", extra={"run_id": run_id})
+            logger.warning("nightly run retryable failure",
+                           extra={"run_id": run_id, "error": error})
             raise RetryableInboundError(error) from exc
         logger.error("nightly run failed", extra={"run_id": run_id})
         return {"run_id": run_id, "error": error, "retryable": False}

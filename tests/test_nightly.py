@@ -159,3 +159,48 @@ async def test_nightly_keyless_run_reports_no_fuzzy_trace():
     assert report["fuzzy_stop_reason"] == "disabled"
     assert report["fuzzy_batch_trace"] == []
     assert report["fuzzy_proposal_sample"] == []
+
+
+async def test_a_long_run_stops_on_its_clock_not_on_the_request_timeout(monkeypatch):
+    """The 40-batch ceiling is ~13 minutes; the worker's request is 600s.
+
+    Without a wall-clock budget a large residue is killed mid-flight and
+    redelivered, repeating model calls it already paid for. The run must end
+    itself and leave the rest for the next night.
+    """
+    from agents.tools.recon import record_fuzzy_match
+
+    clock = {"now": 0.0}
+
+    async def slow_run_turn(user, text, **kw):
+        clock["now"] += 30.0          # each batch costs half a minute
+        store = get_store()
+        payment = store.unmatched_payments(limit=1)
+        order = store.unpaid_orders()
+        if payment and order:
+            record_fuzzy_match(payment[0]["id"], order[0]["id"], 0.7, "slow batch")
+
+        class R:
+            reply, node_path, suspended = "ok", ["exact_recon", "fuzzy_recon"], False
+            cost_usd, wall_ms, input_tokens, output_tokens = 0.01, 30_000, 10, 5
+        return R()
+
+    from app import runner
+    monkeypatch.setattr(runner, "run_turn", slow_run_turn)
+    import agents.nightly as nightly
+    monkeypatch.setattr(nightly.time, "monotonic", lambda: clock["now"])
+    monkeypatch.setattr(nightly, "MAX_FUZZY_WALL_SECONDS", 60)
+
+    report = await nightly.run_nightly(fuzzy=True)
+    assert report["fuzzy_stop_reason"] == "time_budget"
+    # 60s of budget at 30s a batch: two batches, then the clock stops it
+    assert report["fuzzy_batches"] == 2
+    assert report["residue_end"] > 0, "residue is left for the next run, not lost"
+
+
+def test_the_batch_ceiling_cannot_outlast_the_worker_request_timeout():
+    """The two bounds have to agree, or the ceiling is unreachable in cloud."""
+    from agents.nightly import MAX_FUZZY_WALL_SECONDS
+    WORKER_REQUEST_TIMEOUT_S = 600      # deployment/terraform/app/run.tf
+    assert MAX_FUZZY_WALL_SECONDS < WORKER_REQUEST_TIMEOUT_S, (
+        "the fuzzy loop must finish inside the worker's request timeout")

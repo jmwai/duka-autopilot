@@ -27,6 +27,13 @@ from agents.store import get_store
 MAX_FUZZY_BATCHES = 40  # hard ceiling per night; leftovers wait for the owner
 MAX_REPORTED_PROPOSALS = 12  # the report is a receipt, not the approvals queue
 
+# A batch is a real model call of roughly twenty seconds, so the full ceiling is
+# ~13 minutes - longer than the worker's 600s request timeout. Without a clock
+# the run would be killed mid-flight and redelivered, repeating work it had
+# already paid for. Stop on the budget instead and leave the rest for the next
+# run: residue that waits one more night is the cheap failure here.
+MAX_FUZZY_WALL_SECONDS = 420
+
 
 def _describe_proposal(store, approval: dict) -> dict:
     """Flatten one queued proposal into something an owner can read.
@@ -121,6 +128,10 @@ async def run_nightly(fuzzy: bool = True,
                                        if batch_limit == MAX_FUZZY_BATCHES
                                        else "batch_limit")
         for _ in range(batch_limit):
+            if time.monotonic() - t0 >= MAX_FUZZY_WALL_SECONDS:
+                # Answer inside the request rather than be killed and retried.
+                report["fuzzy_stop_reason"] = "time_budget"
+                break
             remaining = len(store.unmatched_payments())
             if remaining == 0:
                 report["fuzzy_stop_reason"] = "residue_cleared"

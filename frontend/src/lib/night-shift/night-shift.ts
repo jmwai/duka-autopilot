@@ -16,6 +16,7 @@ const STOP_REASONS: Record<string, string> = {
   no_progress: "A batch proposed nothing new",
   batch_ceiling: `Hit the ${NIGHTLY_BOUNDS.batchCeiling} batch ceiling`,
   batch_limit: "Reached the batch limit for a run started here",
+  time_budget: "Ran out of its time budget; the rest waits for the next run",
 };
 
 export function stopReasonLabel(reason: string | undefined) {
