@@ -71,14 +71,19 @@ password check that gets you an owner session; every route, tool, and
 authority boundary behind it is unchanged. Drop it and sign in with
 `DUKA_OWNER_PASSWORD` instead.)
 
-The API is usable on its own. Stress-scale reconciliation needs no API key,
-because it is deterministic:
+The API is usable on its own. Reconciliation needs no API key, because it is
+deterministic:
 
 ```bash
-uv run python -m agents.synth.generate --rows 50000   # reproducible stress data
-curl -X POST "localhost:8000/recon/nightly?fuzzy=false"   # ~97.3% settled, under a second, no model
-curl localhost:8000/digest/morning                # the owner's morning brief
+uv run python -m agents.synth.generate         # one duka's month: ~1,500 rows, ~50/day
+curl -X POST "localhost:8000/recon/nightly?fuzzy=false"   # ~97% settled, no model
+curl localhost:8000/digest/morning             # the owner's morning brief
 ```
+
+`--rows` is a scale dial, not a busier shop. At ~50 payments a day, `--rows
+50000` is roughly three years of trading, or thirty dukas reconciling on one
+instance — the headroom test, which settles 48,403 of 49,756 in about half a
+second on a laptop.
 
 Two async paths, both of which return immediately and finish elsewhere —
 in-process locally, over Pub/Sub in the cloud:
@@ -118,7 +123,7 @@ pnpm test:e2e:judge              # the seeded judging profile
 Measured economics (needs model access; writes `economics.md`):
 
 ```bash
-uv run python scripts/measure_nightly.py --rows 50000
+uv run python scripts/measure_nightly.py            # the realistic month
 ```
 
 ## Architecture
@@ -187,8 +192,9 @@ one — the tag carries the meaning, not the colour:
   the tools hold the gates: `save_order` files low-confidence orders for
   review, `request_refund` can only open a request, and the owner-scoped
   `record_ledger_rows` tool gates per row.
-- **exact_recon** (code) settles ~97% of a statement month in about a
-  second in the recorded local synthetic baseline; **fuzzy_recon** (LLM) sees
+- **exact_recon** (code) settles ~97% of a statement month — milliseconds
+  for one duka, under a second for the 50,000-row headroom test;
+  **fuzzy_recon** (LLM) sees
   only the residue and can only file proposals. Cloud timing remains a release
   evidence gate.
 - **refund_gate** (code) SUSPENDS the invocation graph-natively; the owner's

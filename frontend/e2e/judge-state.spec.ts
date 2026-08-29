@@ -7,8 +7,8 @@ test("judge profile opens with meaningful evidence and bilingual history", async
   await page.goto("/");
 
   await expect(page.getByRole("heading", { name: "Your shop is ready for the day." })).toBeVisible();
-  await expect(page.getByRole("heading", { level: 2, name: /3,874.*settled exactly/ })).toBeVisible();
-  await expect(page.getByText(/97\.2% of 3,986 statement rows/)).toBeVisible();
+  await expect(page.getByRole("heading", { level: 2, name: /1,455.*settled exactly/ })).toBeVisible();
+  await expect(page.getByText(/97\.1% of 1,499 statement rows/)).toBeVisible();
   await expect(page.getByRole("link", { name: "Review 3 decisions" })).toBeVisible();
   await expect(page.getByText("Restock draft", { exact: true })).toBeVisible();
   await expect(page.getByText("+2 more bounded decisions wait in the owner queue.")).toBeVisible();
@@ -49,7 +49,7 @@ test("judge profile opens with meaningful evidence and bilingual history", async
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
   await expect(page.getByRole("link", { name: "Review 3 decisions" })).toBeVisible();
-  await expect(page.getByRole("heading", { level: 2, name: /3,874.*settled exactly/ })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 2, name: /1,455.*settled exactly/ })).toBeVisible();
   const widths = await page.evaluate(() => ({
     client: document.documentElement.clientWidth,
     scroll: document.documentElement.scrollWidth,

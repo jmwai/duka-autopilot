@@ -1,6 +1,6 @@
 """Reconciliation workflow nodes: engine first, LLM only on the residue.
-Ported (disclosed) from the talk repo; the exact pass now runs the indexed
-recon_engine so the same node handles 6 rows or 50,000."""
+The exact pass now runs the indexed recon_engine so the same node handles a duka's 50-row night or the
+50,000-row headroom test."""
 from __future__ import annotations
 
 import os

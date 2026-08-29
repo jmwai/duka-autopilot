@@ -1,11 +1,18 @@
-"""Synthetic month generator - a full M-Pesa statement at stress scale.
+"""Synthetic month generator - one duka's M-Pesa statement, and its ceiling.
 
-Purpose: prove the thesis with a measured number. We generate ~50,000
-statement rows for one month of trading, with NOISE ENGINEERED AT KNOWN
-RATES, so we can verify that the deterministic exact pass settles ~97% and
-the LLM only ever sees the residue. The generator is seeded (reproducible)
-and returns the ground-truth counts per noise class, which the tests assert
-against the reconciliation engine's actual behavior.
+Purpose: prove the thesis with a measured number. The default is a realistic
+month for a neighbourhood shop - about 50 mobile-money payments a day, a
+counter basket of a few hundred shillings, a minority of kiosks and canteens
+buying by the bale - with NOISE ENGINEERED AT KNOWN RATES, so we can verify
+that the deterministic exact pass settles ~97% and the LLM only ever sees the
+residue. The generator is seeded (reproducible) and returns the ground-truth
+counts per noise class, which the tests assert against the reconciliation
+engine's actual behavior.
+
+--rows is a scale dial, not a busier duka. At ~50 payments a day, 50,000 rows
+is closer to three years of trading, or thirty shops reconciling on one
+instance; it is the headroom test, and it is labelled that way wherever it is
+reported.
 
 Noise classes (rates of total rows):
   clean         ~96.8%  same phone, exact amount, inside the 48h window -> exact pass
@@ -17,7 +24,7 @@ Noise classes (rates of total rows):
   dup_ref        ~0.5%  duplicate transaction ref (statement artifact) -> dropped
                         deterministically by the ledger's UNIQUE(ref)
 
-Run: python -m agents.synth.generate --rows 50000 [--days 30] [--seed 2026]
+Run: python -m agents.synth.generate [--rows 1500] [--days 30] [--seed 2026]
 """
 from __future__ import annotations
 
@@ -44,6 +51,13 @@ LAST = ["Abdalla", "Achieng", "Ali", "Auma", "Bakari", "Chege", "Gitau",
 RATES = {"name_variant": 0.012, "partial": 0.006, "split": 0.004,
          "unknown": 0.005, "dup_ref": 0.005}
 
+# One duka's month: ~50 mobile-money payments a day across ~125 regulars, who
+# each buy about a dozen times a month. Larger row counts are the same shop
+# stretched over years, or several shops on one instance - not one duka's day.
+DEFAULT_ROWS = 1_500
+PURCHASES_PER_CUSTOMER = 12
+BULK_BUYER_SHARE = 0.06
+
 
 def _ref(rng: random.Random) -> str:
     return "SHK" + "".join(rng.choices(string.ascii_uppercase + string.digits, k=7))
@@ -61,7 +75,7 @@ def _variant(name: str, rng: random.Random) -> str:
     return rng.choice(forms)
 
 
-def generate_month(rows: int = 50_000, days: int = 30, seed: int = 2026,
+def generate_month(rows: int = DEFAULT_ROWS, days: int = 30, seed: int = 2026,
                    end: datetime | None = None) -> dict:
     """Build customers, orders and a statement; load them through the Store.
 
@@ -78,17 +92,26 @@ def generate_month(rows: int = 50_000, days: int = 30, seed: int = 2026,
     start = end - timedelta(days=days)
 
     # --- customer population -------------------------------------------------
-    n_customers = max(120, rows // 140)
+    # A regular buys from the duka roughly PURCHASES_PER_CUSTOMER times a
+    # month, so the population follows the row count instead of implying that
+    # 350 people each shopped 140 times in thirty days.
+    n_customers = max(120, rows // PURCHASES_PER_CUSTOMER)
     customers, used_phones = [], set()
     while len(customers) < n_customers:
         phone = "2547" + "".join(rng.choices(string.digits, k=8))
         if phone in used_phones:
             continue
         used_phones.add(phone)
+        # A minority are kiosks and canteens restocking, and they are the ones
+        # who pay in splits and part-payments - so the bulk buyers have to
+        # exist for the residue to be believable, not only the takings.
+        bulk = rng.random() < BULK_BUYER_SHARE
         customers.append({"id": phone,
                           "name": f"{rng.choice(FIRST)} {rng.choice(LAST)}",
-                          "notes": "synthetic"})
-    store.upsert_customers(customers)
+                          "notes": "synthetic bulk buyer" if bulk else "synthetic",
+                          "_bulk": bulk})
+    store.upsert_customers([{k: v for k, v in c.items() if not k.startswith("_")}
+                            for c in customers])
 
     # --- decide each row's class up front (exact engineered counts) ---------
     n_dup = int(rows * RATES["dup_ref"])
@@ -103,11 +126,19 @@ def generate_month(rows: int = 50_000, days: int = 30, seed: int = 2026,
         return t.strftime("%Y-%m-%d %H:%M:%S")
 
     def make_order(customer: dict, day: float) -> dict:
+        # A counter purchase is a couple of items in ones and twos. Only the
+        # kiosks and canteens buy by the bale.
+        if customer.get("_bulk"):
+            n_items, quantities, weights = rng.randint(2, 4), (4, 6, 8, 12), (40, 30, 20, 10)
+        else:
+            n_items, quantities, weights = (
+                rng.choices((1, 2, 3), weights=(55, 33, 12))[0], (1, 2, 3), (70, 22, 8))
         items = []
-        for _ in range(rng.randint(1, 4)):
+        for _ in range(n_items):
             p = rng.choice(catalog)
             items.append({"sku": p["sku"], "name": p["name"],
-                          "qty": rng.randint(1, 12), "unit_price": p["unit_price"]})
+                          "qty": rng.choices(quantities, weights=weights)[0],
+                          "unit_price": p["unit_price"]})
         return {"customer_id": customer["id"], "items": items,
                 "status": "confirmed",
                 "total": sum(i["qty"] * i["unit_price"] for i in items),
@@ -185,7 +216,7 @@ def generate_month(rows: int = 50_000, days: int = 30, seed: int = 2026,
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--rows", type=int, default=50_000)
+    ap.add_argument("--rows", type=int, default=DEFAULT_ROWS)
     ap.add_argument("--days", type=int, default=30)
     ap.add_argument("--seed", type=int, default=2026)
     args = ap.parse_args()

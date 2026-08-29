@@ -66,7 +66,16 @@ async def sanitize_model_history(
     stripped the ledger photograph from the very request that had to read it.
     """
     current_media = _media_signature(getattr(callback_context, "user_content", None))
-    fallback_index = -1 if current_media else _fallback_turn_index(llm_request.contents)
+    # If the invocation carries media but nothing in the request matches it -
+    # a session backend that re-encodes or externalises blobs would do that -
+    # fall back to position. Without this, no content is "current", every user
+    # turn is stripped, and a voice note or photo with no text is left with no
+    # parts at all: the model is asked to answer nothing.
+    media_matched = bool(current_media) and any(
+        _media_signature(content) == current_media
+        for content in llm_request.contents)
+    fallback_index = (-1 if media_matched
+                      else _fallback_turn_index(llm_request.contents))
 
     sanitized = []
     for index, content in enumerate(llm_request.contents):
@@ -74,17 +83,25 @@ async def sanitize_model_history(
         if content.role == "user" and text and not screen_text(text)["ok"]:
             continue
         copied = content.model_copy(deep=True)
-        is_current = (
-            _media_signature(content) == current_media if current_media
-            else index == fallback_index)
+        is_current = (_media_signature(content) == current_media if media_matched
+                      else index == fallback_index)
         if content.role == "user" and not is_current:
             copied.parts = [
                 part for part in (copied.parts or [])
                 if not getattr(part, "inline_data", None)
                 and not getattr(part, "file_data", None)
             ]
-            if not copied.parts:
-                continue
+        # An empty text part is rejected outright by the API, and a content
+        # with no parts left is not worth sending either.
+        copied.parts = [part for part in (copied.parts or [])
+                        if getattr(part, "text", None) != ""]
+        if not copied.parts:
+            continue
         sanitized.append(copied)
+
+    # Never hand the model an empty request. If sanitizing removed everything,
+    # the turn being answered is still the safest thing to send.
+    if not sanitized:
+        return None
     llm_request.contents = sanitized
     return None

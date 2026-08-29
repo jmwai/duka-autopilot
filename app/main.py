@@ -1,6 +1,4 @@
-"""Duka Autopilot - FastAPI channel layer. Ported (disclosed) from the talk
-repo, rewired onto the Store seam; new: /recon/exact (deterministic scale
-pass, the nightly job's core) and /synth (statement-month generator).
+"""Duka Autopilot - FastAPI channel layer.
 
 Run:  uvicorn app.main:app --reload
 UI:   http://localhost:8000
@@ -635,7 +633,7 @@ def recon_report(_auth: None = Depends(require_owner)):
 # ---------- synthetic data (demo/stress) ----------
 
 class SynthIn(BaseModel):
-    rows: int = Field(default=50_000, ge=1, le=50_000)
+    rows: int = Field(default=1_500, ge=1, le=50_000)  # default: one duka's month
     days: int = Field(default=30, ge=1, le=365)
     seed: int = 2026
 

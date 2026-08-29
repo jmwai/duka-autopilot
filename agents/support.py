@@ -1,5 +1,5 @@
 """Support agent - answers from tools, remembers customers, never touches money.
-Ported (disclosed) from the talk repo."""
+"""
 from __future__ import annotations
 
 import os

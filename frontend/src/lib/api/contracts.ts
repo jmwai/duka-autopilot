@@ -256,12 +256,13 @@ export const releaseEvidenceSchema = z.object({
     url: z.string().url().nullable(),
     release_sha: z.string().nullable(),
   })),
+  // Rendered generically by key, so the API may add or retire a disclosure
+  // without the page failing validation and showing nothing at all.
   disclosures: z.object({
     synthetic_data: z.string(),
-    pre_existing_work: z.string(),
     external_effects: z.string(),
     media_policy: z.string(),
-  }),
+  }).catchall(z.string()),
 });
 
 export const frontendVersionSchema = z.object({

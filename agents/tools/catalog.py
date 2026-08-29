@@ -1,5 +1,5 @@
 """Catalog tools - fuzzy product lookup so 'unga' finds 'Unga wa Dola 2kg'.
-Ported (disclosed) from the talk repo; now reads through the Store seam."""
+Reads through the Store seam."""
 from __future__ import annotations
 
 from difflib import SequenceMatcher

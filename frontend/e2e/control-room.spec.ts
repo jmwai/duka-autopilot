@@ -180,9 +180,12 @@ test.describe("control room release candidate", () => {
 
     await result.click();
     await expect(result).toHaveAttribute("aria-selected", "true");
-    // The bilingual fixtures are frozen, so the result view shows the expected
-    // ground truth rather than the pending placeholder it used to.
-    await expect(page.getByText("Frozen ground truth")).toBeVisible();
+    // A desk with nothing read shows an empty state, not rows from a fixture
+    // or from a previous visit. Assert the count so a duplicate still fails
+    // the test, while a transient second copy during hydration settles first.
+    await expect(page.getByRole("heading", { name: "No page read yet" })).toHaveCount(1);
+    await expect(page.getByRole("heading", { name: "No page read yet" })).toBeVisible();
+    await expect(page.getByText("Frozen ground truth")).toBeHidden();
     await expect(page.getByRole("heading", { name: "Page input" })).toBeHidden();
   });
 

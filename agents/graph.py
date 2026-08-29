@@ -6,12 +6,11 @@
                                                     └─recon──▶ exact_recon ──fuzzy─▶ fuzzy_recon
                                                                            └─done──▶ recon_summary
 
-Every hop is an Edge with an explicit route - drawn, not vibed. The graph
-shape is ported (disclosed) from the talk repo; new here: the deterministic
-`screen` node - untrusted input is screened BEFORE any LLM sees it, and
-flagged traffic never routes. refund_gate is the graph-native HITL pause:
-money never moves while the workflow is running; it SUSPENDS and the
-owner's decision resumes the same invocation.
+Every hop is an Edge with an explicit route. The deterministic `screen`
+node - untrusted input is screened BEFORE any LLM sees it, and flagged
+traffic never routes. refund_gate is the graph-native HITL pause: money
+never moves while the workflow is running; it SUSPENDS and the owner's
+decision resumes the same invocation.
 """
 from __future__ import annotations
 

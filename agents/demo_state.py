@@ -13,11 +13,11 @@ from agents.digest import morning_digest
 from agents.nightly import run_nightly
 from agents.seed import seed
 from agents.store import get_store
-from agents.synth.generate import generate_month
+from agents.synth.generate import DEFAULT_ROWS, generate_month
 from agents.tools.ledger import record_ledger_rows
 from agents.tools.orders import save_order
 
-DEFAULT_JUDGE_ROWS = 50_000
+DEFAULT_JUDGE_ROWS = DEFAULT_ROWS  # one duka's month, not the scale ceiling
 DEFAULT_JUDGE_SEED = 2026
 
 _LEDGER_ROWS = [

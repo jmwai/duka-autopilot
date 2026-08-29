@@ -1,13 +1,11 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
   ArrowRight,
   BookOpenCheck,
   CheckCircle2,
   CloudUpload,
-  FileCheck2,
   Image as ImageIcon,
   LoaderCircle,
   ShieldAlert,
@@ -20,29 +18,20 @@ import { DragEvent, FormEvent, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/control-room/page-header";
+import { EmptyState } from "@/components/control-room/product-states";
 import { ExecutionReceipt } from "@/components/inbox/execution-receipt";
 import { DocumentStage, type SelectedLedgerDocument } from "@/components/ledger/document-stage";
-import { FrozenTruthComparison } from "@/components/ledger/frozen-truth-comparison";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BrowserApiError, browserApi } from "@/lib/api/browser-client";
 import { ledgerUploadResponseSchema, type LedgerResult, type LedgerUploadResponse } from "@/lib/api/contracts";
-import {
-  fixturePublicUrl,
-  loadDemoFixtureManifest,
-  verifyFixturePayload,
-  type DemoLedgerFixture,
-} from "@/lib/fixtures/demo";
+import { type DemoLedgerFixture } from "@/lib/fixtures/demo";
 import { formatKsh } from "@/lib/format/money";
 import { blobToBase64, formatMediaBytes, normalizeMime } from "@/lib/inbox/media";
-import { resultMatchesFrozenTruth, validateLedgerImage } from "@/lib/ledger/ledger";
+import { validateLedgerImage } from "@/lib/ledger/ledger";
 import { cn } from "@/lib/utils";
-
-function fixtureFilename(fixture: DemoLedgerFixture) {
-  return fixture.path.split("/").at(-1) ?? `${fixture.id}.png`;
-}
 
 function OutcomeRows({ ledger }: { ledger: LedgerResult }) {
   return (
@@ -95,10 +84,7 @@ function OutcomeRows({ ledger }: { ledger: LedgerResult }) {
   );
 }
 
-function ObservedResult({ response, fixture }: {
-  response: LedgerUploadResponse;
-  fixture: DemoLedgerFixture | null;
-}) {
+function ObservedResult({ response }: { response: LedgerUploadResponse }) {
   if (!response.ledger) {
     return (
       <Card className="border-destructive/40">
@@ -110,7 +96,6 @@ function ObservedResult({ response, fixture }: {
     );
   }
   const ledger = response.ledger;
-  const matches = fixture ? resultMatchesFrozenTruth(ledger, fixture) : null;
   return (
     <Card className="overflow-hidden">
       <CardHeader className="border-b bg-muted/25">
@@ -119,8 +104,6 @@ function ObservedResult({ response, fixture }: {
             <div className="flex flex-wrap items-center gap-2">
               <CardTitle>Observed result</CardTitle>
               {response.idempotent ? <Badge variant="outline">Idempotent replay</Badge> : <Badge variant="gemini">Gemini vision</Badge>}
-              {matches === true ? <Badge variant="exact">Matches frozen truth</Badge> : null}
-              {matches === false ? <Badge variant="attention">Truth mismatch</Badge> : null}
             </div>
           </div>
           <div className="grid grid-cols-2 gap-2 text-center">
@@ -130,12 +113,6 @@ function ObservedResult({ response, fixture }: {
         </div>
       </CardHeader>
       <CardContent className="space-y-5 pt-5">
-        {matches === false ? (
-          <div className="flex gap-3 rounded-xl border border-attention/50 bg-attention/10 p-4 text-sm leading-6">
-            <AlertTriangle aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
-            <p>The observed rows do not match the frozen expected result.</p>
-          </div>
-        ) : null}
         <OutcomeRows ledger={ledger} />
         <div className="rounded-xl border bg-background p-4">
           <p className="text-xs font-bold uppercase tracking-[0.16em] text-muted-foreground">Agent summary</p>
@@ -153,20 +130,9 @@ export function LedgerDesk() {
   const [selected, setSelected] = useState<SelectedLedgerDocument | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const [mobileTab, setMobileTab] = useState<"source" | "result">("source");
-  const [loadingFixtureId, setLoadingFixtureId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [response, setResponse] = useState<LedgerUploadResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const fixtureManifestQuery = useQuery({
-    queryKey: ["demo-fixture-manifest"],
-    queryFn: loadDemoFixtureManifest,
-    retry: false,
-    staleTime: Number.POSITIVE_INFINITY,
-  });
-  const manifest = fixtureManifestQuery.data;
-  const releaseFixtures = manifest?.release_ready ? manifest.ledgers : [];
-  const englishFixture = releaseFixtures.find((fixture) => fixture.language === "en-KE") ?? null;
-  const swahiliFixture = releaseFixtures.find((fixture) => fixture.language === "sw-KE") ?? null;
 
   // The preview URL is created and released here, in event handlers, rather
   // than inside the preview component: an effect cleanup there is re-run by
@@ -199,21 +165,6 @@ export function LedgerDesk() {
     setResponse(null);
     setError(null);
     setMobileTab("source");
-  }
-
-  async function loadFrozenFixture(fixture: DemoLedgerFixture) {
-    if (loadingFixtureId) return;
-    setLoadingFixtureId(fixture.id);
-    try {
-      const fixtureResponse = await fetch(fixturePublicUrl(fixture.path), { cache: "force-cache" });
-      const payload = await verifyFixturePayload(fixtureResponse, fixture);
-      chooseFile(new File([payload], fixtureFilename(fixture), { type: fixture.mime_type }), fixture);
-      toast.success(`${fixture.label} verified and loaded.`);
-    } catch (fixtureError) {
-      toast.error(fixtureError instanceof Error ? fixtureError.message : "The fixture could not be loaded.");
-    } finally {
-      setLoadingFixtureId(null);
-    }
   }
 
   function handleDrop(event: DragEvent<HTMLDivElement>) {
@@ -297,29 +248,7 @@ export function LedgerDesk() {
                   </div>
                 )}
                 {error ? <div role="alert" className="flex gap-3 rounded-lg border border-destructive/35 bg-destructive/5 p-3 text-sm text-destructive"><AlertTriangle aria-hidden="true" className="mt-0.5 size-4 shrink-0" /><p>{error}</p></div> : null}
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {([
-                    ["English", englishFixture],
-                    ["Kiswahili", swahiliFixture],
-                  ] as const).map(([language, fixture]) => (
-                    <Button
-                      key={language}
-                      type="button"
-                      variant="outline"
-                      onClick={() => fixture && void loadFrozenFixture(fixture)}
-                      disabled={!fixture || Boolean(loadingFixtureId) || submitting}
-                    >
-                      {loadingFixtureId === fixture?.id ? <LoaderCircle aria-hidden="true" className="animate-spin" /> : <FileCheck2 aria-hidden="true" />}
-                      {loadingFixtureId === fixture?.id ? "Verifying…" : `${language} fixture${fixture ? "" : " pending"}`}
-                    </Button>
-                  ))}
-                  <Button type="button" variant="outline" className="sm:col-span-2" onClick={() => fileInputRef.current?.click()} disabled={submitting}><ImageIcon aria-hidden="true" /> Choose owner photo</Button>
-                </div>
-                {fixtureManifestQuery.isError ? (
-                  <div role="alert" className="rounded-lg border border-attention/40 bg-attention/10 p-3 text-xs leading-5">
-                    The fixture manifest could not be verified. Owner upload still works.
-                  </div>
-                ) : null}
+                <Button type="button" variant="outline" className="w-full" onClick={() => fileInputRef.current?.click()} disabled={submitting}><ImageIcon aria-hidden="true" /> Choose owner photo</Button>
                 <Button type="submit" size="lg" className="w-full" disabled={!selected || submitting}>{submitting ? <LoaderCircle aria-hidden="true" className="animate-spin" /> : <Sparkles aria-hidden="true" />}{submitting ? "Reading and gating rows…" : "Read this ledger page"}</Button>
               </form>
             </CardContent>
@@ -330,18 +259,13 @@ export function LedgerDesk() {
           {submitting ? (
             <Card><CardContent className="grid min-h-64 place-items-center p-8 text-center"><div><span className="mx-auto grid size-12 place-items-center rounded-xl bg-gemini/10 text-gemini"><LoaderCircle aria-hidden="true" className="size-5 animate-spin" /></span><p className="mt-4 font-semibold">Reading every handwritten row</p></div></CardContent></Card>
           ) : response ? (
-            <>
-              <FrozenTruthComparison
-                fixture={selected?.fixture ?? null}
-                observed={response.ledger}
-                blockedReason={selected?.fixture ? undefined : "Owner upload — no frozen expected result."}
-              />
-              <ObservedResult response={response} fixture={selected?.fixture ?? null} />
-            </>
+            <ObservedResult response={response} />
           ) : (
-            <FrozenTruthComparison
-              fixture={selected ? selected.fixture : englishFixture}
-              blockedReason={selected && !selected.fixture ? "Owner upload — no frozen expected result." : manifest?.blocked_reason}
+            /* Nothing is carried over between visits: a reload starts on a
+               clean desk rather than showing the last page's rows. */
+            <EmptyState
+              title="No page read yet"
+              description="Choose or drop a photograph of a ledger page. The rows Duka can read become sales; anything it cannot read stops for you."
             />
           )}
         </TabsContent>

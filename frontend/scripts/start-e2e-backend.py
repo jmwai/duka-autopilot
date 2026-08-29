@@ -25,10 +25,11 @@ if profile == "judge":
     import asyncio
 
     from agents.demo_state import prepare_judge_state  # noqa: E402
+    from agents.synth.generate import DEFAULT_ROWS  # noqa: E402
 
     asyncio.run(prepare_judge_state(
         force=True,
-        rows=int(os.environ.get("DUKA_E2E_ROWS", "4000")),
+        rows=int(os.environ.get("DUKA_E2E_ROWS", str(DEFAULT_ROWS))),
         execution_surface="local_judge_rehearsal",
     ))
 elif profile == "base":
