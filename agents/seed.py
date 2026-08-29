@@ -1,7 +1,6 @@
 """Demo seed - Duka la Amani's catalog, regulars, and a small statement.
 
-Ported (disclosed) from the my-duka-agent talk repo, rewired onto the Store
-interface. This is the CHAT demo's world (8 named customers the video can
+This is the CHAT demo's world (8 named customers the video can
 talk to). The 50k-row reconciliation month comes from agents/synth/generate.py
 on top of this base.
 

@@ -2,7 +2,6 @@
 
 The LlmAgent only suggests a route; the FunctionNode makes the routing
 decision and emits it via ctx.route. LLM suggests, code decides.
-Ported (disclosed) from the talk repo.
 """
 from __future__ import annotations
 

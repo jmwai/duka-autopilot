@@ -37,7 +37,7 @@ describe("Owner product API contracts", () => {
       topology: { compatible: true, fingerprint: "a".repeat(64), workflow_name: "duka", adk_version: "2.7.1", node_count: 1, edge_count: 1, nodes: ["screen"] },
       runtime: { store: "firestore", bus: "pubsub", managed_sessions_configured: true, memory_bank_configured: true },
       artifacts: [{ key: "eval", label: "ADK eval", state: "pending", detail: "Not attached", url: null, release_sha: null }],
-      disclosures: { synthetic_data: "disclosed", pre_existing_work: "disclosed", external_effects: "none", media_policy: "Google only" },
+      disclosures: { synthetic_data: "disclosed", external_effects: "none", media_policy: "Google only" },
     };
     expect(releaseEvidenceSchema.parse(evidence).artifacts[0].state).toBe("pending");
     expect(releaseEvidenceSchema.safeParse({ ...evidence, artifacts: [{ ...evidence.artifacts[0], state: "claimed" }] }).success).toBe(false);

@@ -1,6 +1,6 @@
 """Fuzzy-pass tools: what the LLM may see and the ONLY things it may do.
 It can look at open orders and PROPOSE matches into the approval queue.
-It cannot mark anything paid. Ported (disclosed); Store seam + scale caps."""
+It cannot mark anything paid. """
 from __future__ import annotations
 
 from agents.store import get_store

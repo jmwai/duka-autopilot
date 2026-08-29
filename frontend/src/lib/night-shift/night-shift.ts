@@ -23,8 +23,13 @@ export function stopReasonLabel(reason: string | undefined) {
   return STOP_REASONS[reason] ?? reason;
 }
 
+// The headroom test, not a duka's month. At ~50 payments a day this row count
+// is closer to three years of trading, or thirty shops on one instance. It is
+// kept because it is a real recorded measurement of where the engine stops
+// being comfortable - never edited to match a new scenario, only re-measured.
 export const LOCAL_BASELINE = {
-  label: "Historical local synthetic baseline",
+  label: "Scale headroom test",
+  scenario: "~3 years of one duka's trading, or ~30 shops on one instance",
   measuredAt: "2026-08-26T12:48:20.031686+00:00",
   releaseSha: "605669888468114d37606f2ee5a067920ca14823",
   dirtyWorktree: true,

@@ -1,6 +1,6 @@
 """Order intake agent - multimodal, schema-strict, confidence-gated.
-Ported (disclosed) from the talk repo. Voice-note intake lands in the
-multimodal phase; the guardrails below apply to every modality."""
+Voice-note intake lands in the multimodal phase; the guardrails below apply to every modality.
+"""
 from __future__ import annotations
 
 import os

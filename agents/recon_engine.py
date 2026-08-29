@@ -1,9 +1,8 @@
-"""Deterministic reconciliation engine - the workhorse of the nightly run.
-
-Ported (disclosed) from the talk repo's exact_match_payments, then rebuilt
-for statement scale: instead of a nested scan (O(payments x orders)), both
+"""Deterministic reconciliation engine - the workhorse of the nightly run. 
+Instead of a nested scan (O(payments x orders)), both
 sides are indexed by (phone, amount) and links are written back in ONE bulk
-transaction. 50,000 rows settle in seconds on SQLite - and because it talks
+transaction. A duka's month settles in milliseconds and the 50,000-row
+headroom test still settles in under a second on SQLite - and because it talks
 to the Store interface, the same code runs against Firestore in the cloud.
 
 No LLM anywhere in this file. That is the point: the LLM only ever sees

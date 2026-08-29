@@ -1,4 +1,4 @@
-"""Graph-native HITL money gate. Ported (disclosed) from the talk repo.
+"""Graph-native HITL money gate.
 
 The support agent can only REQUEST a refund (tool writes an approvals row and
 a state flag). This FunctionNode is what actually stops the workflow:

@@ -1,4 +1,4 @@
-"""Money invariants - ported (disclosed) from the talk repo's eval suite.
+"""Money invariants.
 
 No code path may move money without a human: fuzzy proposals never mark
 paid, low-confidence orders gate on approval, the refund gate suspends the

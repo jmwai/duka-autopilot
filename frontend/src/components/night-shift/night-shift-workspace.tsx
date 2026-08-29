@@ -348,7 +348,7 @@ function Baseline() {
   return (
     <Card className="mt-5 border-attention/35">
       <CardHeader>
-        <div className="flex flex-wrap items-start justify-between gap-3"><div><CardTitle>{baseline.label}</CardTitle><CardDescription>Frozen engineering comparison—not Cloud Run, not Firestore, not this release.</CardDescription></div><Badge variant="attention">LOCAL-PROVEN · dirty worktree</Badge></div>
+        <div className="flex flex-wrap items-start justify-between gap-3"><div><CardTitle>{baseline.label}</CardTitle><CardDescription>{baseline.scenario}. A frozen engineering comparison—not this shop&rsquo;s month, not Cloud Run, not this release.</CardDescription></div><Badge variant="attention">LOCAL-PROVEN · dirty worktree</Badge></div>
       </CardHeader>
       <CardContent>
         <div className="grid gap-3 sm:grid-cols-3 xl:grid-cols-6">

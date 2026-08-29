@@ -2,9 +2,9 @@
 
 Needs model access (Vertex AI recommended) for the fuzzy batches; the exact
 pass and the report are keyless. Writes docs/economics.md with the measured
-numbers - the "50,000 rows for $X" slide comes from here, not from vibes.
+numbers - any "N rows for $X" claim comes from here, not from vibes.
 
-Run:  python scripts/measure_nightly.py [--rows 50000] [--no-fuzzy]
+Run:  python scripts/measure_nightly.py [--rows 1500] [--no-fuzzy]
 """
 from __future__ import annotations
 
@@ -24,6 +24,8 @@ from app.environment import load_environment
 
 load_environment()
 os.environ.setdefault("DUKA_DB", "data/measure.db")
+
+from agents.synth.generate import DEFAULT_ROWS  # noqa: E402
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -125,7 +127,7 @@ payment paid. Every fuzzy proposal waits in the owner's approval queue.
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--rows", type=int, default=50_000)
+    ap.add_argument("--rows", type=int, default=DEFAULT_ROWS)
     ap.add_argument("--days", type=int, default=30)
     ap.add_argument("--seed", type=int, default=2026)
     ap.add_argument("--no-fuzzy", action="store_true",
