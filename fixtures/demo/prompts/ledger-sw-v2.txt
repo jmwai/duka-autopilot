@@ -2,7 +2,7 @@ Create a photorealistic vertical 2:3 photograph of one slightly worn ruled
 school exercise-book page lying flat on a plain wooden shop counter. No people,
 hands, phones, logos, bank names, account numbers, or real personal data. The
 page is a deliberately synthetic Kenyan shop ledger written by hand in neat but
-natural black ballpoint, with minor ink variation and two intentional smudges.
+natural black ballpoint, with minor ink variation and one intentional smudge.
 
 At the top write exactly:
 DUKA LA AMANI
@@ -11,21 +11,14 @@ DAFTARI YA LEO
 Draw a simple five-column table with these exact Kiswahili headers:
 TAREHE | BIDHAA | IDADI | KSH | IMELIPWA
 
-Write exactly these ten rows:
+Write exactly these three rows:
 12/08 | Unga Dola 2kg | 2 | 390 | NDIO
 12/08 | Mafuta 1L | 1 | 320 | NDIO
 12/08 | Sukari 1kg | 1 | [the amount is heavily smudged and impossible to read] | HAPANA
-12/08 | Maziwa 500ml | 3 | 195 | NDIO
-12/08 | Unga Ngano 2kg | 1 | 210 | NDIO
-12/08 | Sabuni ya mche | 2 | 300 | NDIO
-12/08 | Mchele 2kg | 1 | [the amount is heavily smudged and impossible to read] | HAPANA
-12/08 | Majani chai 100g | 1 | 65 | NDIO
-12/08 | Chumvi 1kg | 2 | 70 | NDIO
-12/08 | Kibiriti pakiti 1 | 1 | 50 | NDIO
 
-The eight clean amounts must be unmistakably legible. The two smudged amount
-cells must contain only authentic-looking dense ink smudges with no recoverable
-digits. All other words and numbers must remain readable. Use realistic
-perspective, soft daylight, subtle paper creases, and documentary
-product-photography quality. Do not add any extra rows, totals, captions,
-currency symbols, stamps, watermarks, or decorative objects.
+The first two amounts must be unmistakably legible. The third amount cell must
+contain only an authentic-looking dense ink smudge with no recoverable digits.
+All other words and numbers must remain readable. Use realistic perspective,
+soft daylight, subtle paper creases, and documentary product-photography
+quality. Do not add any extra rows, totals, captions, currency symbols, stamps,
+watermarks, or decorative objects.
