@@ -7,18 +7,6 @@ on:
         description: Full tested 40-character Git SHA
         required: true
         type: string
-      backend_digest:
-        description: Tested backend sha256 digest (sha256:...)
-        required: true
-        type: string
-      frontend_digest:
-        description: Tested frontend sha256 digest (sha256:...)
-        required: true
-        type: string
-      development_run_id:
-        description: Successful deploy-dev GitHub run ID containing the smoke-tested manifest
-        required: true
-        type: string
 
 permissions:
   actions: read
@@ -43,8 +31,6 @@ jobs:
       PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
       REGION: ${{ vars.GCP_REGION }}
       RELEASE_SHA: ${{ inputs.release_sha }}
-      BACKEND_DIGEST: ${{ inputs.backend_digest }}
-      FRONTEND_DIGEST: ${{ inputs.frontend_digest }}
       IMAGE_REPOSITORY: duka-images
     steps:
       - name: Check out the promoted revision
@@ -52,18 +38,14 @@ jobs:
         with:
           ref: ${{ inputs.release_sha }}
 
-      - name: Validate promotion inputs and variables
+      - name: Validate promotion input and variables
         run: |
           [[ "${RELEASE_SHA}" =~ ^[0-9a-f]{40}$ ]]
-          [[ "${BACKEND_DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]]
-          [[ "${FRONTEND_DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]]
           test "$(git rev-parse HEAD)" = "${RELEASE_SHA}"
           test -n "${PROJECT_ID}"
           test -n "${REGION}"
           test -n "${{ vars.GCP_WIF_PROVIDER }}"
           test -n "${{ vars.GCP_PROD_DEPLOYER_SA }}"
-          echo "BACKEND_REF=${REGION}-docker.pkg.dev/${PROJECT_ID}/${IMAGE_REPOSITORY}/duka-backend@${BACKEND_DIGEST}" >>"${GITHUB_ENV}"
-          echo "FRONTEND_REF=${REGION}-docker.pkg.dev/${PROJECT_ID}/${IMAGE_REPOSITORY}/duka-frontend@${FRONTEND_DIGEST}" >>"${GITHUB_ENV}"
 
       - name: Require successful CI and ADK evaluation for this SHA
         env:
@@ -76,21 +58,34 @@ jobs:
           test "${CI_RUNS}" -gt 0
           test "${EVAL_RUNS}" -gt 0
 
-      - name: Verify the smoke-tested development release manifest
+      - name: Resolve the smoke-tested development release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          [[ "${{ inputs.development_run_id }}" =~ ^[0-9]+$ ]]
-          gh run download "${{ inputs.development_run_id }}" \
+          DEVELOPMENT_RUN_ID=$(gh run list --workflow deploy-dev.yml \
+            --commit "${RELEASE_SHA}" --status success --limit 1 \
+            --json databaseId --jq '.[0].databaseId // empty')
+          test -n "${DEVELOPMENT_RUN_ID}"
+          gh run download "${DEVELOPMENT_RUN_ID}" \
             --name "development-release-${RELEASE_SHA}" \
             --dir promoted-development
           test "$(jq -r '.release_sha' promoted-development/release-manifest-dev.json)" = "${RELEASE_SHA}"
-          test "$(jq -r '.images.backend' promoted-development/release-manifest-dev.json)" = \
+          BACKEND_REF=$(jq -er '.images.backend' promoted-development/release-manifest-dev.json)
+          FRONTEND_REF=$(jq -er '.images.frontend' promoted-development/release-manifest-dev.json)
+          BACKEND_DIGEST="${BACKEND_REF##*@}"
+          FRONTEND_DIGEST="${FRONTEND_REF##*@}"
+          [[ "${BACKEND_DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]]
+          [[ "${FRONTEND_DIGEST}" =~ ^sha256:[0-9a-f]{64}$ ]]
+          test "${BACKEND_REF}" = \
             "${REGION}-docker.pkg.dev/${PROJECT_ID}/${IMAGE_REPOSITORY}/duka-backend@${BACKEND_DIGEST}"
-          test "$(jq -r '.images.frontend' promoted-development/release-manifest-dev.json)" = \
+          test "${FRONTEND_REF}" = \
             "${REGION}-docker.pkg.dev/${PROJECT_ID}/${IMAGE_REPOSITORY}/duka-frontend@${FRONTEND_DIGEST}"
           jq -e '.api_version.durable_topology.compatible == true' \
             promoted-development/development-smoke.json >/dev/null
+          {
+            echo "BACKEND_REF=${BACKEND_REF}"
+            echo "FRONTEND_REF=${FRONTEND_REF}"
+          } >>"${GITHUB_ENV}"
 
       - name: Authenticate to Google Cloud through WIF
         uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
