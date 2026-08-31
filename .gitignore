@@ -39,3 +39,6 @@ backend.*.hcl
 documents/*.md
 documents/evidence/
 screenshots/
+documents/*.txt
+documents/*.mp4
+documents/*.wav
