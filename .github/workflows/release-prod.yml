@@ -4,8 +4,8 @@ on:
   workflow_dispatch:
     inputs:
       release_sha:
-        description: Full tested 40-character Git SHA
-        required: true
+        description: Optional full tested Git SHA (defaults to the latest successful dev release)
+        required: false
         type: string
 
 permissions:
@@ -33,10 +33,30 @@ jobs:
       RELEASE_SHA: ${{ inputs.release_sha }}
       IMAGE_REPOSITORY: duka-images
     steps:
+      - name: Resolve the release SHA
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if [[ -z "${RELEASE_SHA}" ]]; then
+            RELEASE_SHA=$(gh run list --workflow deploy-dev.yml --branch dev \
+              --status success --limit 1 --json headSha --jq '.[0].headSha // empty')
+            if [[ -z "${RELEASE_SHA}" ]]; then
+              echo "::error::No successful development release found. Run Deploy development first."
+              exit 1
+            fi
+          fi
+          if [[ ! "${RELEASE_SHA}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Release SHA must be a full 40-character Git SHA."
+            exit 1
+          fi
+          echo "RELEASE_SHA=${RELEASE_SHA}" >>"${GITHUB_ENV}"
+          echo "Selected release: ${RELEASE_SHA}"
+
       - name: Check out the promoted revision
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          ref: ${{ inputs.release_sha }}
+          ref: ${{ env.RELEASE_SHA }}
 
       - name: Validate promotion input and variables
         run: |
@@ -249,7 +269,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: production-release-${{ inputs.release_sha }}
+          name: production-release-${{ env.RELEASE_SHA }}
           path: |
             release-manifest-prod.json
             production-smoke.json
