@@ -193,7 +193,7 @@ one — the tag carries the meaning, not the colour:
   review, `request_refund` can only open a request, and the owner-scoped
   `record_ledger_rows` tool gates per row.
 - **exact_recon** (code) settles ~97% of a statement month — milliseconds
-  for one duka, under a second for the 50,000-row headroom test;
+  for one duka, under a second for the headroom test;
   **fuzzy_recon** (LLM) sees
   only the residue and can only file proposals. Cloud timing remains a release
   evidence gate.

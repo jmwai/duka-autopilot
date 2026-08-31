@@ -2,7 +2,7 @@
 
 Raw rows()/execute() calls became the domain methods in
 base.Store, and bulk paths (executemany, single transaction) were added so
-even the 50,000-row headroom test loads and reconciles in under a second
+even the headroom test loads and reconciles in under a second
 instead of opening 50,000 connections.
 
 Lives INSIDE the agents package because `adk deploy agent_engine` ships only

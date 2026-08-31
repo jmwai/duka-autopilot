@@ -140,8 +140,53 @@ async def test_push_delivery_routes_on_the_topic_attribute(monkeypatch):
         assert test_client.post("/pubsub/push", json=unknown).status_code == 400
 
 
-def test_publish_carries_the_logical_topic_as_an_attribute():
-    """Cloud mode rides one transport topic, so the attribute is the routing."""
-    from app.bus import TOPIC_ATTRIBUTE, TRANSPORT_TOPIC
-    assert TRANSPORT_TOPIC == "inbound"
-    assert TOPIC_ATTRIBUTE == "topic"
+async def test_pubsub_publish_survives_the_client_signature(monkeypatch):
+    """Attributes reach the publisher as **kwargs.
+
+    An attribute named after one of PublisherClient.publish's own parameters
+    raises TypeError and kills every event on the bus. This mirrors the real
+    signature so that collision fails here rather than in cloud.
+    """
+    calls = []
+
+    class FakeFuture:
+        def result(self):
+            return "message-id"
+
+    class FakePublisher:
+        def topic_path(self, project, name):
+            return f"projects/{project}/topics/{name}"
+
+        def publish(self, topic, data, ordering_key="", retry=None,
+                    timeout=None, **attrs):
+            calls.append({"topic": topic, "data": data,
+                          "ordering_key": ordering_key, "attrs": attrs})
+            return FakeFuture()
+
+    import google.cloud.pubsub_v1 as pubsub_v1
+    monkeypatch.setattr(pubsub_v1, "PublisherClient", lambda **kw: FakePublisher())
+    monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "demo-duka")
+
+    from app.bus import TOPIC_ATTRIBUTE, TRANSPORT_TOPIC, PubSubBus
+    from app.worker import NIGHTLY_TOPIC
+
+    bus = PubSubBus()
+    await bus.publish(NIGHTLY_TOPIC, {"event_id": "run-7", "customer_id": "owner"})
+
+    assert len(calls) == 1
+    call = calls[0]
+    assert call["topic"].endswith(TRANSPORT_TOPIC)
+    assert call["attrs"][TOPIC_ATTRIBUTE] == NIGHTLY_TOPIC
+    assert call["attrs"]["event_id"] == "run-7"
+    assert call["ordering_key"] == "owner"
+
+
+def test_the_topic_attribute_cannot_collide_with_the_publisher_signature():
+    import inspect
+
+    from google.cloud import pubsub_v1
+
+    from app.bus import TOPIC_ATTRIBUTE
+    reserved = set(inspect.signature(pubsub_v1.PublisherClient.publish).parameters)
+    assert TOPIC_ATTRIBUTE not in reserved, (
+        f"{TOPIC_ATTRIBUTE!r} is a publish() parameter; attributes are passed as **kwargs")

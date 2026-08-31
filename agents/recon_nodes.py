@@ -1,6 +1,5 @@
 """Reconciliation workflow nodes: engine first, LLM only on the residue.
-The exact pass now runs the indexed recon_engine so the same node handles a duka's 50-row night or the
-50,000-row headroom test."""
+The exact pass now runs the indexed recon_engine so the same node handles a duka's 50-row night or the headroom test."""
 from __future__ import annotations
 
 import os

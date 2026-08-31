@@ -241,7 +241,7 @@ Release requires all scenarios A01–A30 in `docs/hackathon-plan.md`, including:
 - real voice and ledger-image proof;
 - Scheduler-triggered nightly Job proof;
 - IAM denial tests and rollback under five minutes;
-- measured 50,000-row economics tied to release SHA.
+- measured economics tied to release SHA.
 
 Unit tests are not a substitute for ADK evaluations, and local tests are not a
 substitute for cloud evidence.
